@@ -1,0 +1,14 @@
+{
+  "about": "The scheduler's workers: how many there are, and each one's name, model server (an OpenAI-style /v1 endpoint), model, metrics address and the lanes it takes (letters from lanes.json; empty means any lane). An empty field uses the worker section of scheduler.json. The scheduler reads this file from main; changes made from its page are committed and pushed for you. Which workers are enabled is kept on the scheduler's PC, not here.",
+  "slots": 8,
+  "workers": {
+    "1": { "name": "", "endpoint": "", "model": "", "metricsUrl": "", "lanes": "", "premium": false },
+    "2": { "name": "", "endpoint": "", "model": "", "metricsUrl": "", "lanes": "", "premium": false },
+    "3": { "name": "", "endpoint": "", "model": "", "metricsUrl": "", "lanes": "", "premium": false },
+    "4": { "name": "Claude", "agent": "claude", "endpoint": "", "model": "claude-sonnet-5-5", "metricsUrl": "", "lanes": "", "premium": true },
+    "5": { "name": "Opus", "agent": "claude", "endpoint": "", "model": "claude-opus-5-5", "metricsUrl": "", "lanes": "", "premium": true },
+    "6": { "name": "", "endpoint": "", "model": "", "metricsUrl": "", "lanes": "", "premium": false },
+    "7": { "name": "", "endpoint": "", "model": "", "metricsUrl": "", "lanes": "", "premium": false },
+    "8": { "name": "", "endpoint": "", "model": "", "metricsUrl": "", "lanes": "", "premium": false }
+  }
+}

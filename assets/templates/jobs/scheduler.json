@@ -1,0 +1,59 @@
+{
+  "project": "Example",
+  "jobsDir": "jobs",
+  "remote": "origin",
+  "branch": "main",
+  "port": 8765,
+  "listen": "localhost",
+  "remoteControl": false,
+  "planner": { "outbox": "jobs\\.planner-outbox" },
+  "page": {
+    "theme": ""
+  },
+  "jobsEnvVar": "AGENT_JOBS",
+  "workerWindow": "Hidden",
+  "worker": {
+    "cli": "copilot",
+    "args": [
+      "-p",
+      "{prompt}",
+      "--allow-all",
+      "--no-ask-user",
+      "--output-format=json",
+      "--model={model}"
+    ],
+    "model": "spark",
+    "endpoint": "http://spark.local:18400/v1",
+    "env": {
+      "COPILOT_PROVIDER_BASE_URL": "{endpoint}",
+      "COPILOT_PROVIDER_TYPE": "openai",
+      "COPILOT_MODEL": "{model}"
+    },
+    "quotaPatterns": [
+      "exceeded your (monthly )?quota",
+      "quota exceeded",
+      "rate limit"
+    ]
+  },
+  "agents": {
+    "claude": {
+      "cli": "claude",
+      "args": ["-p", "{prompt}", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--model", "{model}", "--dangerously-skip-permissions"],
+      "format": "claude",
+      "model": "claude-sonnet-5-5",
+      "quotaPatterns": ["usage limit", "rate limit", "rate_limit_error", "credit balance is too low", "Failed to authenticate"]
+    }
+  },
+  "health": {
+    "command": "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --parallel {jobs} && ctest --test-dir build -j {jobs}"
+  },
+  "promptExtra": "Build with cmake --build --parallel {jobs} and run tests with ctest -j {jobs}.",
+  "limits": {
+    "pollSeconds": 15,
+    "maxRetries": 2,
+    "stallMinutes": 30,
+    "warnMinutes": 20,
+    "stopGraceMinutes": 20,
+    "maxMinutes": 240
+  }
+}

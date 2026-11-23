@@ -1,0 +1,13 @@
+{
+  "name": "Dark",
+  "label": "Dark",
+  "order": 20,
+  "extends": "../theme.default.json",
+  "description": "The default style, always dark.",
+  "css": [
+    ":root { color-scheme: dark; --bg: #14171c; --panel: #1c2027; --text: #e6e9ef; --muted: #959cab; --line: #2c323c;",
+    "  --accent: #5b8ff0; --accent-text: #0b1020; --ok: #4cc283; --warn: #f0a83c; --bad: #ff6b6b; --bar: #222731;",
+    "  --log-bg: #12151a; --shadow: none; }",
+    "input, select { background: var(--log-bg); color: var(--text); border: 1px solid var(--line); }"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "Rams",
+  "label": "Rams",
+  "order": 40,
+  "extends": "../theme.default.json",
+  "description": "Royal blue and sol yellow.",
+  "css": [
+    ":root { color-scheme: light; --bg: #002f87; --panel: #ffffff; --text: #0b1f4d; --muted: #4f6390; --line: #cdd6ec;",
+    "  --accent: #003594; --accent-text: #ffd100; --ok: #1f8a4c; --warn: #b26a00; --bad: #c62828; --bar: #ffd100;",
+    "  --log-bg: #f3f6fd; --shadow: 0 2px 6px rgba(0, 0, 0, .25); }",
+    ".screen { background: #003594; color: #ffd100; border-bottom: 3px solid #ffa300; }",
+    ".bar { color: #003594; border-bottom-color: #ffa300; } .bar .tag { color: #003594; }",
+    ".bar button { background: #003594; color: #ffd100; }"
+  ]
+}

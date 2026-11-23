@@ -1,0 +1,38 @@
+# Build intermediates and results; see docs/conventions.md. build/ can be deleted at any time.
+build/
+out/*
+cmake-build-*/
+
+# A git-ignored directory that must still exist in a clone keeps a committed .gitkeep: ignore its
+# contents and un-ignore the placeholder.
+!out/.gitkeep
+
+# Compiled and generated binaries, wherever they land (bin/ keeps the project's scripts committed;
+# the tools built from code/tools/ that land beside them are not).
+*.exe
+*.dll
+*.so
+*.dylib
+*.obj
+*.o
+*.a
+*.lib
+*.pdb
+*.ilk
+
+# Generated content. The generators live in code/tools/ and their output is rebuilt, not
+# hand-committed.
+assets/generated/
+
+# Test scratch. Golden files under test/data/ are committed; runs are not.
+test/out/
+*.tmp
+
+# Editor and tooling
+.vs/
+.vscode/
+.idea/
+*.user
+*.userprefs
+.cache/
+compile_commands.json

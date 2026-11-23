@@ -1,0 +1,16 @@
+{
+  "name": "Kings",
+  "label": "Kings",
+  "order": 50,
+  "extends": "../theme.default.json",
+  "description": "Black, silver and white.",
+  "css": [
+    ":root { color-scheme: light; --bg: #111111; --panel: #ffffff; --text: #111111; --muted: #6b7174; --line: #d5d9db;",
+    "  --accent: #111111; --accent-text: #ffffff; --ok: #2e7d32; --warn: #8a6d00; --bad: #b71c1c; --bar: #a2aaad;",
+    "  --log-bg: #f4f5f6; --shadow: 0 2px 6px rgba(0, 0, 0, .5); }",
+    ".screen { background: #111111; color: #a2aaad; border-bottom: 3px solid #a2aaad; }",
+    ".win { border-color: #a2aaad; }",
+    ".bar { color: #111111; } .bar .tag { color: #111111; }",
+    "button:hover { filter: none; background: #a2aaad; color: #111111; }"
+  ]
+}

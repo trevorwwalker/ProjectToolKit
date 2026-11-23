@@ -1,0 +1,15 @@
+{
+  "name": "Lakers",
+  "label": "Lakers",
+  "order": 70,
+  "extends": "../theme.default.json",
+  "description": "Purple and gold.",
+  "css": [
+    ":root { color-scheme: light; --bg: #552583; --panel: #ffffff; --text: #2a1242; --muted: #6e5a85; --line: #e0d6eb;",
+    "  --accent: #552583; --accent-text: #fdb927; --ok: #1f8a4c; --warn: #b26a00; --bad: #c62828; --bar: #fdb927;",
+    "  --log-bg: #f7f3fb; --shadow: 0 2px 6px rgba(0, 0, 0, .3); }",
+    ".screen { background: #552583; color: #fdb927; border-bottom: 3px solid #fdb927; }",
+    ".bar { color: #552583; } .bar .tag { color: #552583; }",
+    ".bar button { background: #552583; color: #fdb927; }"
+  ]
+}

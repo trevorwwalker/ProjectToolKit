@@ -1,0 +1,19 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- The one place the scheduler's version is written (951-A, CFG-18): CoreInfo.Version reads it
+         back out of the build's informational version, and the page, the log and the version switch
+         show that. The PowerShell scheduler ended at 2.3.16; the C# rewrite is 3.0.0. -->
+    <Version>3.0.133</Version>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- The layout's own rule (docs/conventions.md): build/ holds intermediates and can be deleted at
+         any time; out/ holds the runnable result. So every project's bin/ and obj/ - src, tests and
+         tray alike - go under the repository's build/, not beside its source. (600-B) -->
+    <ArtifactsPath>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)..\..\build'))</ArtifactsPath>
+  </PropertyGroup>
+</Project>

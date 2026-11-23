@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>scheduler-next</AssemblyName>
+    <ApplicationIcon>$(MSBuildThisFileDirectory)../../../assets/icons/scheduler.ico</ApplicationIcon>
+    <RootNamespace>Scheduler.Host</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Scheduler.Core\Scheduler.Core.csproj" />
+    <ProjectReference Include="..\Scheduler.Web\Scheduler.Web.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Page themes (PAGE-11): loaded at run time from beside the exe. -->
+    <None Include="$(MSBuildThisFileDirectory)..\..\..\assets\themes\theme.default.json" Link="theme.default.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(MSBuildThisFileDirectory)..\..\..\assets\themes\*.json" Exclude="$(MSBuildThisFileDirectory)..\..\..\assets\themes\theme.default.json" Link="themes\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- out/windows/scheduler is one runnable folder: scheduler-tray.exe starts scheduler-next.exe from
+       beside itself, so publishing the Host publishes the tray into the same folder. One command then
+       builds the whole runnable scheduler (600-B). -->
+  <Target Name="PublishTrayBesideScheduler" AfterTargets="Publish">
+    <PropertyGroup>
+      <SchedulerPublishDir>$([MSBuild]::EnsureTrailingSlash($([MSBuild]::NormalizePath('$(PublishDir)'))))</SchedulerPublishDir>
+    </PropertyGroup>
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\Scheduler.Tray\Scheduler.Tray.csproj"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);PublishDir=$(SchedulerPublishDir)"
+             RemoveProperties="TargetFramework;RuntimeIdentifier" />
+  </Target>
+</Project>

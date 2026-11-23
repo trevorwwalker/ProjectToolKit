@@ -1,0 +1,15 @@
+{
+  "name": "Sunflower",
+  "label": "Sunflower",
+  "order": 120,
+  "extends": "../theme.default.json",
+  "description": "Sunflower yellow and dark brown.",
+  "css": [
+    ":root { color-scheme: light; --bg: #f2b705; --panel: #ffffff; --text: #2f2400; --muted: #6b5a20; --line: #efe3b8;",
+    "  --accent: #f2b705; --accent-text: #3b2a00; --ok: #197a42; --warn: #9a4d00; --bad: #c62828; --bar: #3b2a00;",
+    "  --log-bg: #fdf9ea; --shadow: 0 2px 6px rgba(0, 0, 0, .3); }",
+    ".screen { background: #f2b705; color: #3b2a00; border-bottom: 3px solid #3b2a00; }",
+    ".bar { color: #f2b705; } .bar .tag { color: #f2b705; }",
+    ".bar button { background: #f2b705; color: #3b2a00; }"
+  ]
+}

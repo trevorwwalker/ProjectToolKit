@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Scheduler.Core\Scheduler.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- 973-B: the page serves this as its favicon. -->
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../../../assets/icons/scheduler.ico" LogicalName="scheduler.ico" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,16 @@
+{
+  "name": "Visual Studio",
+  "label": "Visual Studio",
+  "order": 160,
+  "extends": "../theme.default.json",
+  "description": "Visual Studio's Dark colours: charcoal, keyword blue and type teal.",
+  "css": [
+    ":root { color-scheme: dark; --bg: #1e1e1e; --panel: #252526; --text: #d4d4d4; --muted: #959595; --line: #3c3c3c;",
+    "  --accent: #569cd6; --accent-text: #1e1e1e; --ok: #57a64a; --warn: #dcdcaa; --bad: #f85a5a; --bar: #4ec9b0;",
+    "  --log-bg: #1e1e1e; --shadow: none; }",
+    "input, select { background: var(--log-bg); color: var(--text); border: 1px solid var(--line); }",
+    ".screen { background: #1e1e1e; color: #569cd6; border-bottom: 3px solid #4ec9b0; }",
+    ".bar { color: #1e1e1e; } .bar .tag { color: #1e1e1e; }",
+    ".bar button { background: #1e1e1e; color: #4ec9b0; }"
+  ]
+}

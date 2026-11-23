@@ -1,0 +1,4 @@
+<Project>
+  <!-- The tests share the solution's package versions: the one source is code/src/Directory.Packages.props. -->
+  <Import Project="$(MSBuildThisFileDirectory)..\..\code\src\Directory.Packages.props" />
+</Project>

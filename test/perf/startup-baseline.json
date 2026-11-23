@@ -1,0 +1,7 @@
+﻿{
+    "about":  "Median pool start times on this PC (bin\\startup-gate.ps1 -Record). The gate fails when a time is over this by more than 50% and by more than 2 s.",
+    "recorded":  "2026-11-21 17:53",
+    "version":  "3.0.64",
+    "pageSeconds":  0.61,
+    "startSeconds":  24.36
+}

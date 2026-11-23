@@ -1,0 +1,10 @@
+<Project>
+  <!-- The tests share the solution's build settings: the one source is code/src/Directory.Build.props. -->
+  <Import Project="$(MSBuildThisFileDirectory)..\..\code\src\Directory.Build.props" />
+  <!-- Scratch folders under out\test-tmp (card 1042-B): one source file, compiled into every test project. -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)TestSupport\TestTmp.cs" Link="TestTmp.cs" />
+    <!-- The scheduler's git and PTK_* variables, stripped from the test process at load (card 1070-B). -->
+    <Compile Include="$(MSBuildThisFileDirectory)TestSupport\SchedulerEnv.cs" Link="SchedulerEnv.cs" />
+  </ItemGroup>
+</Project>

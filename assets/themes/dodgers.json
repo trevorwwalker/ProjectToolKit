@@ -1,0 +1,15 @@
+{
+  "name": "Dodgers",
+  "label": "Dodgers",
+  "order": 60,
+  "extends": "../theme.default.json",
+  "description": "Dodger blue and white.",
+  "css": [
+    ":root { color-scheme: light; --bg: #005a9c; --panel: #ffffff; --text: #0d2340; --muted: #5a6f8c; --line: #d3dfec;",
+    "  --accent: #005a9c; --accent-text: #ffffff; --ok: #1f8a4c; --warn: #b26a00; --bad: #ef3e42; --bar: #005a9c;",
+    "  --log-bg: #f3f7fb; --shadow: 0 2px 6px rgba(0, 0, 0, .25); }",
+    ".screen { background: #ffffff; color: #005a9c; border-bottom: 3px solid #005a9c; }",
+    ".bar { color: #ffffff; } .bar .tag { color: rgba(255, 255, 255, .85); }",
+    ".bar button { background: #ffffff; color: #005a9c; }"
+  ]
+}

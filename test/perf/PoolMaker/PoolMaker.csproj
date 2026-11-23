@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>PoolMaker</RootNamespace>
+    <AssemblyName>PoolMaker</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- the startup bench's generator of pools of real git repositories (1032-B) -->
+    <Compile Include="..\StartupBench\PoolData.cs" Link="PoolData.cs" />
+  </ItemGroup>
+</Project>

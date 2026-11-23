@@ -1,0 +1,15 @@
+{
+  "name": "Bamboo",
+  "label": "Bamboo",
+  "order": 130,
+  "extends": "../theme.default.json",
+  "description": "Bamboo green and straw.",
+  "css": [
+    ":root { color-scheme: light; --bg: #4f6b2e; --panel: #ffffff; --text: #1f2a14; --muted: #56633f; --line: #dde3cc;",
+    "  --accent: #4f6b2e; --accent-text: #f3f0d7; --ok: #197a42; --warn: #9a5b00; --bad: #c62828; --bar: #f3f0d7;",
+    "  --log-bg: #f6f8ee; --shadow: 0 2px 6px rgba(0, 0, 0, .3); }",
+    ".screen { background: #4f6b2e; color: #f3f0d7; border-bottom: 3px solid #f3f0d7; }",
+    ".bar { color: #4f6b2e; } .bar .tag { color: #4f6b2e; }",
+    ".bar button { background: #4f6b2e; color: #f3f0d7; }"
+  ]
+}

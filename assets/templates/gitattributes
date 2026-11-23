@@ -1,0 +1,29 @@
+# Normalize line endings in the index so a checkout on any platform produces one consistent
+# working tree. Without this the tree is a mix of CRLF (written by Windows tools) and LF, and every
+# touch produces a conversion warning.
+* text=auto eol=lf
+
+# Never line-end a binary. Add an extension here when you vendor one.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ogg binary
+*.wav binary
+*.mp3 binary
+*.ttf binary
+*.otf binary
+*.fbx binary
+*.glb binary
+*.bin binary
+*.pak binary
+*.zip binary
+*.7z binary
+*.exe binary
+*.dll binary
+*.lib binary
+*.a binary
+*.o binary
+*.obj binary
+*.pdb binary

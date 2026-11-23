@@ -1,0 +1,15 @@
+{
+  "name": "Chargers",
+  "label": "Chargers",
+  "order": 90,
+  "extends": "../theme.default.json",
+  "description": "Powder blue and gold.",
+  "css": [
+    ":root { color-scheme: light; --bg: #0080c6; --panel: #ffffff; --text: #0c2340; --muted: #4f6a85; --line: #d2e3f0;",
+    "  --accent: #0080c6; --accent-text: #ffffff; --ok: #1f8a4c; --warn: #b26a00; --bad: #c62828; --bar: #ffc20e;",
+    "  --log-bg: #f2f8fc; --shadow: 0 2px 6px rgba(0, 0, 0, .25); }",
+    ".screen { background: #ffffff; color: #0080c6; border-bottom: 3px solid #ffc20e; }",
+    ".bar { color: #0c2340; } .bar .tag { color: #0c2340; }",
+    ".bar button { background: #0080c6; color: #ffffff; }"
+  ]
+}

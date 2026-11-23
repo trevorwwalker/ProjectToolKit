@@ -1,0 +1,15 @@
+{
+  "name": "Eggplant",
+  "label": "Eggplant",
+  "order": 100,
+  "extends": "../theme.default.json",
+  "description": "Eggplant and cream.",
+  "css": [
+    ":root { color-scheme: light; --bg: #4b2c4f; --panel: #ffffff; --text: #2a1530; --muted: #6e587a; --line: #e3d6e6;",
+    "  --accent: #4b2c4f; --accent-text: #f3e6c4; --ok: #197a42; --warn: #9a5b00; --bad: #c62828; --bar: #f3e6c4;",
+    "  --log-bg: #f9f4fa; --shadow: 0 2px 6px rgba(0, 0, 0, .3); }",
+    ".screen { background: #4b2c4f; color: #f3e6c4; border-bottom: 3px solid #f3e6c4; }",
+    ".bar { color: #4b2c4f; } .bar .tag { color: #4b2c4f; }",
+    ".bar button { background: #4b2c4f; color: #f3e6c4; }"
+  ]
+}

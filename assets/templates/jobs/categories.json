@@ -1,0 +1,30 @@
+{
+  "about": "The categories of this project's job queue: what each is for and which files it owns. One worker per category at a time, and categories own different files, so two workers never edit the same file. A path ending in / is a folder and everything under it; * matches any characters. The scheduler reads this file from main; a category redefined while it has cards in queue/ or active/ is held until the developer accepts the change on the scheduler page.",
+  "categories": {
+    "A": {
+      "name": "core",
+      "purpose": "What the program does: its core logic and the tests for it.",
+      "owns": [
+        "src/",
+        "test/"
+      ],
+      "except": []
+    },
+    "B": {
+      "name": "tools",
+      "purpose": "The tools that build, test and measure the program.",
+      "owns": [
+        "tools/"
+      ],
+      "except": []
+    }
+  },
+  "shared": {
+    "about": "Any category may add to these files but not rewrite them. Pull right before editing one and push right after.",
+    "addOnly": [
+      ".gitignore",
+      "docs/known_gaps.md"
+    ],
+    "appendOnly": []
+  }
+}

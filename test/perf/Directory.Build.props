@@ -1,0 +1,5 @@
+<Project>
+  <!-- The benchmark shares the solution's build settings (net10.0, warnings as errors, build/ for output). It is
+       not in SchedulerNext.slnx: it is run on its own by bin\startup-gate.ps1 (1032-B). -->
+  <Import Project="$(MSBuildThisFileDirectory)..\..\code\src\Directory.Build.props" />
+</Project>

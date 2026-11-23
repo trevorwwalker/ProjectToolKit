@@ -1,0 +1,230 @@
+{
+  "about": "The lanes of the AmigaX job queue: what each is for and which files it owns. One worker per lane at a time, and lanes own different files, so two workers never edit the same file. A path ending in / is a folder and everything under it; * matches any characters. A new file under vm/ belongs to the lane of what it models (CPU and system: A; a chip or device: E). New hardware - a chip, CPU or device the A500 does not have - is a new class in new vm/ files, never a branch inside an existing class; speed over code reuse (see README.md, Lanes). The scheduler reads this file from main. A lane redefined while it has cards in queue/ or active/ is held until the developer accepts the change on the scheduler page.",
+  "lanes": {
+    "A": {
+      "name": "CPU and system",
+      "purpose": "The 68000 core (instructions, exceptions, timing), the machine's task scheduling and the system glue, and the CPU test ROMs. Changes emulated behaviour, test-first.",
+      "owns": [
+        "vm/68000.*",
+        "vm/68000_*",
+        "vm/system.cpp",
+        "vm/std.*",
+        "vm/traps.h",
+        "tools/opgen68k/",
+        "testplan/68k-opcode-unittest.*",
+        "testplan/tools/gen68k/",
+        "testplan/tools/musashi_harness.c",
+        "testplan/tools/runtests.py",
+        "testplan/tools/bootcheck.py",
+        "testplan/tools/shotcheck.py",
+        "testplan/README.md",
+        "platform/null/unittest.*",
+        "docs/agents/cpu_unittest_log.md",
+        "docs/agents/unittest_prompt.md"
+      ],
+      "except": []
+    },
+    "B": {
+      "name": "Windows platform",
+      "purpose": "The Windows platform: the Windows application (window, rendering, audio, input, menus, the configuration dialog) and the machine configuration format the dialog edits. Lane L is its Linux analogue: a platform feature or fix is normally carded as a pair, NNN-B and NNN-L, against the same request, so the two lanes work it in parallel; a change to the shared host interface (platform/include/host.h) or to the configuration format lands first, in one of them, and the other follows.",
+      "owns": [
+        "platform/windows/",
+        "platform/wxui/",
+        "vm/MachineConfig.*"
+      ],
+      "except": []
+    },
+    "C": {
+      "name": "tools and debugger",
+      "purpose": "The debugger, GDB stub and MCP server, the headless build and its input scripts, and the tools that build, gate and measure the emulator.",
+      "owns": [
+        ".mcp.json",
+        "vm/debug/",
+        "platform/gdb_server.*",
+        "platform/null/",
+        "tools/amigax-mcp/",
+        "tools/perf_bench.py",
+        "tools/gates.py",
+        "tools/debugger_baseline.py",
+        "tools/gdb_smoke.py",
+        "tools/tracediff.py",
+        "tools/opcode_histogram.py",
+        "tools/license_header.py",
+        "docs/agents/debugger*",
+        "docs/agents/input_script.md"
+      ],
+      "except": [
+        "platform/null/unittest.*",
+        "platform/null/CMakeLists.txt"
+      ]
+    },
+    "D": {
+      "name": "documentation",
+      "purpose": "Documents, never code: the user help, design notes and reference notes. Checks every claim against the source, not older documents; where the code looks wrong, writes a request and documents what the code does.",
+      "owns": [
+        "README.md",
+        "docs/help/",
+        "docs/design/",
+        "docs/reference/"
+      ],
+      "except": [
+        "docs/reference/books/"
+      ],
+      "alsoOwns": "any new document under docs/ that no other lane owns"
+    },
+    "E": {
+      "name": "custom chips and devices",
+      "purpose": "Agnus, the blitter, the copper, Denise, Paula, the CIAs, the floppy, Gary and the memory map, and their test ROMs. Changes emulated behaviour, test-first.",
+      "owns": [
+        "vm/Agnus.*",
+        "vm/Blitter.*",
+        "vm/Copper.*",
+        "vm/Denise.*",
+        "vm/Paula.*",
+        "vm/CIA.*",
+        "vm/FloppyDisk.*",
+        "vm/Gary.*",
+        "vm/MemoryMap.*",
+        "vm/Ram.*",
+        "vm/Rom.*",
+        "testplan/agnus-unittest.*",
+        "testplan/blitter-unittest.*",
+        "testplan/cia-unittest.*",
+        "testplan/copper-unittest.*",
+        "testplan/denise-unittest.*",
+        "testplan/floppy-unittest.*",
+        "testplan/memory-unittest.*",
+        "testplan/paula-unittest.*",
+        "testplan/denise-ref/",
+        "testplan/tools/genchip/",
+        "docs/agents/chip_unittest_vref.txt"
+      ],
+      "except": []
+    },
+    "G": {
+      "name": "games: ladder, harness and surveys",
+      "purpose": "The game ladder scripts and harness, fixtures and probes, boot references and the game surveys; bringing new games up the ladder. Changes no emulator code (nothing under vm/ or platform/): a fault it finds goes to the planner as a request with the evidence, and becomes a fix card in A, B or E. Investigations of one failing game (pin cards) belong to lanes P, Q and R by the game's name; Workbench and OS bring-up to lane W.",
+      "owns": [
+        "tools/game_tests/",
+        "tools/fixtures.py",
+        "tools/alloc_probe.py",
+        "testplan/boot-ref/",
+        "docs/agents/scouting/survey*",
+        "docs/agents/game_bringup_log.md",
+        "docs/agents/game_bringup_prompt.md"
+      ],
+      "except": [
+        "tools/game_tests/workbench.py",
+        "tools/game_tests/cli/"
+      ]
+    },
+    "P": {
+      "name": "game pins a-c",
+      "purpose": "Finding out why one game fails (pin cards), for games whose scouting name starts with a-c: the game's notes and input files under docs/agents/scouting/. Changes no code under vm/ or platform/: a fault goes to the planner as a request with the evidence. Runs the game_tests harness but edits it only through a card's Locks line (lane G owns it).",
+      "owns": [
+        "docs/agents/scouting/a*",
+        "docs/agents/scouting/b*",
+        "docs/agents/scouting/c*"
+      ],
+      "except": [
+        "docs/agents/scouting/survey*"
+      ]
+    },
+    "Q": {
+      "name": "game pins d-m",
+      "purpose": "Finding out why one game fails (pin cards), for games whose scouting name starts with d-m: the game's notes and input files under docs/agents/scouting/. Changes no code under vm/ or platform/: a fault goes to the planner as a request with the evidence. Runs the game_tests harness but edits it only through a card's Locks line (lane G owns it).",
+      "owns": [
+        "docs/agents/scouting/d*",
+        "docs/agents/scouting/e*",
+        "docs/agents/scouting/f*",
+        "docs/agents/scouting/g*",
+        "docs/agents/scouting/h*",
+        "docs/agents/scouting/i*",
+        "docs/agents/scouting/j*",
+        "docs/agents/scouting/k*",
+        "docs/agents/scouting/l*",
+        "docs/agents/scouting/m*"
+      ],
+      "except": [
+        "docs/agents/scouting/survey*"
+      ]
+    },
+    "R": {
+      "name": "game pins n-z",
+      "purpose": "Finding out why one game fails (pin cards), for games whose scouting name starts with n-z: the game's notes and input files under docs/agents/scouting/. Changes no code under vm/ or platform/: a fault goes to the planner as a request with the evidence. Runs the game_tests harness but edits it only through a card's Locks line (lane G owns it).",
+      "owns": [
+        "docs/agents/scouting/n*",
+        "docs/agents/scouting/o*",
+        "docs/agents/scouting/p*",
+        "docs/agents/scouting/q*",
+        "docs/agents/scouting/r*",
+        "docs/agents/scouting/s*",
+        "docs/agents/scouting/t*",
+        "docs/agents/scouting/u*",
+        "docs/agents/scouting/v*",
+        "docs/agents/scouting/w*",
+        "docs/agents/scouting/x*",
+        "docs/agents/scouting/y*",
+        "docs/agents/scouting/z*"
+      ],
+      "except": [
+        "docs/agents/scouting/survey*"
+      ]
+    },
+    "L": {
+      "name": "SDL front end and Linux platform",
+      "purpose": "The SDL3 front end, written once in platform/sdl/ for every SDL platform (Linux now; macOS and Android later reuse it), and the Linux platform: the Linux application (the SDL3 window for the picture, sound and input, Wayland first and X11 through SDL, with the wxWidgets dialogs), its build, and the POSIX host services. Nothing in platform/sdl/ may assume Linux; Linux-only code goes in platform/linux/. The Linux analogue of lane B: platform work is normally carded as a pair, NNN-B and NNN-L, against the same request. Libraries that become part of the build are vendored under external/ at a pinned version, never fetched at build time.",
+      "owns": [
+        "platform/sdl/",
+        "platform/linux/",
+        "platform/posix/",
+        "external/SDL3*/",
+        "external/wxWidgets-3.3*/"
+      ],
+      "except": []
+    },
+    "N": {
+      "name": "Android platform",
+      "purpose": "The Android application (developer, 2026-11-08; docs/jobs/plans/android_plan.md): the SDLActivity subclass, the manifest, the APK build, Android storage (the document picker and content URIs), the app's lifecycle, and the Android gate legs it adds. It reuses the SDL front end in platform/sdl/ (lane L's) and adds no Android branches there: what differs on Android goes behind a host interface implemented in platform/android/; a change inside platform/sdl/ is either locked by the card or carded for lane L. Nothing is fetched at build time (the vendoring rule); the SDK and NDK are system tools the developer installs.",
+      "owns": [
+        "platform/android/"
+      ],
+      "except": []
+    },
+    "W": {
+      "name": "Workbench and OS bring-up",
+      "purpose": "Bringing Workbench and the OS up on each machine and ROM: the Workbench harness, Shell/CLI routes and the Workbench bring-up log. Changes no code under vm/ or platform/: a fault goes to the planner as a request with the evidence. Other game_tests files only through a card's Locks line.",
+      "owns": [
+        "tools/game_tests/workbench.py",
+        "tools/game_tests/cli/",
+        "docs/agents/cli/",
+        "docs/agents/workbench_bringup_log.md"
+      ],
+      "except": []
+    }
+  },
+  "shared": {
+    "about": "Any lane may add to these files but not rewrite them. Pull right before editing one and push right after.",
+    "addOnly": [
+      "platform/null/CMakeLists.txt",
+      "platform/include/host.h",
+      "vm/system.h",
+      ".gitignore",
+      "docs/known_gaps.md",
+      "docs/agents/perf_log.md",
+      "docs/agents/unittest_log.md",
+      "testplan/state-fixtures/ (314-C: state fixtures are added, never replaced or edited; see docs/agents/debugger.md)"
+    ],
+    "appendOnly": [
+      "docs/agents/perf_log.md",
+      "docs/agents/unittest_log.md"
+    ],
+    "rerecord": [
+      "docs/agents/perf_baseline.json",
+      "testplan/unittest-baseline.json",
+      "docs/agents/debugger-baseline.json",
+      "docs/agents/debugger-baseline.md"
+    ],
+    "rerecordRule": "Any lane may re-record these with the tool that records them (py tools\\perf_bench.py --record, py testplan\\tools\\runtests.py --update-baseline, py tools\\debugger_baseline.py record) when its own gated change moves them: pull and rebase first, re-record on top of current main, commit in the same commit as the change, and add a line to docs/agents/perf_log.md or unittest_log.md saying what moved and why."
+  }
+}

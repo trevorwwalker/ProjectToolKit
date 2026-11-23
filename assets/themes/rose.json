@@ -1,0 +1,15 @@
+{
+  "name": "Rose",
+  "label": "Rose",
+  "order": 110,
+  "extends": "../theme.default.json",
+  "description": "Rose and blush.",
+  "css": [
+    ":root { color-scheme: light; --bg: #b03a5b; --panel: #ffffff; --text: #3a1520; --muted: #7a5360; --line: #f0d9e0;",
+    "  --accent: #b03a5b; --accent-text: #fde8ee; --ok: #197a42; --warn: #9a5b00; --bad: #7f1d1d; --bar: #fde8ee;",
+    "  --log-bg: #fcf4f6; --shadow: 0 2px 6px rgba(0, 0, 0, .3); }",
+    ".screen { background: #b03a5b; color: #fde8ee; border-bottom: 3px solid #fde8ee; }",
+    ".bar { color: #b03a5b; } .bar .tag { color: #b03a5b; }",
+    ".bar button { background: #b03a5b; color: #fde8ee; }"
+  ]
+}

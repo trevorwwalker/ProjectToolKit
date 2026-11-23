@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- The Host's framework, kept before this project overrides the shared one: the build is copied into its output (550-B). -->
+    <HostTargetFramework>$(TargetFramework)</HostTargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>scheduler-tray</AssemblyName>
+    <ApplicationIcon>$(MSBuildThisFileDirectory)../../../assets/icons/scheduler.ico</ApplicationIcon>
+    <RootNamespace>Scheduler.Tray</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 973-B: the tray icon is loaded from beside the exe (build and publish). -->
+    <None Include="$(MSBuildThisFileDirectory)../../../assets/icons/scheduler.ico" Link="scheduler.ico" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 993-B: and inside the assembly, so a copy of the tray in any folder still has its icon. -->
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../../../assets/icons/scheduler.ico" LogicalName="scheduler.ico" />
+  </ItemGroup>
+
+  <!-- scheduler-tray.exe starts scheduler-next.exe from beside itself, so the tray's files go into the
+       Host's output folder too. The folder is asked of the Host project rather than written out, because
+       the artifacts layout (600-B) puts it under build/, not beside the source. -->
+  <Target Name="CopyTrayBesideScheduler" AfterTargets="Build">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\Scheduler.Host\Scheduler.Host.csproj"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration);TargetFramework=$(HostTargetFramework)">
+      <Output TaskParameter="TargetOutputs" ItemName="HostTargetPath" />
+    </MSBuild>
+    <ItemGroup>
+      <TrayFiles Include="$(TargetDir)scheduler-tray.*" />
+      <TrayFiles Include="$(TargetDir)scheduler.ico" />
+    </ItemGroup>
+    <Copy SourceFiles="@(TrayFiles)"
+          DestinationFolder="%(HostTargetPath.RootDir)%(HostTargetPath.Directory)"
+          SkipUnchangedFiles="true"
+          Condition="'@(HostTargetPath)' != '' And '@(TrayFiles)' != ''" />
+  </Target>
+</Project>

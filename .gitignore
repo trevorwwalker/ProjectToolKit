@@ -1,0 +1,17 @@
+
+# the planner outbox (the scheduler commits its batches)
+jobs/.planner-outbox/
+
+# the scheduler's own rolling log, scheduler-YYYYMMDD.log (690-B): never committed, so the planner
+# outbox and main never see it
+jobs/.logs/
+
+# compiler and build-tool intermediates: deletable at any time, never committed
+# (the .NET artifacts output: code/src/Directory.Build.props puts every project's bin/ and obj/ here)
+build/
+
+# built packages and final results, one folder per platform; each keeps a committed .gitkeep
+out/*
+!out/*/
+out/*/*
+!out/*/.gitkeep

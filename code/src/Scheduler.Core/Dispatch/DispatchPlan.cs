@@ -1,0 +1,31 @@
+using Scheduler.Core.Contracts;
+
+namespace Scheduler.Core.Dispatch;
+
+/// <summary>
+/// The first half of a dispatch decision (DISP-1 to DISP-14; schedule.ps1 L2867-2923): the
+/// candidates, the note for every card that is not one, and the stuck cards.
+/// </summary>
+public sealed record DispatchPlan
+{
+    /// <summary>Ids of the cards in done/ or review/ (DISP-1).</summary>
+    public required IReadOnlySet<string> Finished { get; init; }
+
+    /// <summary>
+    /// Every category taken this tick, with who took it: <c>worker N</c> (DISP-1), <c>orphan &lt;id&gt;</c>
+    /// (DISP-8) or <c>next: &lt;id&gt;</c> (DISP-13). Case-insensitive (G-1).
+    /// </summary>
+    public required IReadOnlyDictionary<string, string> Busy { get; init; }
+
+    /// <summary>The candidates as they were found: orphans by Num, then queued cards by Prio, Num, Category.</summary>
+    public required IReadOnlyList<DispatchCandidate> Candidates { get; init; }
+
+    /// <summary>The candidates in the order free workers take them: Prio, then orphans first, then Num (DISP-14).</summary>
+    public required IReadOnlyList<DispatchCandidate> Ordered { get; init; }
+
+    /// <summary>The notes, in the order they were made.</summary>
+    public required IReadOnlyList<DispatchNote> Notes { get; init; }
+
+    /// <summary>The stuck cards, for Waiting on you with Retry (DISP-7, DISP-11).</summary>
+    public required IReadOnlyList<Card> Stuck { get; init; }
+}

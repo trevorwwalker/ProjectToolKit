@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Compat/AmigaX/*.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 1063-B: state-cache.md section 6's FakeMain, shared with the Core tests. -->
+    <Compile Include="..\Scheduler.Core.Tests\MainModel\FakeMain.cs" Link="Git\FakeMain.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <ProjectReference Include="..\..\..\code\src\Scheduler.Host\Scheduler.Host.csproj" />
+  </ItemGroup>
+</Project>
