@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Scheduler.Core.Accounting;
 using Scheduler.Core.Contracts;
 using Scheduler.Core.MainModel;
 
@@ -36,8 +37,24 @@ public sealed record ViewCard
 
     public string PlanStep { get; init; } = "";
 
+    /// <summary>The Priority line: 0 high, 1 normal, 2 low (CARD-8); the Gantt estimate's dispatch order (VW-19).</summary>
+    public int Priority { get; init; } = 1;
+
     /// <summary>The Worker line, empty when the card has none.</summary>
     public string Worker { get; init; } = "";
+
+    /// <summary>The card ids of the Depends on line (empty for "none").</summary>
+    public IReadOnlyList<string> DependsOn { get; init; } = [];
+
+    /// <summary>The Time box in minutes, null when the card has none.</summary>
+    public int? TimeBoxMinutes { get; init; }
+
+    /// <summary>The paths of the Scope line, split on commas and trimmed.</summary>
+    public IReadOnlyList<string> Scope { get; init; } = [];
+
+    /// <summary>The paths of a Scope line: comma-separated, trimmed, empty parts dropped.</summary>
+    public static IReadOnlyList<string> SplitScope(string? line) =>
+        line is null ? [] : [.. line.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)];
 
     /// <summary>An open card (queue/, active/, review/) as the views' card.</summary>
     public static ViewCard From(Card card) => new()
@@ -54,10 +71,14 @@ public sealed record ViewCard
             _ => ViewFolder.Done,
         },
         Status = card.Status,
+        Priority = card.Prio,
         CardType = card.CardType,
         PlanPath = card.PlanPath,
         PlanStep = card.PlanStep,
         Worker = card.WorkerReq ?? "",
+        DependsOn = card.Depends,
+        TimeBoxMinutes = card.TimeBox,
+        Scope = SplitScope(card.ScopeLine),
     };
 
     /// <summary>A done/ or archive/ card's header (IMainModel.DoneCards) as the views' card.</summary>
@@ -73,6 +94,9 @@ public sealed record ViewCard
         PlanPath = card.PlanPath,
         PlanStep = card.PlanStep,
         Worker = card.WorkerReq ?? "",
+        DependsOn = card.Depends,
+        TimeBoxMinutes = card.TimeBox,
+        Scope = SplitScope(card.ScopeLine),
     };
 }
 
@@ -129,33 +153,47 @@ public sealed record ViewsSnapshot
     /// <summary>The plan documents' text by path (a plan's steps are its headings), for <see cref="PlanTree"/>.</summary>
     public IReadOnlyDictionary<string, string> PlanTexts { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
 
+    /// <summary>The free-slot cap for the Gantt estimate: the project's workspaces capped by the pool's maxWorkers (VW-19).</summary>
+    public int Workers { get; init; } = 1;
+
+    /// <summary>Each category's typical run length per model, for the estimate bars (VW-19).</summary>
+    public IReadOnlyList<AreaTypical> Typicals { get; init; } = [];
+
+    /// <summary>The marks the developer set on plans and steps, from jobs/plan-marks.json (1125-C).</summary>
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, ManualMark>> Marks { get; init; } = new Dictionary<string, IReadOnlyDictionary<string, ManualMark>>(StringComparer.Ordinal);
+
     /// <summary>A hash of the cards, plans and plan texts: it moves exactly when something the views draw does.</summary>
     public string Version { get; init; } = "";
 
-    public static ViewsSnapshot Build(string project, IEnumerable<ViewCard> cards, IEnumerable<ViewPlan> plans, IReadOnlyDictionary<string, string>? planTexts = null, IEnumerable<ViewRun>? runs = null)
+    public static ViewsSnapshot Build(string project, IEnumerable<ViewCard> cards, IEnumerable<ViewPlan> plans, IReadOnlyDictionary<string, string>? planTexts = null, IEnumerable<ViewRun>? runs = null, int workers = 1, IReadOnlyList<AreaTypical>? typicals = null, IReadOnlyDictionary<string, IReadOnlyDictionary<string, ManualMark>>? marks = null)
     {
         var cardList = cards.OrderBy(c => c.Number).ThenBy(c => c.Id, StringComparer.Ordinal).ToList();
         var planList = plans.OrderBy(p => p.Path, StringComparer.Ordinal).ToList();
         var runList = (runs ?? []).OrderBy(r => r.Start).ThenBy(r => r.CardId, StringComparer.Ordinal).ToList();
+        var typicalList = typicals ?? [];
         return new ViewsSnapshot
         {
+            Workers = workers,
+            Typicals = typicalList,
             Project = project,
             Runs = runList,
             Cards = cardList,
             Plans = planList,
             PlanTexts = planTexts ?? new Dictionary<string, string>(StringComparer.Ordinal),
-            Version = Hash(project, cardList, planList, planTexts, runList),
+            Marks = marks ?? new Dictionary<string, IReadOnlyDictionary<string, ManualMark>>(StringComparer.Ordinal),
+            Version = Hash(project, cardList, planList, planTexts, runList, workers, typicalList, marks),
         };
     }
 
-    private static string Hash(string project, List<ViewCard> cards, List<ViewPlan> plans, IReadOnlyDictionary<string, string>? texts, List<ViewRun> runs)
+    private static string Hash(string project, List<ViewCard> cards, List<ViewPlan> plans, IReadOnlyDictionary<string, string>? texts, List<ViewRun> runs, int workers, IReadOnlyList<AreaTypical> typicals, IReadOnlyDictionary<string, IReadOnlyDictionary<string, ManualMark>>? marks)
     {
         var sb = new StringBuilder(project).Append('\n');
         foreach (var c in cards)
         {
             sb.Append(c.Id).Append('|').Append(c.Number).Append('|').Append(c.Category).Append('|').Append(c.Title)
               .Append('|').Append((int)c.Folder).Append('|').Append(c.Status).Append('|').Append(c.CardType)
-              .Append('|').Append(c.PlanPath).Append('|').Append(c.PlanStep).Append('|').Append(c.Worker).Append('\n');
+              .Append('|').Append(c.PlanPath).Append('|').Append(c.PlanStep).Append('|').Append(c.Worker)
+              .Append('|').Append(string.Join(',', c.DependsOn)).Append('|').Append(c.TimeBoxMinutes).Append('|').Append(string.Join(',', c.Scope)).Append('|').Append(c.Priority).Append('\n');
         }
 
         sb.Append("--\n");
@@ -174,6 +212,17 @@ public sealed record ViewsSnapshot
             sb.Append("--run\n").Append(r.CardId).Append('|').Append(r.Start.UtcTicks).Append('|').Append(r.End?.UtcTicks).Append('|')
               .Append(r.Result).Append('|').Append(r.Model).Append('|').Append(r.WorkerType).Append('|').Append(r.Slot).Append('|')
               .Append(r.TimeBoxEnd?.UtcTicks).Append('\n');
+        }
+
+        sb.Append("--workers\n").Append(workers).Append('\n');
+        foreach (var t in typicals)
+        {
+            sb.Append("--typical\n").Append(t).Append('\n');
+        }
+
+        if (marks is { Count: > 0 })
+        {
+            sb.Append("--marks\n").Append(PlanMarkFile.Write(marks));
         }
 
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())))[..16].ToLowerInvariant();

@@ -1,0 +1,2 @@
+{"type":"retry","timestamp":1795455540000,"sessionID":"ses_synthetic","attempt":1,"nextRetryAt":1795455545000,"error":{"message":"Rate limit reached for requests"}}
+{"type":"error","timestamp":1795455550000,"sessionID":"ses_synthetic","error":{"type":"provider.error","message":"You exceeded your current quota, please check your plan and billing details. (insufficient_quota)"}}

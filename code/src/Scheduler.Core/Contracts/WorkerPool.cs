@@ -20,4 +20,21 @@ public sealed record WorkerPool
     /// type migrated from that slot, and nothing after it (WT-3, WT-C11, 530-D Q3).
     /// </summary>
     public bool Migrated { get; init; }
+
+    /// <summary>
+    /// 1146-A: the type that takes a card with no <c>Worker:</c> line (or a blank one), as the file's
+    /// <c>defaultWorker</c> names it, or as the reader chose it when the file names none (WT-3).
+    /// Use <see cref="DefaultType"/>, which falls back when this names no type.
+    /// </summary>
+    public string DefaultWorker { get; init; } = "";
+
+    /// <summary>
+    /// 1146-A: the name of the default type: <see cref="DefaultWorker"/> when it names a listed type
+    /// (as the list spells it), else the first type, else "".
+    /// </summary>
+    public string DefaultType =>
+        Types.FirstOrDefault(t => Text.Same(t.Name, DefaultWorker))?.Name ?? Types.FirstOrDefault()?.Name ?? "";
+
+    /// <summary>1146-A: <paramref name="name"/> is the default type (names match without case).</summary>
+    public bool IsDefault(string name) => DefaultType.Length > 0 && Text.Same(name, DefaultType);
 }

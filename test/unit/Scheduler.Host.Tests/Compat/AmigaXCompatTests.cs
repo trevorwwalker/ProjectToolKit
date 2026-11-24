@@ -53,7 +53,7 @@ public sealed class AmigaXCompatTests
         Assert.Equal(3, pool.Types.Count);
         Assert.Equal([6, 1, 1], pool.Types.Select(t => t.Max));
         Assert.Equal(["claude-sonnet-5-5", "claude-opus-5-5"], pool.Types.Skip(1).Select(t => t.Model));
-        Assert.All(pool.Types.Skip(1), t => Assert.True(t.Premium));
+        Assert.Equal(pool.Types[0].Name, pool.DefaultType); // 1146-A: the premium flags made the first type the default
     }
 
     [Fact]

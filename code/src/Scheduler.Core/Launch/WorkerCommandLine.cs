@@ -17,12 +17,17 @@ public static class WorkerCommandLine
     /// The whole line, as it is started: <c>cmd /c title ... &amp; ping -n 2 127.0.0.1 &gt;nul &amp;
     /// cli args &gt; "log" 2&gt;&amp;1</c>. The title loses the characters cmd would act on.
     /// </summary>
-    public static string CommandLine(string title, string cli, IEnumerable<string> args, string log) =>
-        "cmd " + Arguments(title, cli, args, log);
+    public static string CommandLine(string title, string cli, IEnumerable<string> args, string log, bool closeStdin = false) =>
+        "cmd " + Arguments(title, cli, args, log, closeStdin);
 
     /// <summary>What <c>cmd.exe</c> itself is given (the part after <c>cmd</c>).</summary>
-    public static string Arguments(string title, string cli, IEnumerable<string> args, string log) =>
-        $"/c title {Clean(title)} & ping -n 2 127.0.0.1 >nul & {cli} {string.Join(" ", args.Select(Quote))} > \"{log}\" 2>&1";
+    /// <param name="title">The window title.</param>
+    /// <param name="cli">The agent's program.</param>
+    /// <param name="args">Its arguments.</param>
+    /// <param name="log">The raw log.</param>
+    /// <param name="closeStdin">Give the CLI an empty stdin (<c>&lt; nul</c>, AG-17): Codex appends piped stdin to its prompt and waits for it.</param>
+    public static string Arguments(string title, string cli, IEnumerable<string> args, string log, bool closeStdin = false) =>
+        $"/c title {Clean(title)} & ping -n 2 127.0.0.1 >nul & {cli} {string.Join(" ", args.Select(Quote))}{(closeStdin ? " < nul" : "")} > \"{log}\" 2>&1";
 
     /// <summary>The window's title for a slot's worker (L1832).</summary>
     public static string Title(string project, int slot, string cardName) => $"{project} worker {slot} - {cardName}";

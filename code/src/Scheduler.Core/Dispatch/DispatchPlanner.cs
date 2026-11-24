@@ -171,7 +171,7 @@ public static class DispatchPlanner
         }
 
         // DISP-14: highest priority first; within a priority, orphans before new cards (L2923).
-        var ordered = candidates.OrderBy(x => x.Card.Prio).ThenBy(x => !x.Resume).ThenBy(x => x.Card.Num).ToList();
+        var ordered = InDispatchOrder(candidates, x => x.Card.Prio, x => x.Resume, x => x.Card.Num).ToList();
         var plan = new DispatchPlan
         {
             Finished = finished,
@@ -192,6 +192,14 @@ public static class DispatchPlanner
 
         return gated;
     }
+
+    /// <summary>
+    /// DISP-14's order (L2923): highest priority first (0 high, 1 normal, 2 low); within a
+    /// priority, resumed orphans before new cards; then the lower card number. Shared with the
+    /// Gantt estimate (VW-19), which fills its simulated slots in the same order.
+    /// </summary>
+    public static IOrderedEnumerable<T> InDispatchOrder<T>(IEnumerable<T> items, Func<T, int> prio, Func<T, bool> resume, Func<T, long> num) =>
+        items.OrderBy(prio).ThenBy(x => !resume(x)).ThenBy(num);
 
     /// <summary>
     /// A resume counts against the card's retries before the worker starts, so a failed start

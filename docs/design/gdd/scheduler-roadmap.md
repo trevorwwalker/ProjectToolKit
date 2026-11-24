@@ -150,9 +150,10 @@ starts the type a card needs while both allow it. Example: at most 4 workers in 
   "maxWorkers": 4,
   "types": {
     "spark":  { "max": 4, "agent": "default", "model": "spark", "endpoint": "http://spark.local:18400/v1" },
-    "sonnet": { "max": 3, "agent": "claude",  "model": "claude-sonnet-5-5", "premium": true },
-    "opus":   { "max": 2, "agent": "claude",  "model": "claude-opus-5-5",   "premium": true }
-  }
+    "sonnet": { "max": 3, "agent": "claude",  "model": "claude-sonnet-5-5" },
+    "opus":   { "max": 2, "agent": "claude",  "model": "claude-opus-5-5" }
+  },
+  "defaultWorker": "spark"
 }
 ```
 
@@ -160,7 +161,9 @@ starts the type a card needs while both allow it. Example: at most 4 workers in 
   needs, if that type is under its `max`; otherwise it waits and the next card that fits goes.
 - **Decided:** the existing rules for premium workers and worker selection still apply (developer,
   2026-11-18): a card without a `Worker:` line goes to a non-premium type, a premium type takes only
-  cards that ask for it, and `Worker: <name>` picks that type.
+  cards that ask for it, and `Worker: <name>` picks that type. *Superseded 2026-11-23 (developer, cards 1146-A, 1148-D):
+  there is no premium flag; a card without a `Worker:` line goes to the pool's `defaultWorker` type, any other type
+  must be named, and `Worker: premium` is not special.*
 - Worktrees become a shared set of `maxWorkers` folders that any type uses.
 - **Decided** (developer, 2026-11-18): per-worker **Disable** and **Settings** go. Worker windows
   become one per running worker, with Stop and Kill only. A **Worker types** panel replaces them:

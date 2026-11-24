@@ -188,13 +188,26 @@ public sealed partial class PageRouter
             : PageResponse.Html(new Views.PlanPage().Render(path, text));
     }
 
+    // 1132-C: the view the address names, with the Gantt's range and grouping after a '?' when the address
+    // gives them (gantt?range=3h&group=plan); the renderer matches the name and reads the options itself.
+    public static string? ViewOf(PageRequest request)
+    {
+        var view = request.Query("view");
+        var options = new[] { "range", "group" }
+            .Select(name => (name, value: request.Query(name)))
+            .Where(o => !string.IsNullOrWhiteSpace(o.value))
+            .Select(o => o.name + "=" + Uri.EscapeDataString(o.value!.Trim()))
+            .ToList();
+        return view is null || options.Count == 0 ? view : view + "?" + string.Join("&", options);
+    }
+
     // Roadmap item 6 (650-C): the review panel of one card.
     private PageResponse Review(PageRequest request)
     {
         var panel = Data.Review(request.Query("card") ?? request.Query("id") ?? string.Empty);
         return panel is null
             ? PageResponse.NotFound("no such card")
-            : PageResponse.Html(new Views.ReviewPage().Render(panel, Data.Snapshot().Health, request.IsLocal || RemoteControl));
+            : PageResponse.Html(new Views.ReviewPage().Render(panel, Data.Snapshot().Health, request.IsLocal || RemoteControl, request.Query("project")));
     }
 
     // A repository file the panel links to (a screenshot or a text the Result names); the host
@@ -345,6 +358,9 @@ public sealed partial class PageRouter
             Project(request), request.Query("file") ?? request.Form("file") ?? string.Empty)),
         "/template-keep" => Queued(request, "template", Template(request), () => Actions.TemplateKeep(
             Project(request), request.Query("file") ?? request.Form("file") ?? string.Empty)),
+        // 1125-C: a click on the mark of a plan or step cycles its manual mark.
+        "/plan-mark" => Queued(request, "plan-mark", null, () => Actions.PlanMark(
+            request.Form("plan") ?? request.Query("plan") ?? string.Empty, request.Form("step") ?? request.Query("step") ?? string.Empty)),
         "/open" => CardRoute(request, "open", Actions.Open),
         // Retry and Resume: the card leaves Waiting and the Queue shows it as resuming.
         "/resume-card" => CardRoute(request, "queue", card => Actions.ResumeCard(card, NoteOf(request))),
@@ -357,7 +373,7 @@ public sealed partial class PageRouter
         "/stop" => SlotRoute(request, "stop", Actions.Stop),
         "/kill" => SlotRoute(request, "kill", Actions.Kill),
         // The Worker types panel's Save (WT-P3) and one agent's Resume (WT-9).
-        "/worker-types" => Queued(request, "types", null, () => Actions.SaveWorkerTypes(Total(request), Types(request))),
+        "/worker-types" => Queued(request, "types", null, () => Actions.SaveWorkerTypes(Total(request), Types(request), (request.Form("wdefault") ?? string.Empty).Trim())),
         // 992-B: the Categories panel's Save.
         "/categories" => Queued(request, "categories", null, () => Actions.SaveCategories(CategoryRows(request), Lines(request.Form("addonly") ?? string.Empty))),
         "/agent-resume" => Queued(request, "agent", Agent(request), () =>
@@ -474,7 +490,6 @@ public sealed partial class PageRouter
                 Model = At(request.FormList("wmodel"), n).Trim(),
                 Endpoint = At(request.FormList("wendpoint"), n).Trim(),
                 MetricsUrl = At(request.FormList("wmetrics"), n).Trim(),
-                Premium = At(request.FormList("wpremium"), n) is "1" or "yes" or "true",
                 Projects = List(At(request.FormList("wprojects"), n)),
             });
         }

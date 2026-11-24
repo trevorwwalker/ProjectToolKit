@@ -195,7 +195,7 @@ public static class HostPageSnapshot
                 Max = t.Max,
                 Model = e.Model,
                 ModelNames = models?.GetValueOrDefault(e.Model) ?? [],
-                Premium = e.Premium,
+                IsDefault = tick.Types.IsDefault(t.Name),
                 Endpoint = e.Endpoint,
                 Agent = t.Agent,
                 Slots = t.Slots,
@@ -227,7 +227,7 @@ public static class HostPageSnapshot
                 EffectiveModel = WorkerSelection.DisplayedModel(config, t, models),
                 Endpoint = t.Endpoint,
                 MetricsUrl = t.MetricsUrl,
-                Premium = t.Premium,
+                IsDefault = tick.Types.IsDefault(t.Name),
                 Projects = t.Projects,
                 OutOfQuotaSince = tick.Quota.Since(WorkerSelection.Effective(config, t).Agent),
             })];
@@ -278,7 +278,7 @@ public static class HostPageSnapshot
     }
 
     // PAGE-5: one window per worker slot. 510-B: with its time limit and kill time, its model's
-    // short name, premium, the running card's title and category name, quiet minutes, a message not
+    // short name, the running card's title and category name, quiet minutes, a message not
     // read yet, and whether an idle worker's model server answers.
     private static List<PageSlotView> Slots(
         SchedulerConfig config,
@@ -303,8 +303,8 @@ public static class HostPageSnapshot
             tick.Running.TryGetValue(slot, out var live);
 
             var isStarting = running is not null && running.Pid == 0 && starting.ContainsKey(slot);
-            // 959-A: a running row is the worker, not the folder (WT-W1): its model, its short name and
-            // whether it is premium come from the type it was started as (WT-C4), not from whatever
+            // 959-A: a running row is the worker, not the folder (WT-W1): its model and its short name
+            // come from the type it was started as (WT-C4), not from whatever
             // worker the folder number was given. An idle folder still shows its own slot worker.
             var worker = running is null ? slotWorker : TypeWorker(config, tick, running, slotWorker);
             var card = running is null ? null : cards.GetValueOrDefault(running.Card);
@@ -326,7 +326,6 @@ public static class HostPageSnapshot
                 TimeLimit = running is null ? null : WatchdogRules.Limit(running.TimeBox, config),
                 KillAt = running?.StopAt is { } stopAt ? stopAt.AddMinutes(running.StopGraceMinutes != 0 ? running.StopGraceMinutes : config.StopGraceMinutes) : null,
                 ModelShort = models?.GetValueOrDefault(worker.Model)?.FirstOrDefault() ?? "",
-                Premium = worker.Premium,
                 CardTitle = isStarting ? "starting (claim on its way to main): " + (card?.Title ?? "") : card?.Title ?? "",
                 CategoryName = running is null ? "" : categoryNames.GetValueOrDefault(running.Category) ?? "",
                 QuietMinutes = running is null ? null : Quiet(running, now),

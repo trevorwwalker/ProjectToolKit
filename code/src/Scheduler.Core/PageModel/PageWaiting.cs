@@ -11,6 +11,10 @@ namespace Scheduler.Core.PageModel;
 /// without updating the card (410-A), cards parked as needs-human, cards waiting on the
 /// developer, and review cards whose worker has finished. A waiting-on-developer card in
 /// <c>active/</c> is also an orphan, so the Queue window lists it too (spec C15).
+/// A card parked as needs-human can sit in <c>queue/</c> as well as <c>active/</c> (the planner or
+/// the developer parked it there, and the dispatcher takes neither), so both folders are searched
+/// for it (job card 1149-B). A card is listed once: a row an earlier rule of this window already
+/// gave it is not repeated.
 /// </summary>
 public static class PageWaiting
 {
@@ -85,8 +89,13 @@ public static class PageWaiting
             });
         }
 
+        // A card is listed once: the first rule of this window to name it owns its row, so a later
+        // rule skips it (1149-B). The review rows keep their own check against `shown` below.
+        var listed = new HashSet<string>(Text.Comparer);
+
         foreach (var c in stuck ?? [])
         {
+            listed.Add(c.Name);
             var run = stuckRuns?.FirstOrDefault(r => Text.Same(r.Card, c.Name) || Text.Same(r.Card, c.Id));
             items.Add(new PageWaitingItem
             {
@@ -107,6 +116,7 @@ public static class PageWaiting
                                .OrderBy(c => c.Num))
         {
             shown.Add(c.Name);
+            listed.Add(c.Name);
             items.Add(new PageWaitingItem
             {
                 Kind = PageWaitingKind.FinishedWithoutUpdate,
@@ -116,14 +126,22 @@ public static class PageWaiting
         }
 
         // A worker parks its card by setting Status: needs-human; that is a question for the developer.
-        foreach (var c in cards.Where(c => c.Folder == CardFolder.Active && Text.IsMatch(c.Status, "^needs-human")))
+        // Both queue/ and active/ are searched (1149-B): the dispatcher takes a needs-human card from
+        // either folder (DISP-2, DISP-9), so one parked in queue/ waits for nobody unless it is shown.
+        foreach (var c in cards.Where(c => c.Folder is CardFolder.Queue or CardFolder.Active
+                                        && Text.IsMatch(c.Status, "^needs-human")
+                                        && !listed.Contains(c.Name))
+                               .OrderBy(c => c.Num))
         {
+            listed.Add(c.Name);
             items.Add(Row(PageWaitingKind.Question, c));
         }
 
         // Waits-On-Dev covers active/ as well as queue/, which is why an active one is in two windows.
-        foreach (var c in cards.Where(CardWaits.OnDeveloper).OrderBy(c => c.Num))
+        foreach (var c in cards.Where(c => CardWaits.OnDeveloper(c) && !listed.Contains(c.Name))
+                               .OrderBy(c => c.Num))
         {
+            listed.Add(c.Name);
             items.Add(Row(PageWaitingKind.Waiting, c));
         }
 

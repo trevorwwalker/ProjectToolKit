@@ -4,7 +4,7 @@ Rules: WRK-1 to WRK-14, ADOPT-1 to ADOPT-3. Source: `scheduler-next/spec.md` A5 
 
 ### Workers_JsonFromMain_ParsedAndLanesUpperCased
 - Checks: WRK-1 · Project: Core
-- Setup: workers.json `{slots: 3, workers: {"1": {name, agent, endpoint, model, metricsUrl, lanes: "ab", premium: true}}}`.
+- Setup: workers.json `{slots: 3, workers: {"1": {name, agent, endpoint, model, metricsUrl, lanes: "ab", premium: true}}}` (the old `premium` key: read only to choose the default worker, 1146-A).
 - Expected: every field read; categories `AB`.
 
 ### Workers_JsonUnchangedText_NotReapplied_InvalidKeepsPrevious

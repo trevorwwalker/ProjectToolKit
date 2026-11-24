@@ -84,9 +84,10 @@ parts, the page served from several snapshots, and the cut-over of AmigaX.
     "maxWorkers": 6,
     "types": {
       "spark":  { "max": 6, "agent": "" },
-      "Sonnet": { "max": 4, "agent": "claude", "model": "claude-sonnet-5-5", "premium": true },
-      "Opus":   { "max": 2, "agent": "claude", "model": "claude-opus-5-5",   "premium": true }
-    }
+      "Sonnet": { "max": 4, "agent": "claude", "model": "claude-sonnet-5-5" },
+      "Opus":   { "max": 2, "agent": "claude", "model": "claude-opus-5-5" }
+    },
+    "defaultWorker": "spark"
   }
 }
 ```

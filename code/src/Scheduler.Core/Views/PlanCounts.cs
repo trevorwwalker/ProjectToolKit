@@ -92,8 +92,7 @@ public static class PlanCounts
     private static int Group(PlanKind kind) => kind switch
     {
         PlanKind.Plans => 0,
-        PlanKind.Elsewhere or PlanKind.Missing => 1,
-        PlanKind.Archived => 2,
+        PlanKind.Missing => 1,
         _ => 3,
     };
 

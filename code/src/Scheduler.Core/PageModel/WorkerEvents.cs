@@ -31,7 +31,325 @@ public static class WorkerEvents
     /// plain text is read as Copilot output is, which is what the scheduler does (L2438).
     /// </summary>
     public static IReadOnlyList<LiveEvent> Render(AgentFormat format, string line) =>
-        format == AgentFormat.Claude ? RenderClaude(line) : RenderCopilot(line);
+        format switch
+        {
+            AgentFormat.Claude => RenderClaude(line),
+            AgentFormat.Codex => RenderCodex(line),
+            AgentFormat.OpenCode => RenderOpenCode(line),
+            _ => RenderCopilot(line),
+        };
+
+    /// <summary>The notice every Codex run prints first; not an error (AG-3).</summary>
+    private const string CodexStdinNotice = "Reading additional input from stdin";
+
+    private static readonly Regex ShellWrapperRx = new(@"^\s*""?[^""]*?(?:pwsh|powershell)(?:\.exe)?""?\s+-Command\s+", Ci);
+
+    /// <summary>
+    /// The lines of a Codex worker's raw log worth showing (AG-3, AG-14): the CLI's own text (but not
+    /// its stdin notice) and the events <see cref="RenderCodex"/> renders. Fills <paramref name="stats"/>:
+    /// calls, tools, failed tools and generated tokens.
+    /// </summary>
+    public static WorkerScanResult ScanCodex(string text, WorkerStats stats, string partial)
+    {
+        var show = new List<string>();
+        foreach (var raw in text.Split((char)10))
+        {
+            var t = raw.Trim();
+            if (t.Length == 0)
+            {
+                continue;
+            }
+
+            if (t[0] != '{')
+            {
+                if (!t.StartsWith(CodexStdinNotice, StringComparison.Ordinal))
+                {
+                    show.Add(raw);
+                }
+
+                continue;
+            }
+
+            using var doc = Parse(t);
+            if (doc is null)
+            {
+                continue;
+            }
+
+            var root = doc.RootElement;
+            var type = Str(root, "type");
+            switch (type)
+            {
+                case "turn.started":
+                    stats.Calls++;
+                    break;
+                case "turn.completed":
+                    stats.GenTokens += Num(Prop(root, "usage"), "output_tokens") ?? 0;
+                    show.Add(raw);
+                    break;
+                case "item.completed":
+                    var item = Prop(root, "item");
+                    var itemType = Str(item, "type");
+                    if (itemType is "command_execution" or "file_change" or "mcp_tool_call")
+                    {
+                        stats.Tools++;
+                        if (CodexToolFailed(item))
+                        {
+                            stats.ToolFails++;
+                        }
+                    }
+
+                    if (itemType is not ("web_search" or "todo_list"))
+                    {
+                        show.Add(raw);
+                    }
+
+                    break;
+                default:
+                    if (type is "turn.failed" or "error" || type.Contains("error", StringComparison.Ordinal))
+                    {
+                        show.Add(raw);
+                    }
+
+                    break;
+            }
+        }
+
+        return new WorkerScanResult(partial ?? "", show);
+    }
+
+    private static bool CodexToolFailed(JsonElement? item) =>
+        Str(item, "status") == "failed" || (Num(item, "exit_code") is { } code && code != 0);
+
+    private static IReadOnlyList<LiveEvent> RenderCodex(string raw)
+    {
+        var line = raw.Trim();
+        if (line.Length == 0)
+        {
+            return [];
+        }
+
+        if (line[0] != '{')
+        {
+            return line.StartsWith(CodexStdinNotice, StringComparison.Ordinal) ? [] : [Error(Clip(line, 400))];
+        }
+
+        using var doc = Parse(line);
+        if (doc is null)
+        {
+            return [];
+        }
+
+        var root = doc.RootElement;
+        var type = Str(root, "type");
+        switch (type)
+        {
+            case "item.completed":
+                var item = Prop(root, "item");
+                switch (Str(item, "type"))
+                {
+                    case "agent_message":
+                        return [.. LineRx.Split(Str(item, "text")).Select(l => new LiveEvent(LiveMark.Message, l))];
+                    case "reasoning":
+                        return [.. Paragraphs(Clip(Str(item, "text").Trim(), 3000)).Select(p => new LiveEvent(LiveMark.Reasoning, p))];
+                    case "command_execution":
+                        var command = ShellWrapperRx.Replace(Str(item, "command"), "").Trim();
+                        if (command.Length >= 2 && command[0] == command[^1] && (command[0] == (char)39 || command[0] == (char)34))
+                        {
+                            command = command[1..^1];
+                        }
+
+                        var events = new List<LiveEvent> { new(LiveMark.ToolCall, ToolLine("shell", command)) };
+                        if (CodexToolFailed(item))
+                        {
+                            events.Add(new LiveEvent(LiveMark.FailedTool, Clip(FirstTwo(Str(item, "aggregated_output")), 200)));
+                        }
+
+                        return events;
+                    case "file_change":
+                        var paths = string.Join(", ", Enumerate(Prop(item, "changes")).Select(c => Str(c, "path")).Where(p => p.Length > 0));
+                        return [new LiveEvent(LiveMark.ToolCall, ToolLine("edit", paths))];
+                    case "mcp_tool_call":
+                        return [new LiveEvent(LiveMark.ToolCall, $"{Str(item, "server")}.{Str(item, "tool")}")];
+                    case "error":
+                        return [Error(Clip(Str(item, "message"), 300))];
+                    default:
+                        return [];
+                }
+
+            case "turn.completed":
+                var usage = Prop(root, "usage");
+                return [new LiveEvent(LiveMark.SessionEnd,
+                    $"(session ended: {(long)(Num(usage, "input_tokens") ?? 0)} tokens in, {(long)(Num(usage, "output_tokens") ?? 0)} out)")];
+
+            case "turn.failed":
+                return [Error($"session failed: {Clip(Str(Prop(root, "error"), "message"), 300)}")];
+
+            case "error":
+                return [Error(Clip(Str(root, "message"), 300))];
+
+            default:
+                return type.Contains("error", StringComparison.Ordinal)
+                    ? [Error($"{type}: {Clip(line, 300)}")]
+                    : [];
+        }
+    }
+
+    /// <summary>
+    /// The lines of an OpenCode worker's raw log worth showing (AG-3, AG-14): the CLI's own text and the
+    /// events <see cref="RenderOpenCode"/> renders. Fills <paramref name="stats"/>: calls, tools, failed
+    /// tools and generated tokens.
+    /// </summary>
+    public static WorkerScanResult ScanOpenCode(string text, WorkerStats stats, string partial)
+    {
+        var show = new List<string>();
+        foreach (var raw in text.Split((char)10))
+        {
+            var t = raw.Trim();
+            if (t.Length == 0)
+            {
+                continue;
+            }
+
+            if (t[0] != '{')
+            {
+                show.Add(raw);
+                continue;
+            }
+
+            using var doc = Parse(t);
+            if (doc is null)
+            {
+                continue;
+            }
+
+            var root = doc.RootElement;
+            var type = Str(root, "type");
+            var part = Prop(root, "part");
+            switch (type)
+            {
+                case "step_start":
+                    stats.Calls++;
+                    break;
+                case "step_finish":
+                    stats.GenTokens += Num(Prop(part, "tokens"), "output") ?? 0;
+                    if (Str(part, "reason") == "stop")
+                    {
+                        show.Add(raw);
+                    }
+
+                    break;
+                case "text":
+                    show.Add(raw);
+                    break;
+                case "tool_use":
+                    var state = Prop(part, "state");
+                    if (Str(state, "status") is "completed" or "error")
+                    {
+                        stats.Tools++;
+                        if (OpenCodeToolFailed(state))
+                        {
+                            stats.ToolFails++;
+                        }
+
+                        show.Add(raw);
+                    }
+
+                    break;
+                default:
+                    if (type is "retry" or "error" || type.Contains("error", StringComparison.Ordinal))
+                    {
+                        show.Add(raw);
+                    }
+
+                    break;
+            }
+        }
+
+        return new WorkerScanResult(partial ?? "", show);
+    }
+
+    // A failed command is "completed" with a non-zero exit in state.metadata.metadata.exit (recorded).
+    private static bool OpenCodeToolFailed(JsonElement? state) =>
+        Str(state, "status") == "error" || (Num(Prop(Prop(state, "metadata"), "metadata"), "exit") is { } code && code != 0);
+
+    private static string OpenCodeErrorText(JsonElement? error)
+    {
+        var message = OrDefault(Str(error, "message"), Str(Prop(error, "data"), "message"));
+        return OrDefault(message, OrDefault(Str(error, "name"), Str(error, "type")));
+    }
+
+    private static IReadOnlyList<LiveEvent> RenderOpenCode(string raw)
+    {
+        var line = raw.Trim();
+        if (line.Length == 0)
+        {
+            return [];
+        }
+
+        if (line[0] != '{')
+        {
+            return [Error(Clip(line, 400))];
+        }
+
+        using var doc = Parse(line);
+        if (doc is null)
+        {
+            return [];
+        }
+
+        var root = doc.RootElement;
+        var type = Str(root, "type");
+        var part = Prop(root, "part");
+        switch (type)
+        {
+            case "text":
+                return [.. LineRx.Split(Str(part, "text")).Select(l => new LiveEvent(LiveMark.Message, l))];
+
+            case "reasoning":
+                return [.. Paragraphs(Clip(Str(part, "text").Trim(), 3000)).Select(p => new LiveEvent(LiveMark.Reasoning, p))];
+
+            case "tool_use":
+                var state = Prop(part, "state");
+                if (Str(state, "status") is not ("completed" or "error"))
+                {
+                    return [];
+                }
+
+                var input = Prop(state, "input");
+                var what = OrDefault(Str(input, "command"), OrDefault(Str(input, "filePath"), Str(input, "path")));
+                var events = new List<LiveEvent> { new(LiveMark.ToolCall, ToolLine(OrDefault(Str(part, "tool"), "tool"), what)) };
+                if (OpenCodeToolFailed(state))
+                {
+                    var why = Str(state, "status") == "error" ? Str(state, "error") : Str(state, "output");
+                    events.Add(new LiveEvent(LiveMark.FailedTool, Clip(FirstTwo(why), 200)));
+                }
+
+                return events;
+
+            case "step_finish":
+                if (Str(part, "reason") != "stop")
+                {
+                    return [];
+                }
+
+                var tokens = Prop(part, "tokens");
+                var cost = Num(part, "cost") is { } c && c > 0 ? $", ${c.ToString("0.####", CultureInfo.InvariantCulture)}" : "";
+                return [new LiveEvent(LiveMark.SessionEnd,
+                    $"(session ended: {(long)(Num(tokens, "input") ?? 0)} tokens in, {(long)(Num(tokens, "output") ?? 0)} out{cost})")];
+
+            case "retry":
+                return [Error($"retrying (attempt {(long)(Num(root, "attempt") ?? 0)}): {Clip(OpenCodeErrorText(Prop(root, "error")), 300)}")];
+
+            case "error":
+                return [Error(Clip(OpenCodeErrorText(Prop(root, "error")), 300))];
+
+            default:
+                return type.Contains("error", StringComparison.Ordinal)
+                    ? [Error($"{type}: {Clip(line, 300)}")]
+                    : [];
+        }
+    }
 
     private static IReadOnlyList<LiveEvent> RenderCopilot(string raw)
     {

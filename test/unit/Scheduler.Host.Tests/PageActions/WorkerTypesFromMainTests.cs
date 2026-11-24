@@ -70,7 +70,7 @@ public class WorkerTypesFromMainTests
         Assert.False(pool.Migrated);
         Assert.Equal(["Spark", "Sonnet", "Opus"], [.. pool.Types.Select(t => t.Name)]);
         Assert.Equal([4, 4, 4], [.. pool.Types.Select(t => t.Max)]);
-        Assert.False(pool.Types[0].Premium);
+        Assert.Equal("Spark", pool.DefaultType); // 1146-A: today's pool keeps Spark as the default
         Assert.Equal("claude", pool.Types[1].Agent);
 
         // The page itself, not just the tick: this is the snapshot the first render is built from.

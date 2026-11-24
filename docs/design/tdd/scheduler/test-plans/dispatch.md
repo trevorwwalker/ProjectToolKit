@@ -6,7 +6,7 @@ Dispatch decisions are Core: given cards, running workers, slots, retries, held 
 states and the scheduler state, return the starts and the notes. Starting a process is Host.
 
 Shared setup unless a test says otherwise: maxRetries 2, slots 1-2 enabled with categories '' (all),
-non-premium, servers up, state `running`.
+servers up, state `running`.
 
 ## Selection
 
@@ -140,7 +140,7 @@ non-premium, servers up, state `running`.
 ### Dispatch_NoSlotFits_LaneStaysTaken
 - **Retired (card 960-D).** The slot dispatcher is gone (939-A); replaced by TypeDispatch_CardAsksNamedWorker_FullTypeNamesItsCard (TypeDispatchTests.cs). Kept for the history.
 - Checks: DISP-15 · Project: Core · **blocked on C4**
-- Setup: queue 010-A `Worker: opus` (no opus worker free), 020-A ready with no Worker line; one free non-premium slot.
+- Setup: queue 010-A `Worker: opus` (no opus worker free), 020-A ready with no Worker line; one free slot.
 - Expected today: neither starts (category A taken by 010-A). Expected after C4: to be written.
 
 ### Dispatch_ServerUp_CachedFor20Seconds
@@ -155,15 +155,15 @@ non-premium, servers up, state `running`.
 - Cases: worker categories '' -> any category allowed; `AB` -> A yes, C no; `ab` from workers.json -> upper-cased, A yes.
 
 ### Dispatch_WorkerFits_Rules
-- **Retired (card 960-D).** The slot dispatcher is gone (939-A); replaced by TypeDispatch_NoWorkerLine_OnlyNonPremium, TypeDispatch_WorkerPremium_OnlyPremium_FirstListed, TypeDispatch_WorkerName_ModelOrShort_PicksThatType and TypeDispatch_WorkerSlotNumber_MatchesMigratedTypeOnly (TypeDispatchTests.cs). Kept for the history.
+- **Retired (card 960-D).** The slot dispatcher is gone (939-A); replaced by TypeDispatch_NoWorkerLine_OnlyDefault, TypeDispatch_WorkerPremium_IsUnknownName_NotDispatched (the premium tests of 960-D were superseded 2026-11-23 by 1146-A), TypeDispatch_WorkerName_ModelOrShort_PicksThatType and TypeDispatch_WorkerSlotNumber_MatchesMigratedTypeOnly (TypeDispatchTests.cs). Kept for the history.
 - Checks: DISP-18 · Project: Core
-- Setup: slot 1 non-premium model `qwen3-32b`; slot 2 premium named `opus` with model `claude-opus-5-5`; models.json gives `claude-opus-5-5` short `Opus`.
+- Setup (as of 960-D, when premium existed): slot 1 non-premium model `qwen3-32b`; slot 2 premium named `opus` with model `claude-opus-5-5`; models.json gives `claude-opus-5-5` short `Opus`.
 - Cases: no Worker line -> slot 1 only; `Worker: premium` -> slot 2 only; `Worker: 2`, `Worker: opus`, `Worker: OPUS`, `Worker: claude-opus-5-5` -> slot 2; `Worker: qwen3-32b` -> slot 1; `Worker: gpt` -> none.
 
 ### Dispatch_CardPremiumFlag_Unused
 - **Retired (card 960-D).** The slot dispatcher is gone (939-A); replaced by the WT-3 tests (TypeDispatchTests.cs). Kept for the history.
 - Checks: CARD-10, DISP-18 · Project: Core · **blocked on C14**
-- Setup: card `Worker: qwen3-32b (any)`; only a non-premium qwen worker.
+- Setup: card `Worker: qwen3-32b (any)`; only a qwen worker.
 - Expected today: it fits (Card.Premium is set by any Worker line, L625, but never read). After C14: drop the field, or define what it means.
 
 ### Dispatch_NotStartedNotes_AllVariants

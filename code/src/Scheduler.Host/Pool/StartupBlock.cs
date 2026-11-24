@@ -57,7 +57,8 @@ public static class StartupBlock
             $"{Prefix}pool: port {pool.Port}, listen {pool.Listen}, remote control {(pool.RemoteControl ? "on" : "off")}, maxWorkers {types.MaxWorkers}",
         };
         lines.AddRange(types.Types.Select(t =>
-            $"{Prefix}pool: worker type {t.Name}: max {t.Max}, agent {Or(t.Agent)}, model {Or(t.Model)}, premium {(t.Premium ? "yes" : "no")}"));
+            $"{Prefix}pool: worker type {t.Name}: max {t.Max}, agent {Or(t.Agent)}, model {Or(t.Model)}"));
+        lines.Add($"{Prefix}pool: default worker type {Or(types.DefaultType)}");
         lines.AddRange(types.Types.Select(t => t.Endpoint).Where(e => e.Length > 0).Distinct(Text.Comparer)
             .Select(e => $"{Prefix}pool: model server {e}"));
         lines.AddRange(agents.Select(a => $"{Prefix}pool: agent {a.Name}: env keys {(a.Env.Count == 0 ? "none" : string.Join(", ", a.Env.Keys))}"));

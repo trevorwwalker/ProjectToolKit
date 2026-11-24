@@ -7,18 +7,18 @@ namespace Scheduler.Core.Tests.Pool;
 /// <summary>Shared by the pool tests: types, a model server that always answers, and a one-call WT-7 dispatch.</summary>
 internal static class PoolFakes
 {
-    /// <summary>A type roomy enough for the test (<c>Max</c> 9, nothing running).</summary>
+    /// <summary>A type roomy enough for the test (<c>Max</c> 9, nothing running); the default type unless <paramref name="isDefault"/> is false (1146-A).</summary>
     public static DispatchType Type(
         string name,
         string agent = "",
         string model = "",
-        bool premium = false,
+        bool isDefault = true,
         string areas = "",
         int max = 9,
         int running = 0,
         int[]? slots = null,
         params string[] projects) =>
-        new() { Name = name, Agent = agent, Model = model, Premium = premium, Max = max, Running = running, Slots = slots ?? [], Projects = projects };
+        new() { Name = name, Agent = agent, Model = model, IsDefault = isDefault, Max = max, Running = running, Slots = slots ?? [], Projects = projects };
 
     /// <summary>A server cache whose every server answers.</summary>
     public static ServerCache Servers() => new(new UpProbe(), new FixedClock(), new NoLog());

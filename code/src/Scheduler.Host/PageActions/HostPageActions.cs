@@ -7,6 +7,7 @@ using Scheduler.Core.Launch;
 using Scheduler.Core.Moves;
 using Scheduler.Core.PageModel;
 using Scheduler.Core.Tick;
+using Scheduler.Core.Views;
 using Scheduler.Core.WebContract;
 using Scheduler.Host.Git;
 using Scheduler.Host.Moves;
@@ -190,6 +191,37 @@ public sealed class HostPageActions(PageActionParts parts) : IPageActions
         return ActionResult.Queued(Accepted());
     }
 
+    /// <summary>
+    /// 1125-C: the developer clicked the mark of a plan or step: it goes automatic, checked, cleared, automatic, in
+    /// jobs/plan-marks.json, committed as <c>jobs: plan mark &lt;plan&gt; &lt;step&gt; &lt;state&gt;</c>.
+    /// </summary>
+    public ActionResult PlanMark(string plan, string step)
+    {
+        plan = plan.Trim();
+        step = step.Trim();
+        if (plan.Length == 0 || step.Length == 0)
+        {
+            return Refused("plan mark not set: no plan or step was named");
+        }
+
+        var rel = parts.Config.JobsDir.TrimEnd('/', (char)92) + "/" + PlanMarkFile.FileName;
+        var main = MainRead.Text(MainRead.Fresh(Feed), parts.Main, rel);
+        var next = PlanMarkFile.Next(PlanMarkFile.Of(PlanMarkFile.Read(main), plan, step));
+        var text = PlanMarkFile.With(main, plan, step, next);
+        var result = parts.Committer.Apply(new JobsChange
+        {
+            Writes = new Dictionary<string, string>(StringComparer.Ordinal) { [rel] = text },
+            Message = $"jobs: plan mark {plan} {step} {PlanMarkFile.Name(next)}",
+        });
+        if (!result.Ok)
+        {
+            return Refused($"{rel} not committed: {result.Error}");
+        }
+
+        parts.TickNow();
+        return ActionResult.Queued(Accepted());
+    }
+
     /// <summary>MOVE-2: answer a card's question, committed through 250-B's committer.</summary>
     public ActionResult Answer(string card, int question, string choice, string note)
     {
@@ -200,7 +232,7 @@ public sealed class HostPageActions(PageActionParts parts) : IPageActions
 
     /// <summary>
     /// WT-C7, WT-C11, WT-P3: the Worker types panel's Save. Checks the types as the config would read
-    /// them (a name that is Premium or only digits, an address without http://, a category categories.json
+    /// them (a name that is only digits, an address without http://, a category categories.json
     /// does not know are refused), writes workers.json in the pool form with main's line endings and
     /// commits it as "scheduler: workers - types ..." - or not at all when main already says this.
     /// The tick reads it back from main and applies it next tick.
@@ -214,7 +246,12 @@ public sealed class HostPageActions(PageActionParts parts) : IPageActions
     /// (947-B Q2, the developer, 2026-11-19). Setting a cap to 0 is only off, and saves even with a
     /// worker of that type running.
     /// </summary>
-    public ActionResult SaveWorkerTypes(int maxWorkers, IReadOnlyList<PageWorkerTypeView> types)
+    public ActionResult SaveWorkerTypes(int maxWorkers, IReadOnlyList<PageWorkerTypeView> types) =>
+        SaveWorkerTypes(maxWorkers, types, "");
+
+    /// <inheritdoc cref="SaveWorkerTypes(int, IReadOnlyList{PageWorkerTypeView})"/>
+    /// <remarks>1146-A: also writes the pool's <c>defaultWorker</c> (WT-3); see <see cref="WorkerTypeDefault.Choose"/>.</remarks>
+    public ActionResult SaveWorkerTypes(int maxWorkers, IReadOnlyList<PageWorkerTypeView> types, string defaultWorker)
     {
         // 974-B (WT-C7): the panel writes back what it shows, and until main has been read what it
         // shows is the migration of the slots - so a Save here would write a "worker" over the names
@@ -251,31 +288,39 @@ public sealed class HostPageActions(PageActionParts parts) : IPageActions
                     Model = t.Model,
                     Endpoint = t.Endpoint,
                     MetricsUrl = t.MetricsUrl,
-                    Premium = t.Premium,
                     Projects = t.Projects,
                 }),
             ],
         };
-        var model = MainRead.Fresh(Feed);
-        var main = MainRead.Text(model, parts.Main, parts.WorkersRel);
-        var text = WorkersJsonText.WithLineEndings(WorkerTypesJson.BuildPool(pool), main);
-        if (WorkerTypesJson.Parse(text, parts.Config, parts.Log) is null)
-        {
-            return Refused("worker types not saved: a type name is empty, repeated, Premium or only digits");
-        }
 
         // 947-B: the rows as the panel loaded them. A row's original name is what makes a rename a
         // rename rather than one type removed and another added; a row with none is a new type.
         var rows = types
             .Select(t => (Name: t.Name.Trim(), Original: t.OriginalName.Trim().Length > 0 ? t.OriginalName.Trim() : t.Name.Trim()))
             .ToList();
+
+        // What the types are now, which is what the panel was built from (WT-P3): the pool's names, or
+        // the ones the slots migrate to while workers.json is still in the old form.
+        var current = TickHost.PoolOf(parts.Tick, parts.Config);
+        var chosen = WorkerTypeDefault.Choose(rows, current.DefaultType, defaultWorker, out var refusal);
+        if (chosen is null)
+        {
+            return Refused(refusal);
+        }
+
+        pool = pool with { DefaultWorker = chosen };
+        var model = MainRead.Fresh(Feed);
+        var main = MainRead.Text(model, parts.Main, parts.WorkersRel);
+        var text = WorkersJsonText.WithLineEndings(WorkerTypesJson.BuildPool(pool), main);
+        if (WorkerTypesJson.Parse(text, parts.Config, parts.Log) is null)
+        {
+            return Refused("worker types not saved: a type name is empty, repeated or only digits");
+        }
         List<(string Original, string Name)> renames = [.. rows
             .Where(r => !string.Equals(r.Original, r.Name, StringComparison.Ordinal))
             .Select(r => (r.Original, r.Name))];
 
-        // What the types are now, which is what the panel was built from (WT-P3): the pool's names, or
-        // the ones the slots migrate to while workers.json is still in the old form.
-        List<string> loaded = [.. TickHost.PoolOf(parts.Tick, parts.Config).Types.Select(t => t.Name)];
+        List<string> loaded = [.. current.Types.Select(t => t.Name)];
         List<string> gone = [.. loaded.Where(name => !rows.Any(r => Text.Same(r.Original, name)))];
 
         // The cards a rename or a removal touches, read from main rather than from the card cache: the

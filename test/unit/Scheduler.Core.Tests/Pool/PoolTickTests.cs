@@ -139,11 +139,13 @@ public sealed class PoolTickTests
     {
         _pool.Apply(Types("""{"maxWorkers":3,"types":{"default":{"max":2},"spare":{"max":3,"agent":"other"}}}"""), [Project("A", 50), Project("B", 50)]);
         Adopt("A", 1, 501, TickHost.Card(CardFolder.Active, 10, "A"));
-        Queue("B", (10, "A"), (20, "B"), (30, "C"));
+        Queue("B", (10, "A"));
+        Host("B").Cards.Add(TickHost.Card(CardFolder.Queue, 20, "B") with { WorkerReq = "spare" }); // 1146-A: only the default takes a card with no Worker: line
+        Queue("B", (30, "C"));
 
         _pool.Run();
 
-        // default is at 1 of 2 from A's worker: B gets one default, then one of spare; the total of 3 stops the third.
+        // default is at 1 of 2 from A's worker: B gets one default, then one of spare (asked for by name); the total of 3 stops the third.
         Assert.Equal(["010-A", "020-B"], Started("B"));
         Assert.Equal(["default", "spare"], Host("B").TypeStarts.Select(t => t.Type));
         Assert.StartsWith("next up; waiting for default (2 of 2 running: 010-A, 010-A)", Note("B", "030-C-x"));   // A's worker counts toward the cap

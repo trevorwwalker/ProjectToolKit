@@ -43,7 +43,7 @@ public static class PageScript
           // 966-B: fast mode - for LIVELY ms after any click or key the live view is asked for every INTERACT ms.
           var INTERACT = 33, LIVELY = 15000, lively = 0;
           var page = version(document);
-          // VW-20: on the Plans view the page is fetched again when the views version moves.
+          // VW-20: on the Plans and Gantt views the page is fetched again when the views version moves.
           function viewsOf(d) { var m = d.querySelector('meta[name=views-version]'); return m ? m.getAttribute('content') : ''; }
           var viewsNow = viewsOf(document);
           var timer = 0, asked = 0, liveBusy = false, pageBusy = false, pageAgain = false;
@@ -284,6 +284,62 @@ public static class PageScript
             var d = s.parentNode;
             planSet(d.getAttribute('data-key'), d.open ? '0' : '1');
           });
+          // 1125-C: a click on the mark of a plan or step posts /plan-mark, which cycles automatic, checked, cleared; it
+          // is taken before the summary's own toggle so the node stays as it is.
+          document.addEventListener('click', function (e) {
+            var m = e.target && e.target.closest ? e.target.closest('.pm-click') : null;
+            if (!m || !window.fetch || !window.URLSearchParams) return;
+            e.preventDefault(); e.stopPropagation();
+            var body = new URLSearchParams();
+            body.set('project', m.getAttribute('data-project') || ''); body.set('plan', m.getAttribute('data-plan') || ''); body.set('step', m.getAttribute('data-step') || '');
+            document.body.style.cursor = 'progress';
+            get('/plan-mark', 15000, { method: 'POST', body: body, headers: { 'X-Requested-With': 'fetch' } })
+              .then(function (r) { return r.json(); })
+              .then(function (j) { document.body.style.cursor = ''; waitFor = j.id || 1; waitFrom = asked + 1; waitSince = Date.now(); schedule(); })
+              .catch(function () { document.body.style.cursor = ''; location.reload(); });
+          }, true);
+          // 1132-C: the Gantt draws one range and one grouping, named in its address (range=, group=). The
+          // range is the page's one choice (ptk-range, as the runs summary's); Group by is remembered beside it.
+          // An address that names them is remembered; one that does not is sent to the remembered ones.
+          function ganttGo(r, g) { location.replace('/?view=gantt&range=' + encodeURIComponent(r) + '&group=' + encodeURIComponent(g)); }
+          (function () {
+            var w = document.getElementById('w-gantt');
+            if (!w) return;
+            var r = w.getAttribute('data-range'), g = w.getAttribute('data-group');
+            var hasR = /[?&]range=/.test(location.search), hasG = /[?&]group=/.test(location.search);
+            try {
+              if (hasR) localStorage.setItem('ptk-range', r);
+              if (hasG) localStorage.setItem('ptk-gantt-group', g);
+              var sr = localStorage.getItem('ptk-range') || r, sg = localStorage.getItem('ptk-gantt-group') || g;
+              if ((!hasR && sr !== r) || (!hasG && sg !== g)) ganttGo(hasR ? r : sr, hasG ? g : sg);
+            } catch (x) {}
+          })();
+          document.addEventListener('change', function (e) {
+            var s = e.target, w = document.getElementById('w-gantt');
+            if (!s || !w || (s.id !== 'rangesel' && s.id !== 'ganttgroup')) return;
+            if (s.id === 'ganttgroup') { try { localStorage.setItem('ptk-gantt-group', s.value); } catch (x) {} }
+            ganttGo(s.id === 'rangesel' ? s.value : w.getAttribute('data-range'), s.id === 'ganttgroup' ? s.value : w.getAttribute('data-group'));
+          });
+          // 1132-C: a click on a Gantt row shows its Details; the choice survives a refresh and a reload.
+          var ganttSel = null;
+          try { ganttSel = sessionStorage.getItem('gantt-sel'); } catch (x) {}
+          function applyGantt() {
+            var box = document.getElementById('gantt-detail');
+            if (!box || !ganttSel) return;
+            var src = null, rows = document.querySelectorAll('.gdet[data-gdet]');
+            for (var i = 0; i < rows.length; i++) { if (rows[i].getAttribute('data-gdet') === ganttSel) { src = rows[i]; break; } }
+            if (src) box.innerHTML = src.innerHTML;
+            document.querySelectorAll('.gantt [data-gd]').forEach(function (r) { r.classList.toggle('gsel', r.getAttribute('data-gd') === ganttSel); });
+          }
+          document.addEventListener('click', function (e) {
+            var t = e.target;
+            if (!t || !t.closest || t.closest('a') || !document.getElementById('gantt-detail')) return;
+            var r = t.closest('.gantt [data-gd]');
+            if (!r) return;
+            ganttSel = r.getAttribute('data-gd');
+            try { sessionStorage.setItem('gantt-sel', ganttSel); } catch (x) {}
+            applyGantt();
+          });
           // WT-P3: the Worker types panel's Add type copies the blank row the panel carries in a
           // template, and Remove takes one out before Save posts what is left. What a worker keeps
           // is its type, so nothing here needs a slot.
@@ -315,16 +371,30 @@ public static class PageScript
           // The "2 of 2" beside a cap follows the cap field as it is typed (WT-P3).
           document.addEventListener('input', function (e) {
             var i = e.target;
+            if (i && i.name === 'wname') {
+              // 1147-C: the Default radio posts the row's name, so it follows the name as it is typed.
+              var nr = i.closest ? i.closest('tr') : null, rd = nr ? nr.querySelector('input[name=wdefault]') : null;
+              if (rd) rd.value = i.value.trim();
+              return;
+            }
             if (!i || i.name !== 'wmax') return;
             var row = i.closest ? i.closest('tr') : null;
             var shown = row ? row.querySelector('.wrunning') : null;
             var m = shown ? /^(\d+)\s*of/.exec(shown.textContent || '') : null;
             if (m) shown.textContent = m[1] + ' of ' + (i.value || '0');
           });
+          // 1129-C (VW-2): the views dropdown in the title bar goes to that view's address, which is what
+          // the Workers and Plans buttons did. The server matches the name against its own list of views.
+          document.addEventListener('change', function (e) {
+            var s = e.target;
+            if (!s || s.id !== 'viewsel') return;
+            var v = String(s.value || '').replace(/[^A-Za-z0-9_-]/g, '');
+            location.href = '/?view=' + (v || (typeof viewNames === 'undefined' ? '' : viewNames[0]));
+          });
           // The user is in the middle of something a refresh would undo.
           function userBusy() {
             // 1004-C: the pool page's project dropdown, like the theme menu, is not rebuilt while it is open.
-            if (document.querySelector('dialog[open], .g:hover, pre.log:hover, #rangesel:focus, #themesel:focus, #projsel:focus')) return true;
+            if (document.querySelector('dialog[open], .g:hover, pre.log:hover, #rangesel:focus, #ganttgroup:focus, #themesel:focus, #projsel:focus, #viewsel:focus')) return true;
             if (document.querySelector('input.wsbox:focus')) return true;   // 1033-C: a box being typed in
             var a = document.activeElement;
             if (a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && a.type === 'text')) && a.value) return true;
@@ -612,6 +682,7 @@ public static class PageScript
               // The pool page's project dropdown keeps its choice: it lives in the browser (MP-P2).
               if (window.applyFilters) window.applyFilters();
               applyPlans();
+              applyGantt();
               syncTheme();
               applyLogs();
               // 1004-C: the rebuilt desk draws Worker types closed; open it again if this browser keeps it open.
@@ -882,6 +953,7 @@ public static class PageScript
           // Back to a page the browser kept as it was (with a 'Working...' button): load it afresh.
           window.addEventListener('pageshow', function (e) { if (e.persisted) location.reload(); });
           applyPlans();
+          applyGantt();
           syncTheme();
           applyLogs();
           applyWt();

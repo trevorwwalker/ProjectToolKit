@@ -46,6 +46,9 @@ public sealed record PlanStepNode
     /// <summary>The cancelled or errored cards under this node, left out of <see cref="Total"/>.</summary>
     public int Cancelled { get; init; }
 
+    /// <summary>What the developer set on this node's mark (1125-C); automatic when nothing.</summary>
+    public ManualMark Manual { get; init; }
+
     /// <summary>A green check: the node has children and every one is complete or cancelled, at least one complete.</summary>
     public bool Checked => Mark == PlanMark.Complete;
 
@@ -53,12 +56,20 @@ public sealed record PlanStepNode
     /// From the children's marks (its cards and sub-steps): green check when all are complete or cancelled with one
     /// complete, red X when all are cancelled, else an empty box. A node with no children stays an empty box.
     /// </summary>
-    public PlanMark Mark => PlanMarks.Of(Cards.Select(CardMark.Of).Concat(SubSteps.Select(s => s.Mark)));
+    public PlanMark Mark => PlanMarks.Manual(Manual) ?? PlanMarks.Of(Cards.Select(CardMark.Of).Concat(SubSteps.Select(s => s.Mark)));
 }
 
 /// <summary>The rule that makes a parent's mark from its children's marks.</summary>
 public static class PlanMarks
 {
+    /// <summary>The mark a developer's setting forces: checked is complete, cleared is open; null for automatic.</summary>
+    public static PlanMark? Manual(ManualMark manual) => manual switch
+    {
+        ManualMark.Checked => PlanMark.Complete,
+        ManualMark.Cleared => PlanMark.Open,
+        _ => null,
+    };
+
     public static PlanMark Of(IEnumerable<PlanMark> children)
     {
         var list = children.ToList();
@@ -81,11 +92,14 @@ public sealed record PlanNode
     /// <summary>The cards that match no step of the plan (or every card of No plan); null when there are none.</summary>
     public PlanStepNode? Other { get; init; }
 
+    /// <summary>What the developer set on the plan's own mark (1125-C).</summary>
+    public ManualMark Manual { get; init; }
+
     /// <summary>Every step (and the Other cards) is complete or cancelled, at least one complete.</summary>
     public bool Complete => Mark == PlanMark.Complete;
 
     /// <summary>From its steps' marks and the Other cards' mark, by the same rule as a step.</summary>
-    public PlanMark Mark => PlanMarks.Of(Steps.Select(n => n.Mark).Concat(Other is { } o ? [o.Mark] : []));
+    public PlanMark Mark => PlanMarks.Manual(Manual) ?? PlanMarks.Of(Steps.Select(n => n.Mark).Concat(Other is { } o ? [o.Mark] : []));
 }
 
 /// <summary>The Plans view's tree for one project, in the order <see cref="PlanCounts"/> orders plans.</summary>
@@ -93,14 +107,16 @@ public static class PlanTree
 {
     /// <param name="cards">Every card of the project.</param>
     /// <param name="onMain">The paths that exist on main.</param>
-    /// <param name="alsoPlans">Plans to list even when no card names them.</param>
+    /// <param name="alsoPlans">Plans to list even when no card names them; only files in jobs/plans/ count (VW-11).</param>
+    /// <param name="marks">The marks the developer set, by plan path and step label; one for a step that does not exist is ignored (1125-C).</param>
     /// <param name="planText">A plan document's text by its path; a plan with no text has no steps.</param>
     public static IReadOnlyList<PlanNode> Of(
         IEnumerable<ViewCard> cards, ISet<string> onMain, IReadOnlyDictionary<string, string> planText,
-        IEnumerable<PlanRef>? alsoPlans = null)
+        IEnumerable<PlanRef>? alsoPlans = null,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, ManualMark>>? marks = null)
     {
         var byPlan = new Dictionary<PlanRef, List<ViewCard>>();
-        foreach (var plan in alsoPlans ?? [])
+        foreach (var plan in (alsoPlans ?? []).Where(p => p.Kind is PlanKind.Plans or PlanKind.Missing))
         {
             if (!byPlan.ContainsKey(plan))
             {
@@ -122,11 +138,11 @@ public static class PlanTree
         return byPlan
             .OrderBy(p => Group(p.Key.Kind))
             .ThenBy(p => p.Key.Path, StringComparer.OrdinalIgnoreCase)
-            .Select(p => Build(p.Key, p.Value, planText))
+            .Select(p => Build(p.Key, p.Value, planText, marks))
             .ToList();
     }
 
-    private static PlanNode Build(PlanRef plan, List<ViewCard> cards, IReadOnlyDictionary<string, string> planText)
+    private static PlanNode Build(PlanRef plan, List<ViewCard> cards, IReadOnlyDictionary<string, string> planText, IReadOnlyDictionary<string, IReadOnlyDictionary<string, ManualMark>>? marks)
     {
         var steps = plan.Kind == PlanKind.NoPlan || !planText.TryGetValue(plan.Path, out var text)
             ? []
@@ -150,22 +166,24 @@ public static class PlanTree
             list.Add(card);
         }
 
-        var nodes = steps.Select(s => Node(s, matched)).ToList();
+        var nodes = steps.Select(s => Node(s, matched, marks, plan.Path)).ToList();
         return new PlanNode
         {
             Plan = plan,
+            Manual = PlanMarkFile.Of(marks, plan.Path, PlanMarkFile.PlanKey),
             Steps = nodes,
             Other = other.Count == 0 ? null : new PlanStepNode { Cards = other, Done = DoneCount(other), Total = CountOf(other), Cancelled = CancelledCount(other) },
         };
     }
 
-    private static PlanStepNode Node(PlanStep step, Dictionary<PlanStep, List<ViewCard>> matched)
+    private static PlanStepNode Node(PlanStep step, Dictionary<PlanStep, List<ViewCard>> matched, IReadOnlyDictionary<string, IReadOnlyDictionary<string, ManualMark>>? marks, string plan)
     {
         var own = matched.GetValueOrDefault(step) ?? [];
-        var subs = step.SubSteps.Select(s => Node(s, matched)).ToList();
+        var subs = step.SubSteps.Select(s => Node(s, matched, marks, plan)).ToList();
         return new PlanStepNode
         {
             Step = step,
+            Manual = PlanMarkFile.Of(marks, plan, step.Label),
             Cards = own,
             SubSteps = subs,
             Done = DoneCount(own) + subs.Sum(s => s.Done),
@@ -183,8 +201,7 @@ public static class PlanTree
     private static int Group(PlanKind kind) => kind switch
     {
         PlanKind.Plans => 0,
-        PlanKind.Elsewhere or PlanKind.Missing => 1,
-        PlanKind.Archived => 2,
+        PlanKind.Missing => 1,
         _ => 3,
     };
 }

@@ -62,12 +62,12 @@ internal static class ViewsFixture
         PlannerLine = "planner push: on, 2 waiting",
         PlannerPush = true,
         // The Worker types panel's rows, in the config's order (WT-P3): the default type at its cap,
-        // one premium type idle, and one turned off (WT-C3's cap 0).
+        // one more type idle (worker is the default, 1146-A), and one turned off (WT-C3's cap 0).
         WorkerTypes =
         [
-            new PageWorkerTypeView { Name = "worker", Running = 2, Max = 2, Model = "spark" },
-            new PageWorkerTypeView { Name = "Sonnet", Running = 0, Max = 1, Agent = "claude", Model = "claude-sonnet-5-5", Endpoint = "http://claude.local:8080/v1", MetricsUrl = "http://claude.local:9090/metrics", Premium = true },
-            new PageWorkerTypeView { Name = "Opus", Running = 0, Max = 0, Agent = "claude", Model = "claude-opus-5-5", Premium = true },
+            new PageWorkerTypeView { Name = "worker", Running = 2, Max = 2, Model = "spark", IsDefault = true },
+            new PageWorkerTypeView { Name = "Sonnet", Running = 0, Max = 1, Agent = "claude", Model = "claude-sonnet-5-5", Endpoint = "http://claude.local:8080/v1", MetricsUrl = "http://claude.local:9090/metrics" },
+            new PageWorkerTypeView { Name = "Opus", Running = 0, Max = 0, Agent = "claude", Model = "claude-opus-5-5" },
         ],
         Slots =
         [

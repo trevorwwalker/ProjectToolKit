@@ -24,11 +24,24 @@ public static class Agents
     public static AgentFormat GuessFormat(string args) =>
         Text.IsMatch(args, "stream-json") ? AgentFormat.Claude : GuessDefaultFormat(args);
 
+    /// <summary>
+    /// A named agent's format from its cli and args (AG-2): <c>codex</c> when the cli is <c>codex</c>
+    /// and the args ask for <c>--json</c>, else <see cref="GuessFormat(string)"/>.
+    /// </summary>
+    public static AgentFormat GuessFormat(string cli, string args) =>
+        Text.IsMatch(Path.GetFileNameWithoutExtension(cli), "^codex$") && Text.IsMatch(args, @"(^|\s)--json(\s|$)")
+            ? AgentFormat.Codex
+            : Text.IsMatch(Path.GetFileNameWithoutExtension(cli), "^opencode$") && Text.IsMatch(args, @"--format[= ]json(\s|$)")
+                ? AgentFormat.OpenCode
+                : GuessFormat(args);
+
     /// <summary>What the file's <c>format</c> means; anything unknown reads as plain text (G-1).</summary>
     public static AgentFormat FormatOf(string? format) => format?.ToLowerInvariant() switch
     {
         "copilot" => AgentFormat.Copilot,
         "claude" => AgentFormat.Claude,
+        "codex" => AgentFormat.Codex,
+        "opencode" => AgentFormat.OpenCode,
         _ => AgentFormat.Text,
     };
 

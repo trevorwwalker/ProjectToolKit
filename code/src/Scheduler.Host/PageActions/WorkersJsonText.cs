@@ -12,9 +12,8 @@ public static class WorkersJsonText
 {
     private const string About =
         "The scheduler's workers: how many there are, and each one's name, model server (an OpenAI-style /v1 endpoint), "
-        + "model, metrics address and the categories it takes (letters from categories.json or lanes.json; empty means any category), the agent it runs "
-        + "(an entry of scheduler.json's agents; empty means its worker section), and whether it is premium (true: it takes "
-        + "only cards that ask for it with Worker: premium). An empty field uses the worker section of scheduler.json. "
+        + "model, metrics address and the categories it takes (letters from categories.json or lanes.json; empty means any category), and the agent it runs "
+        + "(an entry of scheduler.json's agents; empty means its worker section). An empty field uses the worker section of scheduler.json. "
         + "The scheduler reads this file from main; changes made from its page are committed and pushed for you. "
         + "Which workers are enabled is kept on the scheduler's PC, not here.";
 
@@ -36,8 +35,7 @@ public static class WorkersJsonText
             lines.Add(
                 $"    \"{slot}\": {{ \"name\": {Quote(w?.Name ?? "")}, \"agent\": {Quote(w?.Agent ?? "")},"
                 + $" \"endpoint\": {Quote(w?.Endpoint ?? "")}, \"model\": {Quote(w?.Model ?? "")},"
-                + $" \"metricsUrl\": {Quote(w?.MetricsUrl ?? "")}, \"lanes\": {Quote(w?.Categories ?? "")},"
-                + $" \"premium\": {(w is { Premium: true } ? "true" : "false")} }}{comma}");
+                + $" \"metricsUrl\": {Quote(w?.MetricsUrl ?? "")}, \"lanes\": {Quote(w?.Categories ?? "")} }}{comma}");
         }
 
         lines.AddRange(["  }", "}", ""]);

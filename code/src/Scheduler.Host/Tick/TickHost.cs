@@ -678,11 +678,12 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
 
             var args = WorkerArgs.For(config, agent, jobs, effective.Model, effective.Endpoint, files.Pointer, config.WorkerWeb);
             var title = WorkerCommandLine.Title(config.Project, slot, card.Name);
-            var arguments = WorkerCommandLine.Arguments(title, agent.Cli, args, files.RawLog);
+            var arguments = WorkerCommandLine.Arguments(title, agent.Cli, args, files.RawLog, closeStdin: agent.Format is AgentFormat.Codex or AgentFormat.OpenCode);   // AG-17
             var commandLine = arguments.StartsWith("/c ", StringComparison.Ordinal) ? arguments[3..] : arguments;
 
             var env = WorkerEnv.Build(config, agent, effective, jobs, slot, null, _p.Probe, _p.Log,
-                locks: locks ? new WorkerLocks(card.Name, LockExe, WorkerFiles.HooksDir(config.LogDir)) : null);   // DL-18, 1020-B
+                locks: locks ? new WorkerLocks(card.Name, LockExe, WorkerFiles.HooksDir(config.LogDir)) : null,   // DL-18, 1020-B
+                worktree: worktree);   // AG-19
             var environment = new Dictionary<string, string?>(Scheduler.Core.Contracts.Text.Comparer);
             foreach (var name in env.Removed)
             {
@@ -823,7 +824,7 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
                 Running = tick.Running.Values.Count(w => Scheduler.Core.Contracts.Text.Same(w.Type, candidate.Name)),
                 Model = e.Model,
                 ModelNames = models.GetValueOrDefault(e.Model) ?? [],
-                Premium = e.Premium,
+                IsDefault = pool.IsDefault(candidate.Name),
                 Endpoint = e.Endpoint,
                 Agent = candidate.Agent,
                 Slots = candidate.Slots,

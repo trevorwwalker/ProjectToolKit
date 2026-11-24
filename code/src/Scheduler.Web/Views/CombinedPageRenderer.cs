@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Scheduler.Core.Accounting;
 using Scheduler.Core.Contracts;
+using Scheduler.Core.Views;
 using Scheduler.Core.WebContract;
 using Scheduler.Web.Server;
 
@@ -46,14 +47,12 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
     /// <summary>The pool page from a pool snapshot: its projects' pages plus the pool part (section 4).</summary>
     public string Render(PoolPageSnapshot pool, bool remote, bool controlsAllowed) => Render(pool, remote, controlsAllowed, null);
 
-    /// <summary>VW-2: the pool page in <paramref name="view"/> (<c>plans</c>; no or an unknown view is Workers).</summary>
+    /// <summary>VW-2: the pool page in <paramref name="view"/> (a name of <see cref="ViewList"/>; no or an unknown view is the first of them).</summary>
     public string Render(PoolPageSnapshot pool, bool remote, bool controlsAllowed, string? view)
     {
         ArgumentNullException.ThrowIfNull(pool);
-        return Render(pool.Pages, PoolTheme, remote, controlsAllowed, pool, IsPlans(view));
+        return Render(pool.Pages, PoolTheme, remote, controlsAllowed, pool, SelectedView(view), view);
     }
-
-    private static bool IsPlans(string? view) => string.Equals(view?.Trim(), "plans", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// The combined page for a set of projects, with no pool part (no weights or shares).
@@ -63,11 +62,13 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
     /// <param name="remote">Whether the reader is on another PC.</param>
     /// <param name="controlsAllowed">Whether this reader's buttons work; when not, they are disabled with the reason.</param>
     public string Render(IReadOnlyList<PageSnapshot> snapshots, string theme, bool remote, bool controlsAllowed) =>
-        Render(snapshots, theme, remote, controlsAllowed, null, false);
+        Render(snapshots, theme, remote, controlsAllowed, null, DefaultView);
 
-    private string Render(IReadOnlyList<PageSnapshot> snapshots, string theme, bool remote, bool controlsAllowed, PoolPageSnapshot? pool, bool plans)
+    private string Render(IReadOnlyList<PageSnapshot> snapshots, string theme, bool remote, bool controlsAllowed, PoolPageSnapshot? pool, string view, string? address = null)
     {
         ArgumentNullException.ThrowIfNull(snapshots);
+        var plans = view == PlansViewName;   // 1129-C: the drawing below is still by view; the name drives the dropdown.
+        var gantt = view == GanttViewName;
 
         var projects = snapshots.Where(snapshot => snapshot is not null).ToList();
         var names = projects.Select(snapshot => snapshot.Project).ToList();
@@ -78,7 +79,7 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
           .Append("<title>Switchyard</title>")
           .Append("<meta name='page-version' content='").Append(PageVersion.Of(projects)).Append("'>")
           .Append("<meta name='build-version' content='").Append(System.Net.WebUtility.HtmlEncode(projects.Select(p => p.Version).FirstOrDefault(v => !string.IsNullOrEmpty(v)) ?? "")).Append("'>")
-          .Append(plans ? "<meta name='views-version' content='" + ProjectViews.VersionOf(pool?.Views ?? []) + "'>" : "")
+          .Append(plans || gantt ? "<meta name='views-version' content='" + ProjectViews.VersionOf(pool?.Views ?? []) + "'>" : "")
           .Append(Themes.Head())
           .Append(FilterScript)
           .Append("</head><body")
@@ -87,16 +88,38 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
         // 520-A: no top bar here either; what it carried is in the Projects window's title bar.
         // 500-C: the same columns as the single page (PageRenderer), laid out by the common style.
         // 1098-C: the range rules ride inside the desk, which the live feed replaces whole.
-        sb.Append("<div class='desk' id='desk'>").Append(RangeStyle()).Append(ProjectChipStyle()).Append("<div class='col' id='col-main'>");
+        // 1162-C: the Plans view takes the full-width desk the Gantt view had (the class was renamed from
+        // gantt-desk, which is why it is shared rather than copied).
+        sb.Append(gantt || plans ? "<div class='desk wide-desk' id='desk'>" : "<div class='desk' id='desk'>").Append(RangeStyle()).Append(ProjectChipStyle()).Append("<div class='col' id='col-main'>");
         // 1004-C (the developer, 2026-11-20): one window holds the Projects table, the statistics and
         // the Worker types; the running workers' windows follow Waiting on you, as on the single page.
-        AppendProjects(sb, projects, theme, remote, controlsAllowed, pool, plans);
+        AppendProjects(sb, projects, theme, remote, controlsAllowed, pool, view);
         if (plans)
         {
             // 1114-C: the Plans view shows only its own window under the title bar (no Waiting on you, no Projects
             // table), and no HTML of the other view.
+            // 1127-C: unfinished plans on the left, completed ones on the right (below it on a narrow screen).
+            sb.Append("<div class='plans-pair'>");
             Window(sb, "Plans", PlansView.Html(pool?.Views ?? [], projects, names), "", "id='w-plans' data-view='plans'");
-            sb.Append("</div></div>").Append(PageScript.Html).Append("</body></html>");
+            Window(sb, "Completed plans", PlansView.Html(pool?.Views ?? [], projects, names, completed: true), "", "id='w-plans-completed' data-view='plans-completed'");
+            sb.Append("</div></div></div>").Append(PageScript.Html).Append("</body></html>");
+            return sb.ToString();
+        }
+
+        if (gantt)
+        {
+            // 1132-C: two windows side by side under the title bar, the timeline wide and the Details narrow
+            // (wrapping below it on a narrow screen); one range and one grouping, from the address.
+            var views = pool?.Views ?? [];
+            var range = GanttView.RangeKey(Option(address, "range"));
+            var groupBy = GanttView.GroupBy(Option(address, "group"));
+            var now = pool?.Built ?? (projects.Count == 0 ? DateTimeOffset.Now : projects.Max(p => p.Built));
+            var groupName = groupBy == GanttGroupBy.Plan ? GanttView.PlanGroup : GanttView.CategoryGroup;
+            sb.Append("<div class='gantt-pair'>");
+            Window(sb, "Gantt", GanttView.Html(views, projects, names, range, groupBy, now), GanttView.Bar(range, groupBy),
+                "id='w-gantt' data-view='gantt' data-range='" + range + "' data-group='" + groupName + "'");
+            Window(sb, "Details", GanttView.DetailsHtml(views, projects, names, range, groupBy, now), "", "id='w-gantt-details' data-view='gantt-details'");
+            sb.Append("</div></div></div>").Append(PageScript.Html).Append("</body></html>");
             return sb.ToString();
         }
 
@@ -145,8 +168,8 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
 
     // 1004-C: the title bar's buttons act on every project and every worker - Pause all or Resume
     // all (one button, by state), Drain and exit, Stop all and exit - then the project dropdown
-    // (MP-P2), the theme menu and the newest tick.
-    private string PoolBar(IReadOnlyList<PageSnapshot> projects, bool controlsAllowed, bool plans)
+    // (MP-P2), the views dropdown (1129-C, VW-2), the theme menu and the newest tick.
+    private string PoolBar(IReadOnlyList<PageSnapshot> projects, bool controlsAllowed, string view)
     {
         var newest = projects.Count == 0 ? DateTimeOffset.MinValue : projects.Max(snapshot => snapshot.Built);
         var anyRunning = projects.Any(snapshot => snapshot.State.State == SchedulerState.Running);
@@ -156,16 +179,85 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
                 : Post("/resume", [], "Resume all", "No project is taking cards: click to start workers in all of them again.", controlsAllowed, "pressed ok"))
             .Append(Post("/drain", [], "Drain and exit", "Every project starts nothing new; running cards finish, then the scheduler exits.", controlsAllowed, "bad"))
             .Append(Post("/stopall", [], "Stop all and exit", "Ask every project's workers to stop cleanly, then end the scheduler.", controlsAllowed, "bad"));
-        return sb.Append(ProjectSelector(projects)).Append(ViewSwitch(plans)).Append(Themes.Selector())
+        return sb.Append(ProjectSelector(projects)).Append(ViewSwitch(view)).Append(Themes.Selector())
             .Append("<span class='updated'>last update ").Append(newest.ToString("HH:mm:ss")).Append("</span>")
             .ToString();
     }
 
-    // VW-2: Workers and Plans, the current one pressed; the view is in the address.
-    private static string ViewSwitch(bool plans) =>
-        "<span class='vsw'>"
-        + $"<a href='/?view=workers' class='{(plans ? "" : "pressed")}'{(plans ? "" : " aria-current='page'")} title='Workers: the running workers and the queue'>Workers</a>"
-        + $"<a href='/?view=plans' class='{(plans ? "pressed" : "")}'{(plans ? " aria-current='page'" : "")} title='Plans: each plan, its steps and cards'>Plans</a></span>";
+    // 1129-C (the developer, 2026-11-22 22:52): the page's views, named in this one list. The title bar's
+    // dropdown, the address's ?view= and the view a bare "/" remembers are all made from it, so the Gantt
+    // of a later card is one more entry here and nothing else has to know about it.
+    private const string WorkersViewName = "workers";
+    private const string PlansViewName = "plans";
+    private const string GanttViewName = "gantt";
+
+    private static readonly (string Name, string Label, string Title)[] ViewList =
+    [
+        (WorkersViewName, "Workers", "Workers: the running workers and the queue"),
+        (PlansViewName, "Plans", "Plans: each plan, its steps and cards"),
+        (GanttViewName, "Gantt", "Gantt: the past and running work on a timeline, with Details"),
+    ];
+
+    // The view of a bare address with nothing remembered: the first of the list.
+    private static string DefaultView => ViewList[0].Name;
+
+    // The address's view, matched against the list; no or an unknown view is the default (VW-2).
+    private static string SelectedView(string? view)
+    {
+        // 1132-C: the router may hand the view with its own options after a '?' (gantt?range=3h&group=plan).
+        var want = view?.Split('?', 2)[0].Trim();
+        foreach (var entry in ViewList)
+        {
+            if (string.Equals(entry.Name, want, StringComparison.OrdinalIgnoreCase))
+            {
+                return entry.Name;
+            }
+        }
+
+        return DefaultView;
+    }
+
+    // 1132-C: one option of the view the router handed over after its name ("gantt?range=3h&group=plan"), or null.
+    private static string? Option(string? view, string name)
+    {
+        var at = view?.IndexOf('?') ?? -1;
+        if (at < 0)
+        {
+            return null;
+        }
+
+        foreach (var part in view![(at + 1)..].Split('&'))
+        {
+            var eq = part.IndexOf('=');
+            if (eq > 0 && string.Equals(part[..eq], name, StringComparison.OrdinalIgnoreCase))
+            {
+                return Uri.UnescapeDataString(part[(eq + 1)..]);
+            }
+        }
+
+        return null;
+    }
+
+    // 1129-C (VW-2): one dropdown where the Workers and Plans buttons were, after the project dropdown
+    // and before the theme menu; the current view is its selected option. The page script goes to
+    // /?view=<name> when the choice changes, as the buttons did.
+    private static string ViewSwitch(string view)
+    {
+        var current = SelectedView(view);
+        var sb = new StringBuilder("<select id='viewsel' title='Which view of the pool this page shows' aria-label='View' style='font: inherit'>");
+        foreach (var entry in ViewList)
+        {
+            sb.Append("<option value='").Append(Enc(entry.Name)).Append("'");
+            if (entry.Name == current)
+            {
+                sb.Append(" selected");
+            }
+
+            sb.Append(" title='").Append(Enc(entry.Title)).Append("'>").Append(Enc(entry.Label)).Append("</option>");
+        }
+
+        return sb.Append("</select>").ToString();
+    }
 
     // MP-P2 (developer, 2026-11-20): one dropdown for the whole page, shown only while two or more
     // projects are active - with one the page looks as today. All projects, then each project by name;
@@ -193,8 +285,9 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
     // stays). A project's notice follows its row. Under the table the statistics, which follow the
     // dropdown, and the pool's Worker types panel, which does not. The title bar carries what the
     // page's top bar used to (520-A) and the buttons for every project.
-    private void AppendProjects(StringBuilder sb, IReadOnlyList<PageSnapshot> projects, string theme, bool remote, bool controlsAllowed, PoolPageSnapshot? pool, bool plans = false)
+    private void AppendProjects(StringBuilder sb, IReadOnlyList<PageSnapshot> projects, string theme, bool remote, bool controlsAllowed, PoolPageSnapshot? pool, string viewName = WorkersViewName)
     {
+        var plans = viewName != WorkersViewName;
         var starting = _starting().Where(n => !projects.Any(p => string.Equals(p.Project, n, StringComparison.OrdinalIgnoreCase))).ToList();
         var names = projects.Select(snapshot => snapshot.Project).Concat(starting).ToList();
         var notices = new StringBuilder();
@@ -277,7 +370,7 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
             sb,
             version.Length == 0 ? "Switchyard" : $"Switchyard v{version}",
             body.ToString(),
-            PoolBar(projects, controlsAllowed, plans),
+            PoolBar(projects, controlsAllowed, viewName),
             "id='w-projects' data-view='projects' style='order: -2'",
             headExtra: PoolTitle(projects, theme, remote, controlsAllowed));
     }
@@ -766,7 +859,7 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
                 EffectiveModel = type.EffectiveModel,
                 Endpoint = type.Endpoint,
                 MetricsUrl = type.MetricsUrl,
-                Premium = type.Premium,
+                IsDefault = type.IsDefault,
                 Projects = type.Projects,
                 Running = type.RunningByProject.Values.Sum(),
             })];
@@ -821,7 +914,6 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
         // the card links to its file view in its own project.
         var title = WorkerChip(project, names) + " " + Enc((gone ? type + " (removed)" : type)
             + (string.IsNullOrEmpty(model) ? "" : $" ({model})")
-            + (slot.Premium ? ", premium" : "")
             + " - ") + CardLink(slot.Card, project);
 
         var body = new StringBuilder();
@@ -1152,7 +1244,11 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
     /// project chips of MP-P9/VW-4 are not its business: those rules ride inside the desk
     /// (<see cref="ProjectChipStyle"/>), so a page keeps them in step with the markup they govern.
     /// </summary>
-    internal const string FilterScript = """
+    // The view names as a JavaScript array literal, made from ViewList (1129-C), so the page's dropdown,
+    // the address and what the browser remembers all read the same one list.
+    private static string ViewNames => "[" + string.Join(",", ViewList.Select(v => "'" + v.Name + "'")) + "]";
+
+    internal static readonly string FilterScript = $$"""
         <style>.projhide { display: none !important; }
         .statsrange { margin-bottom: 2px; }
         body:not([data-projsel]) .projonly, body[data-projsel='all'] .projonly, body[data-projsel]:not([data-projsel='all']) .allonly { display: none; }
@@ -1163,20 +1259,37 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
         #w-projects button.checking[disabled] { opacity: 1; cursor: default; }
         @media (min-width: 1400px) { #col-side { top: 0; max-height: 100vh; } }
         .wchip { display: inline-block !important; }
-        .vsw a { display: inline-block; margin: 0 2px; padding: 1px 8px; border: 1px solid currentColor; border-radius: 3px; text-decoration: none; color: inherit; }
-        .vsw a.pressed { font-weight: bold; text-decoration: underline; }
         .plans-project { margin-bottom: 1em; } .plan { margin: 0.6em 0; } .plan-bar { font-family: monospace; }
         .plan-step { margin-left: 1.5em; } .plan-step ul { list-style: none; margin: 0.2em 0 0.4em 1em; padding: 0; }
         .plan-archived { margin: 0.6em 0; } .pm { display: inline-block; width: 1.3em; text-align: center; }
+        .pm-click { cursor: pointer; } .pm-click .pm { cursor: pointer; } .pm-set { color: var(--accent, #36c); font-size: 0.7em; vertical-align: super; }
         .pm-ok { color: var(--ok, #2a2); font-weight: bold; } .pm-bad { color: var(--bad, #c22); font-weight: bold; }
-        .plan summary { cursor: pointer; } .plan-card { list-style: none; margin: 0.15em 0; }</style>
+        .plan summary { cursor: pointer; } .plan-card { list-style: none; margin: 0.15em 0; }
+        @media (min-width: 1400px) { .desk.wide-desk { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "main"; } }
+        .plans-pair, .gantt-pair { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+        #w-gantt, #w-plans { flex: 3 1 640px; min-width: 0; } #w-gantt-details, #w-plans-completed { flex: 1 1 300px; min-width: 0; }
+        .gantt .grow { display: flex; align-items: center; min-height: 1.5em; border-bottom: 1px solid var(--line); cursor: pointer; }
+        .gantt .glabel { flex: 0 0 34%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 6px; }
+        .gantt .gtrack { flex: 1 1 auto; position: relative; height: 1.2em; min-width: 0; } .gantt .gsvg { width: 100%; height: 100%; display: block; }
+        .gantt .gcal { height: 1.4em; } .gantt .gtick, .gantt .gnowtag { position: absolute; top: 0; transform: translateX(-50%); font-size: 0.8em; white-space: nowrap; }
+        .gantt .gtick { color: var(--muted); } .gantt .gnowtag { color: var(--bad); }
+        .gantt .gaxis { cursor: default; position: sticky; top: 0; background: var(--panel, inherit); z-index: 1; }
+        .gantt details > details, .gantt details > .gcard { margin-left: 1em; } .gantt summary { list-style: none; } .gantt summary::-webkit-details-marker { display: none; }
+        .gantt summary .glabel::before { content: 'B8  '; } .gantt details[open] > summary .glabel::before { content: 'BE  '; }
+        .gantt details[open] > summary .gsum rect { display: none; }
+        .gantt .gplan { font-size: 0.8em; border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; margin-left: 4px; }
+        .gantt .gsel { outline: 1px solid var(--accent); }
+        #w-gantt-details .gdtab th, #w-gantt-details .gdruns th { text-align: left; padding-right: 8px; } .gdsub { margin-top: 0.6em; font-weight: bold; }</style>
         <script>
-        // VW-2: the browser remembers the last view for a bare address; the address names it otherwise.
+        // VW-2 (1129-C): the browser remembers the last view for a bare address; the address names it
+        // otherwise. The names are the renderer's one list of views, so a new view needs no change here.
+        var viewNames = {{ViewNames}};
+        function knownView(v) { v = String(v == null ? '' : v).toLowerCase(); for (var i = 0; i < viewNames.length; i++) { if (viewNames[i] === v) return v; } return viewNames[0]; }
         (function () {
           try {
             var m = /[?&]view=([^&]*)/.exec(location.search);
-            if (m) localStorage.setItem('ptk-view', m[1] === 'plans' ? 'plans' : 'workers');
-            else if (location.pathname === '/' && !location.search && localStorage.getItem('ptk-view') === 'plans') location.replace('/?view=plans');
+            if (m) localStorage.setItem('ptk-view', knownView(decodeURIComponent(m[1])));
+            else if (location.pathname === '/' && !location.search) { var p = knownView(localStorage.getItem('ptk-view')); if (p !== viewNames[0]) location.replace('/?view=' + p); }
           } catch (x) {}
         })();
         var projKey = 'ptk-project';

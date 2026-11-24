@@ -39,10 +39,11 @@ public class ProjectWorkersJsonTests
           "about": "{{WorkerTypesJson.About}}",
           "pool": {
             "maxWorkers": 4,
+            "defaultWorker": "worker",
             "types": {
-              "worker": { "max": 2, "agent": "", "model": "", "endpoint": "", "metricsUrl": "", "premium": false },
-              "Sonnet": { "max": 1, "agent": "claude", "model": "claude-sonnet-5-5", "endpoint": "", "metricsUrl": "", "premium": true },
-              "Opus": { "max": 1, "agent": "claude", "model": "claude-opus-5-5", "endpoint": "", "metricsUrl": "", "premium": true }
+              "worker": { "max": 2, "agent": "", "model": "", "endpoint": "", "metricsUrl": "" },
+              "Sonnet": { "max": 1, "agent": "claude", "model": "claude-sonnet-5-5", "endpoint": "", "metricsUrl": "" },
+              "Opus": { "max": 1, "agent": "claude", "model": "claude-opus-5-5", "endpoint": "", "metricsUrl": "" }
             }
           }
         }
@@ -80,7 +81,7 @@ public class ProjectWorkersJsonTests
     }
 
     // WT-C12: the pool says what the four slots said - worker (cap 2), Sonnet and Opus
-    // (premium, cap 1 each) - and the total is still four. Nothing the slots described changed.
+    // (cap 1 each), worker the default - and the total is still four. Nothing the slots described changed.
     [Fact]
     public void WorkerTypes_Migration_ThisProjectsWorkersJson_GivesWorkerSonnetOpus()
     {
@@ -94,19 +95,20 @@ public class ProjectWorkersJsonTests
         Assert.Equal(["worker", "Sonnet", "Opus"], [.. pool.Types.Select(t => t.Name)]);
         Assert.Equal([.. migrated.Types.Select(t => t.Max)], [.. pool.Types.Select(t => t.Max)]);
         Assert.Equal([2, 1, 1], [.. pool.Types.Select(t => t.Max)]);
-        Assert.Equal([.. migrated.Types.Select(t => (t.Agent, t.Model, t.Endpoint, t.MetricsUrl, t.Premium))],
-            [.. pool.Types.Select(t => (t.Agent, t.Model, t.Endpoint, t.MetricsUrl, t.Premium))]);
+        Assert.Equal([.. migrated.Types.Select(t => (t.Agent, t.Model, t.Endpoint, t.MetricsUrl))],
+            [.. pool.Types.Select(t => (t.Agent, t.Model, t.Endpoint, t.MetricsUrl))]);
+        Assert.Equal(migrated.DefaultType, pool.DefaultType); // 1146-A
         var worker = pool.Types[0];
-        Assert.False(worker.Premium);
+        Assert.Equal("worker", pool.DefaultType);
         Assert.Equal("", worker.Agent); // WT-C3: empty is scheduler.json's worker section
         Assert.Equal("", worker.Model);  // so spark still comes from there, as the slots said
 
         foreach (var (name, model) in new[] { ("Sonnet", "claude-sonnet-5-5"), ("Opus", "claude-opus-5-5") })
         {
-            var premium = Assert.Single(pool.Types, t => Text.Same(t.Name, name));
-            Assert.True(premium.Premium);
-            Assert.Equal("claude", premium.Agent);
-            Assert.Equal(model, premium.Model);
+            var claude = Assert.Single(pool.Types, t => Text.Same(t.Name, name));
+            Assert.False(pool.IsDefault(name));
+            Assert.Equal("claude", claude.Agent);
+            Assert.Equal(model, claude.Model);
         }
     }
 

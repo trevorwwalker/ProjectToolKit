@@ -362,7 +362,7 @@ public sealed class AccountingCsv(string logDir, IClock clock, ISchedulerLog? lo
     }
 
     /// <summary>Splits one CSV line, honouring the quoted stop reason (ACCT-1).</summary>
-    private static string[] Split(string line)
+    internal static string[] Split(string line)
     {
         var parts = new List<string>();
         var current = new StringBuilder();

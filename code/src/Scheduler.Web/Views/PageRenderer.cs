@@ -460,8 +460,7 @@ public sealed class PageRenderer(
             // after it completes the line the design asks for.
             var model = string.IsNullOrEmpty(slot.ModelShort) ? slot.Model : slot.ModelShort;
             var title = $"{TypeName(slot, snapshot)} - slot {s}"
-                + (string.IsNullOrEmpty(model) ? "" : $" ({model})")
-                + (slot.Premium ? ", premium" : "");
+                + (string.IsNullOrEmpty(model) ? "" : $" ({model})");
             string bar;
             string headExtra;
 
@@ -638,7 +637,7 @@ public sealed class PageRenderer(
         var key = string.IsNullOrEmpty(project) ? "" : "-" + Url(project);
 
         var table = new StringBuilder()
-            .Append("<tr><th>Type</th><th>Running</th><th>Cap</th><th>Agent</th><th>Model</th><th>Endpoint</th><th>Metrics</th><th>Premium</th>")
+            .Append("<tr><th>Type</th><th>Running</th><th>Cap</th><th>Agent</th><th>Model</th><th>Endpoint</th><th>Metrics</th><th>Default</th>")
             .Append(pool ? "<th>Projects</th>" : "")
             .Append("<th></th></tr>");
         for (var n = 0; n < types.Count; n++)
@@ -683,8 +682,8 @@ public sealed class PageRenderer(
         string.Join(", ", types.Select(type => $"{type.Name} {type.Running} of {type.Max}"))
         + (types.Count > 0 ? " - " : "") + $"max {total} active";
 
-    // One row of the panel: name, "running of max", cap, agent, model, endpoint, metrics, premium,
-    // areas, and projects in a pool. Every field posts a value (premium is a choice, not a box) so
+    // One row of the panel: name, "running of max", cap, agent, model, endpoint, metrics, default (1147-C: a radio),
+    // areas, and projects in a pool. Every field posts a value so
     // the route can read the rows as lists of the same length.
     private static string TypeRow(PageWorkerTypeView type, int n, string dis, bool pool, IReadOnlyList<string> agents, string key)
     {
@@ -716,10 +715,8 @@ public sealed class PageRenderer(
             .Append(dis).Append("></td>")
             .Append("<td><input name='wendpoint' value='").Append(Enc(type.Endpoint)).Append("' size='18' placeholder='as in scheduler.json'").Append(dis).Append("></td>")
             .Append("<td><input name='wmetrics' value='").Append(Enc(type.MetricsUrl)).Append("' size='18' placeholder='as in scheduler.json'").Append(dis).Append("></td>")
-            .Append("<td><select name='wpremium'").Append(dis).Append(">")
-            .Append("<option value=''").Append(type.Premium ? "" : " selected").Append(">no</option>")
-            .Append("<option value='1'").Append(type.Premium ? " selected" : "").Append(">yes</option>")
-            .Append("</select></td>");
+            .Append("<td><input type='radio' name='wdefault' value='").Append(Enc(type.Name)).Append("'").Append(type.IsDefault ? " checked" : "")
+            .Append(" title='Cards with no Worker: line go to this type'").Append(dis).Append("></td>");
 
         if (pool)
         {

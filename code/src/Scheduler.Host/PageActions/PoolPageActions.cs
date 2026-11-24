@@ -23,6 +23,9 @@ public sealed class PoolPageActionParts
 
     /// <summary>1033-C: a project's workspaces are written to the pool file (project, count); false when they could not be. Null: not offered.</summary>
     public Func<string, int, bool>? WriteWorkspaces { get; init; }
+
+    /// <summary>1146-A: the pool's worker types now, whose default a Save keeps when it names none. Null: the first type.</summary>
+    public Func<WorkerPool>? Pool { get; init; }
 }
 
 /// <summary>
@@ -117,7 +120,11 @@ public sealed class PoolPageActions(PoolPageActionParts parts) : IPoolPageAction
     }
 
     /// <summary>MP-P7, WT-C8: the Worker types panel's Save writes the pool file's <c>pool</c> section; the next tick re-reads it (MP-C7).</summary>
-    public ActionResult SaveWorkerTypes(int maxWorkers, IReadOnlyList<PageWorkerTypeView> types)
+    public ActionResult SaveWorkerTypes(int maxWorkers, IReadOnlyList<PageWorkerTypeView> types) =>
+        SaveWorkerTypes(maxWorkers, types, "");
+
+    /// <summary>1146-A: the Save with the pool's <c>defaultWorker</c> (WT-3); see <see cref="WorkerTypeDefault.Choose"/>.</summary>
+    public ActionResult SaveWorkerTypes(int maxWorkers, IReadOnlyList<PageWorkerTypeView> types, string defaultWorker)
     {
         if (maxWorkers < 1 || types.Count == 0)
         {
@@ -133,9 +140,9 @@ public sealed class PoolPageActions(PoolPageActionParts parts) : IPoolPageAction
         }
 
         var names = types.Select(t => t.Name.Trim()).ToList();
-        if (names.Any(n => n.Length == 0 || Text.Same(n, "premium") || n.All(char.IsDigit)) || names.Distinct(Text.Comparer).Count() != names.Count)
+        if (names.Any(n => n.Length == 0 || n.All(char.IsDigit)) || names.Distinct(Text.Comparer).Count() != names.Count)
         {
-            return ActionResult.Failed("worker types not saved: a type name is empty, repeated, Premium or only digits");
+            return ActionResult.Failed("worker types not saved: a type name is empty, repeated or only digits");
         }
 
         var pool = new WorkerPool
@@ -151,11 +158,20 @@ public sealed class PoolPageActions(PoolPageActionParts parts) : IPoolPageAction
                     Model = t.Model,
                     Endpoint = t.Endpoint,
                     MetricsUrl = t.MetricsUrl,
-                    Premium = t.Premium,
                     Projects = t.Projects,
                 }),
             ],
         };
+        var rows = types
+            .Select(t => (Name: t.Name.Trim(), Original: t.OriginalName.Trim().Length > 0 ? t.OriginalName.Trim() : t.Name.Trim()))
+            .ToList();
+        var chosen = WorkerTypeDefault.Choose(rows, parts.Pool?.Invoke().DefaultType ?? "", defaultWorker, out var refusal);
+        if (chosen is null)
+        {
+            return ActionResult.Failed(refusal);
+        }
+
+        pool = pool with { DefaultWorker = chosen };
         var section = (JsonNode.Parse(WorkerTypesJson.BuildPool(pool)) as JsonObject)?["pool"];
         if (section is null || !parts.WritePool(section.ToJsonString()))
         {

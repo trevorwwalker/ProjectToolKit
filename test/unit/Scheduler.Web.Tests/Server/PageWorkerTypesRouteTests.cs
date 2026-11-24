@@ -59,10 +59,10 @@ public sealed class PageWorkerTypesRouteTests
 
         const string Body =
             "maxWorkers=4"
-            + "&wname=worker&wmax=2&wagent=copilot&wmodel=spark&wendpoint=http%3A%2F%2Fspark.local%3A18400%2Fv1&wmetrics=http%3A%2F%2Fspark.local%3A9090%2Fmetrics&wpremium=&wareas=abc&wprojects="
-            + "&wname=Sonnet&wmax=1&wagent=claude&wmodel=claude-sonnet-5-5&wendpoint=&wmetrics=&wpremium=1&wareas=&wprojects=Kestrel%2C+Poolkit"
-            + "&wname=Opus&wmax=0&wagent=&wmodel=&wendpoint=&wmetrics=&wpremium=1&wareas=&wprojects="
-            + "&wname=&wmax=&wagent=&wmodel=&wendpoint=&wmetrics=&wpremium=&wareas=&wprojects=";
+            + "&wname=worker&wmax=2&wagent=copilot&wmodel=spark&wendpoint=http%3A%2F%2Fspark.local%3A18400%2Fv1&wmetrics=http%3A%2F%2Fspark.local%3A9090%2Fmetrics&wareas=abc&wprojects="
+            + "&wname=Sonnet&wmax=1&wagent=claude&wmodel=claude-sonnet-5-5&wendpoint=&wmetrics=&wareas=&wprojects=Kestrel%2C+Poolkit"
+            + "&wname=Opus&wmax=0&wagent=&wmodel=&wendpoint=&wmetrics=&wareas=&wprojects="
+            + "&wname=&wmax=&wagent=&wmodel=&wendpoint=&wmetrics=&wareas=&wprojects=";
 
         var answer = await web.PostFetchAsync("/worker-types", Body);
 
@@ -70,9 +70,9 @@ public sealed class PageWorkerTypesRouteTests
         Assert.Equal(1, web.Actions.CallCount("/worker-types"));
         Assert.Equal(
             "4"
-            + "|worker:2:copilot:spark:http://spark.local:18400/v1:http://spark.local:9090/metrics:no:"
-            + ";Sonnet:1:claude:claude-sonnet-5-5:::yes:Kestrel,Poolkit"
-            + ";Opus:0:::::yes:",
+            + "|worker:2:copilot:spark:http://spark.local:18400/v1:http://spark.local:9090/metrics:"
+            + ";Sonnet:1:claude:claude-sonnet-5-5:::Kestrel,Poolkit"
+            + ";Opus:0:::::",
             web.Actions.LastWorkerTypes);
     }
 
@@ -107,9 +107,31 @@ public sealed class PageWorkerTypesRouteTests
 
         Assert.Equal(HttpStatusCode.Accepted, answer.StatusCode);
         Assert.Equal(
-            "4|worker:2:::::no:;Sonnet:1:::::no:;Opus:1:::::no:",
+            "4|worker:2:::::;Sonnet:1:::::;Opus:1:::::",
             web.Actions.LastWorkerTypes);
         Assert.Equal("worker;Sonnet;", web.Actions.LastWorkerTypesOriginal);
+    }
+
+    /// <summary>1147-C: the Save posts the chosen Default radio as the pool's defaultWorker.</summary>
+    [Fact]
+    public async Task Page_WorkerTypes_SavePostsTheChosenDefault()
+    {
+        using var web = new WebHarness();
+
+        await web.PostFetchAsync("/worker-types", "maxWorkers=4&wname=worker&wmax=2&wname=Sonnet&wmax=1&wdefault=Sonnet");
+
+        Assert.Equal("Sonnet", web.Actions.LastDefaultWorker);
+    }
+
+    /// <summary>1147-C: a Save that names no default leaves it to the server ("" keeps the current one).</summary>
+    [Fact]
+    public async Task Page_WorkerTypes_SaveWithNoRadioNamesNoDefault()
+    {
+        using var web = new WebHarness();
+
+        await web.PostFetchAsync("/worker-types", "maxWorkers=4&wname=worker&wmax=2");
+
+        Assert.Equal("", web.Actions.LastDefaultWorker);
     }
 
     // WT-9: the Resume beside an out-of-quota agent names that agent.

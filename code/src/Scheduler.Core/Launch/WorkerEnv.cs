@@ -19,6 +19,12 @@ public static class WorkerEnv
     /// <summary>The project's own git folder (<c>&lt;repo&gt;/.git</c>); the lock hooks act only in a repository whose common git dir is this.</summary>
     public const string RepoVariable = "PTK_REPO";
 
+    /// <summary>The variable that holds OpenCode's whole config as JSON (agents.md section 3).</summary>
+    public const string OpenCodeConfig = "OPENCODE_CONFIG_CONTENT";
+
+    /// <summary>OpenCode reads Claude's CLAUDE.md and skills unless this is set.</summary>
+    public const string OpenCodeDisableClaude = "OPENCODE_DISABLE_CLAUDE_CODE";
+
     private static readonly Regex ContextPattern = new(@"\{contextLength(?:-(\d+))?\}", RegexOptions.CultureInvariant);
 
     /// <summary>
@@ -29,6 +35,7 @@ public static class WorkerEnv
     /// <param name="processEnv">The environment the worker inherits; pass null to report every
     /// variable another agent sets, whether or not this machine has it.</param>
     /// <param name="locks">Dynamic locks: the card, exe and hooks folder to set; null when locks are off.</param>
+    /// <param name="worktree">The worker's folder: <c>PWD</c> is set to it (AG-19); null leaves <c>PWD</c> alone.</param>
     public static WorkerEnvironment Build(
         SchedulerConfig config,
         AgentDefinition agent,
@@ -38,7 +45,8 @@ public static class WorkerEnv
         IReadOnlyDictionary<string, string>? processEnv,
         IServerProbe probe,
         ISchedulerLog log,
-        WorkerLocks? locks = null)
+        WorkerLocks? locks = null,
+        string? worktree = null)
     {
         var removed = new List<string>();
         foreach (var other in config.Agents.Values)
@@ -97,6 +105,23 @@ public static class WorkerEnv
         if (unset.Count > 0)
         {
             log.Write($"slot {slot}: the model server gave no context length; {string.Join(", ", unset)} left unset");
+        }
+
+        // AG-19: OpenCode takes its project folder from PWD, so a PWD inherited from the shell that started
+        // the scheduler would put it in the wrong folder; harmless for the other agents.
+        if (!string.IsNullOrEmpty(worktree))
+        {
+            set["PWD"] = worktree;
+        }
+
+        if (agent.Format == AgentFormat.OpenCode)
+        {
+            // AG-11, AG-10: the permission config the scheduler needs; CLAUDE.md and skills are for Claude workers.
+            set.TryAdd(OpenCodeDisableClaude, "1");
+            if (!config.WorkerWeb)
+            {
+                set[OpenCodeConfig] = OpenCodePermissions.WithoutWeb(set.GetValueOrDefault(OpenCodeConfig));
+            }
         }
 
         // Dynamic locks (DL-18): the card, the lock exe and the scheduler's hooks folder; none when locks are off.

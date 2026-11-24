@@ -6,13 +6,13 @@ public enum PlanKind
     /// <summary>In <c>jobs/plans/</c>.</summary>
     Plans,
 
-    /// <summary>A document elsewhere (a design document, the roadmap).</summary>
+    /// <summary>Not used: only <c>jobs/plans/</c> holds plans (kept so older callers compile).</summary>
     Elsewhere,
 
-    /// <summary>In <c>jobs/archive/</c>: shown flagged, under "Archived plans".</summary>
+    /// <summary>Not used: plans are never archived (kept so older callers compile).</summary>
     Archived,
 
-    /// <summary>Named by a card but not on main: shown under its own name, marked missing.</summary>
+    /// <summary>Named by a card in jobs/plans/ but not on main: shown under its own name, marked missing.</summary>
     Missing,
 
     /// <summary>No plan: <c>none...</c>, an empty or absent Plan line.</summary>
@@ -40,24 +40,30 @@ public static class PlanPaths
             path = path["docs/".Length..];
         }
 
-        if (path.StartsWith("jobs/plans/", StringComparison.OrdinalIgnoreCase) && !onMain.Contains(path))
+        // Plans are never archived: an old jobs/archive/X path means jobs/plans/X.
+        if (path.StartsWith("jobs/archive/", StringComparison.OrdinalIgnoreCase))
         {
-            var archived = "jobs/archive/" + path["jobs/plans/".Length..];
-            if (onMain.Contains(archived))
+            var moved = "jobs/plans/" + path["jobs/archive/".Length..];
+            if (onMain.Contains(moved))
             {
-                return new PlanRef(PlanKind.Archived, archived);
+                path = moved;
             }
         }
 
-        if (!onMain.Contains(path))
+        // Only a file in jobs/plans/ is a plan; any other path is No plan (the card shows its path).
+        if (!path.StartsWith("jobs/plans/", StringComparison.OrdinalIgnoreCase))
         {
-            return new PlanRef(PlanKind.Missing, path);
+            return NoPlan;
         }
 
-        var kind = path.StartsWith("jobs/plans/", StringComparison.OrdinalIgnoreCase) ? PlanKind.Plans
-            : path.StartsWith("jobs/archive/", StringComparison.OrdinalIgnoreCase) ? PlanKind.Archived
-            : PlanKind.Elsewhere;
-        return new PlanRef(kind, path);
+        return new PlanRef(onMain.Contains(path) ? PlanKind.Plans : PlanKind.Missing, path);
+    }
+
+    /// <summary>The path a card's <c>Plan:</c> names, cleaned; empty for <c>none...</c>, an empty or absent line.</summary>
+    public static string Named(string? raw)
+    {
+        var path = Clean(raw);
+        return path.StartsWith("none", StringComparison.OrdinalIgnoreCase) ? "" : path;
     }
 
     private static string Clean(string? raw)

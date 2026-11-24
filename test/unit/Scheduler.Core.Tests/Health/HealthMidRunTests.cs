@@ -57,7 +57,7 @@ public class HealthMidRunTests
         TypeDispatchResult Tick(SchedulerState state) => TypeDispatcher.Dispatch(
             DispatchPlanner.Plan(cards, running, retries, null, MaxRetries),
             state, maxWorkers: 2, totalRunning: running.Count,
-            [new DispatchType { Name = "worker", Max = 2, Running = running.Count }],
+            [new DispatchType { Name = "worker", Max = 2, Running = running.Count, IsDefault = true }],
             migrated: false, new AgentQuota(), servers, retries, Start);
 
         bool Start(TypeStart attempt)

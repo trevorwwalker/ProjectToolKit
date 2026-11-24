@@ -125,14 +125,15 @@ public sealed class PageHostGapTests
         Assert.Contains("<div class='warn'>Stopping: asked from the page. Killed at 12:45 if still running.</div>", html, StringComparison.Ordinal);
     }
 
-    // The title: the model's short name and premium; the card link's tooltip, its title and category name.
+    // The title: the model's short name (1146-A: no premium mark); the card link's tooltip, its title and category name.
     [Fact]
-    public void Worker_Title_ShortNamePremiumCategoryNameAndCardTitle()
+    public void Worker_Title_ShortNameCategoryNameAndCardTitle()
     {
-        var html = Render(ViewsFixture.Plain() with { Slots = [Running() with { ModelShort = "Opus", Premium = true }] });
+        var html = Render(ViewsFixture.Plain() with { Slots = [Running() with { ModelShort = "Opus" }] });
         var win = WindowOf(html, "href='/log?slot=1'");
 
-        Assert.Contains("w1 - slot 1 (Opus), premium", win, StringComparison.Ordinal);
+        Assert.Contains("w1 - slot 1 (Opus)", win, StringComparison.Ordinal);
+        Assert.DoesNotContain("premium", win, StringComparison.Ordinal);
         // The category text left the title in 490-C; its name is in the card link's tooltip.
         Assert.Contains("<a class='cardlink' href='/card?name=120-B-host.md' title='Host the things - category B (host)'>120-B-host.md</a>", win, StringComparison.Ordinal);
     }

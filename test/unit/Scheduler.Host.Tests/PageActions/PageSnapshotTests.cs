@@ -486,7 +486,6 @@ public class PageSnapshotTests
 
         Assert.Equal("Opus", row.Type);
         Assert.Equal("claude-opus-5-5", row.Model);
-        Assert.True(row.Premium);
     }
 
     // PAGE-3, PAGE-10: the live feed of a running worker names its model and endpoint, and its time.

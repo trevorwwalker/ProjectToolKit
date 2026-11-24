@@ -19,40 +19,65 @@ public class PlansViewModelTests
             PlanStep = step,
         };
 
-    // VW-11: order of the plans.
+    // VW-11: only jobs/plans/ holds plans; the order is the plans by name, then No plan.
     [Fact]
-    public void VW_11_Order_PlansByName_ThenElsewhereByPath_ThenArchived_ThenNoPlan()
+    public void VW_11_Order_PlansByName_ThenNoPlan_AnyOtherPathIsNoPlan()
     {
         var onMain = Paths("jobs/plans/b_plan.md", "jobs/plans/a_plan.md", "docs/z.md", "docs/c.md", "jobs/archive/old_plan.md");
         var cards = new[]
         {
             Card("1-A", ViewFolder.Queue, "none (developer, 2026-11-22)"),
             Card("2-A", ViewFolder.Queue, "jobs/archive/old_plan.md"),
-            Card("3-A", ViewFolder.Queue, "docs/z.md"),
+            Card("3-A", ViewFolder.Queue, "docs/design/z.md"),
             Card("4-A", ViewFolder.Queue, "jobs/plans/b_plan.md"),
             Card("5-A", ViewFolder.Queue, "docs/c.md"),
             Card("6-A", ViewFolder.Queue, "jobs/plans/a_plan.md"),
-            Card("7-A", ViewFolder.Queue, "docs/gone.md"),
+            Card("7-A", ViewFolder.Queue, "jobs/plans/gone_plan.md"),
         };
 
         var paths = PlanCounts.Of(cards, Paths(), onMain).Select(p => p.Plan.Path).ToList();
 
-        Assert.Equal(
-            ["jobs/plans/a_plan.md", "jobs/plans/b_plan.md", "docs/c.md", "docs/gone.md", "docs/z.md", "jobs/archive/old_plan.md", ""],
-            paths);
-        Assert.Equal(PlanKind.Archived, PlanPaths.Resolve("jobs/archive/old_plan.md", onMain).Kind);
+        Assert.Equal(["jobs/plans/a_plan.md", "jobs/plans/b_plan.md", "jobs/plans/gone_plan.md", ""], paths);
+        Assert.Equal(PlanPaths.NoPlan, PlanPaths.Resolve("docs/design/z.md", onMain));
+        Assert.Equal("docs/design/z.md", PlanPaths.Named("`docs/design/z.md`;"));
+        Assert.Equal("", PlanPaths.Named("none (planner, 2026-11-01)"));
+    }
+
+    // VW-11: a card whose plan is in jobs/plans/ lands under it; one naming a design document lands under No plan.
+    [Fact]
+    public void VW_11_Tree_CardLandsUnderItsPlan_DesignDocumentIsNoPlan_RoadmapIsNotAPlan()
+    {
+        var onMain = Paths("jobs/plans/a_plan.md", "docs/design/gdd/scheduler-roadmap.md");
+        var cards = new[]
+        {
+            Card("1-A", ViewFolder.Queue, "jobs/plans/a_plan.md"),
+            Card("2-A", ViewFolder.Queue, "docs/design/tdd/x.md"),
+        };
+        var also = new[]
+        {
+            new PlanRef(PlanKind.Plans, "jobs/plans/a_plan.md"),
+            new PlanRef(PlanKind.Elsewhere, "docs/design/gdd/scheduler-roadmap.md"),
+            new PlanRef(PlanKind.Archived, "jobs/archive/b_plan.md"),
+        };
+
+        var tree = PlanTree.Of(cards, onMain, new Dictionary<string, string>(), also);
+
+        Assert.Equal(["jobs/plans/a_plan.md", ""], tree.Select(n => n.Plan.Path).ToList());
+        Assert.Equal(["1-A"], tree[0].Other!.Cards.Select(c => c.Id).ToList());
+        Assert.Equal(["2-A"], tree[1].Other!.Cards.Select(c => c.Id).ToList());
     }
 
     // VW-12
     [Fact]
-    public void VW_12_PlanPath_DocsJobsBecomesJobs_PlansFallsBackToArchive_MissingMarked_NoneIsNoPlan()
+    public void VW_12_PlanPath_DocsJobsBecomesJobs_ArchiveResolvesToPlans_MissingMarked_NoneIsNoPlan()
     {
-        var onMain = Paths("jobs/plans/ui_redesign_plan.md", "jobs/archive/a1000_plan.md", "docs/design/tdd/scheduler/multi-project.md");
+        var onMain = Paths("jobs/plans/ui_redesign_plan.md", "jobs/plans/a1000_plan.md", "docs/design/tdd/scheduler/multi-project.md");
 
         Assert.Equal(new PlanRef(PlanKind.Plans, "jobs/plans/ui_redesign_plan.md"), PlanPaths.Resolve("docs/jobs/plans/ui_redesign_plan.md", onMain));
-        Assert.Equal(new PlanRef(PlanKind.Archived, "jobs/archive/a1000_plan.md"), PlanPaths.Resolve("`jobs/plans/a1000_plan.md`;", onMain));
-        Assert.Equal(new PlanRef(PlanKind.Archived, "jobs/archive/a1000_plan.md"), PlanPaths.Resolve("docs/jobs/plans/a1000_plan.md,", onMain));
-        Assert.Equal(new PlanRef(PlanKind.Elsewhere, "docs/design/tdd/scheduler/multi-project.md"), PlanPaths.Resolve("`docs/design/tdd/scheduler/multi-project.md`", onMain));
+        Assert.Equal(new PlanRef(PlanKind.Plans, "jobs/plans/a1000_plan.md"), PlanPaths.Resolve("`jobs/archive/a1000_plan.md`;", onMain));
+        Assert.Equal(new PlanRef(PlanKind.Plans, "jobs/plans/a1000_plan.md"), PlanPaths.Resolve("docs/jobs/archive/a1000_plan.md,", onMain));
+        Assert.Equal(PlanPaths.NoPlan, PlanPaths.Resolve("jobs/archive/other_plan.md", onMain));
+        Assert.Equal(PlanPaths.NoPlan, PlanPaths.Resolve("`docs/design/tdd/scheduler/multi-project.md`", onMain));
         Assert.Equal(new PlanRef(PlanKind.Missing, "jobs/plans/nowhere_plan.md"), PlanPaths.Resolve("jobs/plans/nowhere_plan.md", onMain));
         Assert.Equal(PlanPaths.NoPlan, PlanPaths.Resolve("none (developer, 2026-11-22)", onMain));
         Assert.Equal(PlanPaths.NoPlan, PlanPaths.Resolve("", onMain));
@@ -128,16 +153,16 @@ public class PlansViewModelTests
     [Fact]
     public void VW_15_Steps_NormalisedAndOrderedByNumber()
     {
-        var onMain = Paths("docs/d.md");
+        var onMain = Paths("jobs/plans/d_plan.md");
         var cards = new[]
         {
-            Card("1-A", ViewFolder.Queue, "docs/d.md", "Step 10"),
-            Card("2-A", ViewFolder.Queue, "docs/d.md", "step 2."),
-            Card("3-A", ViewFolder.Queue, "docs/d.md", "(5.2)"),
-            Card("4-A", ViewFolder.Queue, "docs/d.md", "STEP 2"),
-            Card("5-A", ViewFolder.Queue, "docs/d.md"),
-            Card("6-A", ViewFolder.Queue, "docs/d.md", "Phase one"),
-            Card("7-A", ViewFolder.Queue, "docs/d.md", "[5.2]"),
+            Card("1-A", ViewFolder.Queue, "jobs/plans/d_plan.md", "Step 10"),
+            Card("2-A", ViewFolder.Queue, "jobs/plans/d_plan.md", "step 2."),
+            Card("3-A", ViewFolder.Queue, "jobs/plans/d_plan.md", "(5.2)"),
+            Card("4-A", ViewFolder.Queue, "jobs/plans/d_plan.md", "STEP 2"),
+            Card("5-A", ViewFolder.Queue, "jobs/plans/d_plan.md"),
+            Card("6-A", ViewFolder.Queue, "jobs/plans/d_plan.md", "Phase one"),
+            Card("7-A", ViewFolder.Queue, "jobs/plans/d_plan.md", "[5.2]"),
         };
 
         var steps = PlanCounts.Of(cards, Paths(), onMain).Single().Steps;

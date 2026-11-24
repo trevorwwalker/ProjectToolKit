@@ -4,6 +4,10 @@ Card 530-D, 2026-11-19. Design only: nothing here is built yet. It is written to
 points with the developer and then be carded (section 6). Rule IDs `WT-n` are stable names for test
 cases, like the spec's. Once the cards land, `spec.md` takes these rules over (card 1 of section 6).
 
+**Update 2026-11-23 (cards 1146-A, 1148-D): the `premium` flag is gone.** A card with no `Worker:` line goes to the
+pool's `defaultWorker` type; any other type must be named; `Worker: premium` is no longer special and a type may be
+named Premium. Text below that still says premium is marked *superseded*; it is kept as history.
+
 Sources: roadmap item 9 (`docs/design/gdd/scheduler-roadmap.md`); spec A3 (DISP-*), A5 (WRK-*), A6
 (TIME-10, TIME-12, TIME-15), A9 (ADOPT-*), B1 (MP-*) and B3 questions 4, 11, 13, 14 with the
 developer's answers on cards 300-A, 310-A and 330-B; the code in `Scheduler.Core/Dispatch/`,
@@ -42,9 +46,10 @@ section 6), then the pool dispatcher rewritten over types (card 7), so that wiri
   "maxWorkers": 4,
   "types": {
     "spark":  { "max": 2, "agent": "",       "model": "spark", "endpoint": "http://spark.local:18400/v1" },
-    "sonnet": { "max": 1, "agent": "claude", "model": "claude-sonnet-5-5", "premium": true },
-    "opus":   { "max": 1, "agent": "claude", "model": "claude-opus-5-5",   "premium": true }
-  }
+    "sonnet": { "max": 1, "agent": "claude", "model": "claude-sonnet-5-5" },
+    "opus":   { "max": 1, "agent": "claude", "model": "claude-opus-5-5" }
+  },
+  "defaultWorker": "spark"
 }
 ```
 
@@ -52,13 +57,16 @@ section 6), then the pool dispatcher rewritten over types (card 7), so that wiri
   An integer of 1 or more; missing or invalid -> scheduler.json's `slots` (CFG-6, default 2).
   `-Slots` on the command line pins it for one run, as it pins the slot count today (CFG-8).
 - **WT-C2** `types`: an object; each key is a type's name. Names compare case-insensitively (G-1).
-  A name that is `premium` or only digits is refused (logged, the type skipped): those words mean
-  something else in a `Worker:` line (DISP-18).
+  A name that is only digits is refused (logged, the type skipped): a number means a slot in a
+  `Worker:` line (DISP-18). *Superseded 2026-11-23 (1146-A): `premium` was refused too; it is now an ordinary name.*
 - **WT-C3** A type's fields: `max` (integer, 0 or more; 0 = off, which is what Disable was; missing
   -> `maxWorkers`), `agent` (an entry of scheduler.json's `agents`; empty = the `worker` section, as
-  a worker's `agent` today), `model`, `endpoint`, `metricsUrl`, `premium` (bool, default false),
-  and, in a pool only,
+  a worker's `agent` today), `model`, `endpoint`, `metricsUrl`, and, in a pool only,
   `projects` (list of project names; empty = every project; see Q1).
+- **WT-C3a** `defaultWorker` (1146-A): the name of the type that takes a card with no `Worker:` line. Missing -> the first
+  type whose old `premium` was not true, else the first type; a name that is no type -> logged, and the same fallback.
+  Save writes it after `maxWorkers`, and never writes `premium`. Renaming the default type renames the setting; a Save whose
+  default names no row is refused. The slots form takes its default the same way (first slot not marked premium).
 - **WT-C4** A type's effective worker (endpoint, model, metrics, agent, cli) is `Effective-Worker`
   (WRK-4) with the type in place of the worker definition. Nothing else about agents changes.
 - **WT-C5** The order of `types` in the file is meaningful: when several types could take a card,
@@ -87,8 +95,8 @@ section 6), then the pool dispatcher rewritten over types (card 7), so that wiri
   1. `maxWorkers` = `slots` (or `-Slots`).
   2. Each slot 1..`slots` is one worker: its `workers.<n>` entry, or an empty one (the `worker`
      section) when it has none.
-  3. Workers with the same agent, endpoint, model, metricsUrl, categories (upper-cased) and premium are
-     one type. Its `max` = how many of them are enabled in workers-state.json (WRK-3), so a disabled
+  3. Workers with the same agent, endpoint, model, metricsUrl, categories (upper-cased) are
+     one type. (*Premium was part of the key until 2026-11-23 (1146-A).*) Its `max` = how many of them are enabled in workers-state.json (WRK-3), so a disabled
      slot carries over as one less in the cap, and all disabled is cap 0.
   4. A type's name: the first member's `name`; else `Model-Short` of its effective model; else
      `worker`. A name already taken gets `-2`, `-3`, ...; a name refused by WT-C2 gets `worker-` in
@@ -98,8 +106,8 @@ section 6), then the pool dispatcher rewritten over types (card 7), so that wiri
   `workers`, and updates the file's `about` text. From then on workers-state.json is not read. Until
   that Save nothing is written: an existing project keeps working with no change to its files.
 - **WT-C12** This project's workers.json migrates to: `maxWorkers` 4; `worker` (spark through the
-  default agent, max 2); `Sonnet` (claude, claude-sonnet-5-5, premium, max 1); `Opus`
-  (claude, claude-opus-5-5, premium, max 1). `Worker: Opus` on a card picks the Opus type by its
+  default agent, max 2); `Sonnet` (claude, claude-sonnet-5-5, max 1); `Opus`
+  (claude, claude-opus-5-5, max 1); `defaultWorker` `worker` (it was the non-premium type). `Worker: Opus` on a card picks the Opus type by its
   name, as it picks slot 4 by its name today.
 
 ## 2. Dispatch
@@ -117,14 +125,16 @@ retries (310-A Q4), and the meaning of a `Worker:` line (310-A Q3; but see Q3 on
   the running workers finish, and no new one of that type (or none at all) starts until the count
   is below again (as WRK-2 never lowers the slot count below a running slot).
 - **WT-3 Fit.** Type T fits card C when all hold:
-  - `Worker:` (DISP-18, unchanged in meaning): no `Worker:` line -> T is not premium;
-    `Worker: premium` -> T is premium; any other value -> it equals T's name, T's effective model,
+  - `Worker:` (DISP-18): no `Worker:` line (or a blank one, or the card template's placeholder text left in) -> T is
+    the pool's `defaultWorker` type, and no other type takes it; any other value -> it equals T's name, T's effective model,
     `Model-Short` of that model, or models.json's `short` for it (case-insensitive). A value of only
     digits (a slot number) matches the type made from that slot by WT-C10 while workers.json has no
     `pool`, and nothing after (Q3).
   - Category: none. A type fits a card of any category (card 969-A removed the categories list; Q2 is settled that way).
   - Pool only: T serves C's project (`projects` empty or naming it; Q1), and the project defines
     T's agent (WT-C9).
+  - *Superseded 2026-11-23 (1146-A, 1148-D): before, no line meant "T is not premium" and `Worker: premium` meant "T is
+    premium". Now `Worker: premium` is an ordinary name: it fits only a type named Premium, else no type fits.*
 - **WT-4 Usable now.** A type that fits is usable now when WT-2 allows one more, its agent is not
   out of quota (WT-9) and its model server answers (`Server-Up`, ACCT-8, cached 20 s; no endpoint =
   up).
@@ -205,7 +215,7 @@ retries (310-A Q4), and the meaning of a `Worker:` line (310-A Q3; but see Q3 on
 - **WT-P3 Worker types panel** (in the control window, replacing the per-worker Settings dialogs):
   the total (`maxWorkers`, a number); then one row per type, in config order: name, "<running> of
   <max>", the cap (a number; 0 = off), agent (a choice of scheduler.json's agents and the default),
-  model, endpoint, metrics URL, premium, categories, and in a pool projects; an Add type row; Remove on a
+  model, endpoint, metrics URL, a Default column (read-only today), categories, and in a pool projects; an Add type row; Remove on a
   type with none running (WT-P7); Save. An agent out of quota shows "out of quota since HH:mm" and Resume.
   Save writes the config as WT-C7 / WT-C8 say and applies it on the next tick.
 - **WT-P4 Routes.** Gone: `/enable`, `/disable`, `/worker-settings`, `/slots-add`, `/slots-remove`
@@ -238,12 +248,12 @@ Categories from `jobs/categories.json`: A core (`Scheduler.Core`), B host (`Sche
 
 | File | Change |
 |---|---|
-| `Contracts/WorkerType.cs` (new) | A type: name, max, agent, model, endpoint, metricsUrl, premium, categories, projects, and the slot numbers it was migrated from. |
+| `Contracts/WorkerType.cs` (new) | A type: name, max, agent, model, endpoint, metricsUrl, categories, projects, and the slot numbers it was migrated from. |
 | `Contracts/WorkerPool.cs` (new) | `maxWorkers` and the ordered types. |
 | `Config/WorkerTypesJson.cs` (new) | Parse the `pool` section (WT-C1 to WT-C6), and `FromWorkersJson` for the migration (WT-C10), given the enabled map. Build the `pool` text for Save (WT-C11). |
 | `Contracts/WorkerDefinition.cs`, `Config/SchedulerConfigLoader.ApplyWorkersJson` | Kept for the migration only; `Slots` becomes `MaxWorkers` (WT-C1, CFG-8). |
 | `Categories/WorkerSelection.cs` | `Effective` takes a `WorkerType` (WT-C4); `JobsPerWorker(cores, maxWorkers)` (WT-11). |
-| `Dispatch/DispatchSlot.cs` | Deleted by 939-A. Replaced by `Dispatch/DispatchType.cs`: a type as dispatch sees it (name, model names, categories, premium, endpoint, agent, max, running). |
+| `Dispatch/DispatchSlot.cs` | Deleted by 939-A. Replaced by `Dispatch/DispatchType.cs`: a type as dispatch sees it (name, model names, categories, `IsDefault`, endpoint, agent, max, running). |
 | `Dispatch/SlotDispatcher.cs` | Deleted by 939-A. Became `Dispatch/TypeDispatcher.cs`: `Fits` (WT-3), `Usable` (WT-4), `Choose` (WT-5), `Dispatch` (WT-1, WT-2, WT-6), notes (WT-12), `Fitting` for the Queue window. `LaneAllowed` and `WorkerFits` keep their rules, on a type. |
 | `Dispatch/DispatchStart.cs` | Deleted by 939-A. Carries the type's name instead of a slot number; Host picks the folder (WT-W2). |
 | `Tick/SchedulerTick.cs` | Runs by type: counts running per type, the out-of-quota agents (WT-9) instead of `PausedQuota`, `DispatchTypes()` in place of `DispatchSlots()`, metrics per type's URL. |
@@ -284,7 +294,9 @@ New file `test-plans/worker-types.md` (written by card 1 of section 6). Tests, b
 | Test | Rules | Project |
 |---|---|---|
 | `WorkerTypes_PoolSection_ParsedInOrder_DefaultsApplied` | WT-C1, WT-C3, WT-C5 | Core |
-| `WorkerTypes_NamePremiumOrDigits_Refused` | WT-C2 | Core |
+| `WorkerTypes_NameDigits_Refused_PremiumIsAName` | WT-C2 | Core |
+| `DefaultWorker_*` (DefaultWorkerTests.cs) | WT-C3a | Core |
+| `WorkerTypes_Save_DefaultWorker_WrittenOrRefused` | WT-C3a, WT-C11 | Host |
 | `WorkerTypes_InvalidJson_PreviousKept` | WT-C6 | Core |
 | `WorkerTypes_Migration_SameSettingsMerge_CapIsEnabledCount` | WT-C10 | Core |
 | `WorkerTypes_Migration_ThisProjectsWorkersJson_GivesWorkerSonnetOpus` | WT-C10, WT-C12 | Core |
@@ -295,8 +307,9 @@ New file `test-plans/worker-types.md` (written by card 1 of section 6). Tests, b
 | `TypeDispatch_TypeAtCap_NextCardOfOtherTypeStarts` | WT-2, WT-6 | Core |
 | `TypeDispatch_CapZero_TypeOff_NoteSaysOff` | WT-2, WT-12 | Core |
 | `TypeDispatch_CapLoweredBelowRunning_NothingStopped_NoneStarted` | WT-2, WT-13 | Core |
-| `TypeDispatch_NoWorkerLine_OnlyNonPremium` | WT-3 | Core |
-| `TypeDispatch_WorkerPremium_OnlyPremium_FirstListed` | WT-3, WT-5 | Core |
+| `TypeDispatch_NoWorkerLine_OnlyDefault`, `TypeDispatch_BlankWorkerLine_OnlyDefault`, `TypeDispatch_DefaultFull_NoLineWaits_OthersNotUsed`, `TypeDispatch_NoDefaultType_NoLineNotDispatched` | WT-3 | Core |
+| `TypeDispatch_WorkerPremium_IsUnknownName_NotDispatched`, `TypeDispatch_TypeNamedPremium_TakesItsCards` | WT-3 | Core |
+| *Superseded 2026-11-23:* `TypeDispatch_NoWorkerLine_OnlyNonPremium`, `TypeDispatch_WorkerPremium_OnlyPremium_FirstListed` | WT-3, WT-5 | - |
 | `TypeDispatch_WorkerName_ModelOrShort_PicksThatType` | WT-3 | Core |
 | `TypeDispatch_WorkerSlotNumber_MatchesMigratedTypeOnly` | WT-3 (Q3) | Core |
 | `TypeDispatch_AreaNotInTypesAreas_DoesNotFit` | WT-3 (Q2) | Core |

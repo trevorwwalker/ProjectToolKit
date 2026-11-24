@@ -11,4 +11,10 @@ public enum AgentFormat
 
     /// <summary>Claude stream-json; uses its own service (WRK-4).</summary>
     Claude,
+
+    /// <summary>OpenAI Codex CLI <c>exec --json</c> events (agents.md AG-2); uses its own service.</summary>
+    Codex,
+
+    /// <summary>OpenCode <c>run --format json</c> events (agents.md AG-2); uses the model endpoint unless its entry says otherwise.</summary>
+    OpenCode,
 }

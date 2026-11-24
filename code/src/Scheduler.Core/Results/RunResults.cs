@@ -15,7 +15,7 @@ public static class RunResults
 
     private static readonly Regex Plain = new(@"LANE-RESULT:\s*([a-z-]+)", RegexOptions.IgnoreCase);
     private static readonly Regex Model = new(@"^\* .*LANE-RESULT:\s*([a-z-]+)", RegexOptions.IgnoreCase);
-    private static readonly Regex JsonError = new("\"type\":\"[a-z_.]*error[a-z_.]*\"|\"is_error\":true|\"subtype\":\"error|\"type\":\"result\"");
+    private static readonly Regex JsonError = new("\"type\":\"(?:[a-z_.]*error[a-z_.]*|turn\\.failed|retry)\"|\"is_error\":true|\"subtype\":\"error|\"type\":\"result\"");
 
     /// <summary>
     /// Alive: not abandoned, the process exists (<paramref name="processStart"/> is its start time, or

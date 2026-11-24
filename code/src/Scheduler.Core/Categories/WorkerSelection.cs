@@ -27,8 +27,7 @@ public static class WorkerSelection
             endpoint: c?.Endpoint ?? "",
             model: c?.Model ?? "",
             metricsUrl: c?.MetricsUrl ?? "",
-            categories: c?.Categories ?? "",
-            premium: c?.Premium ?? false);
+            categories: c?.Categories ?? "");
     }
 
     /// <summary>
@@ -43,8 +42,7 @@ public static class WorkerSelection
             endpoint: type.Endpoint,
             model: type.Model,
             metricsUrl: type.MetricsUrl,
-            categories: "",
-            premium: type.Premium);
+            categories: "");
 
     private static EffectiveWorker Effective(
         SchedulerConfig config,
@@ -53,8 +51,7 @@ public static class WorkerSelection
         string endpoint,
         string model,
         string metricsUrl,
-        string categories,
-        bool premium)
+        string categories)
     {
         var a = Agents.AgentOf(config, agent);
         var own = a.Format == AgentFormat.Claude || (a.HasEndpoint && a.Endpoint.Length == 0);
@@ -82,7 +79,6 @@ public static class WorkerSelection
             Categories = categories.ToUpperInvariant(),
             Agent = a.Name,
             Cli = a.Cli,
-            Premium = premium,
         };
     }
 

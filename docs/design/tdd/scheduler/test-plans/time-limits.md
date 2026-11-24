@@ -206,7 +206,7 @@ Tests: `Scheduler.Core.Tests/Accounting/AreaDurationsTests.cs`, `TimeBoxAdviceTe
 
 ### History_WorkerTypeAndModelMatch
 - Checks: TLH-4 · Project: Core
-- Setup: slots with categories and premium flags; a card asking for none, for premium, for a name.
+- Setup: slots with categories; a card asking for none, for a name.
 - Expected: the lowest enabled fitting slot, busy or down ignored; rows matched by `ModelColumn.Resolve`.
 
 ### History_QueueAdvice_WarnShortSuggestMissing

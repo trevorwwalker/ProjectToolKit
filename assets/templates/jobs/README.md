@@ -21,8 +21,8 @@ queue/  ->  active/  ->  done/          finished and verified
 |---|---|
 | `docs/ai/` | New plans, not yet carded. Workers don't take work from here. |
 | `queue/`, `active/`, `review/`, `done/` | The cards. |
-| `plans/` | Plans that have cards. A card's `Plan:` line points into here. |
-| `archive/` | Plans whose cards are all in `done/`. |
+| `plans/` | Every carded plan, finished or not, for good. A card's `Plan:` line points into here. |
+| `archive/` | Old cards swept from `done/`. Plans are never archived: nothing here is a plan. |
 | `requests/` | Requests to the planner, one file each (see its README). |
 | `project.md` | This project's gates, locations and standing briefs. |
 | `categories.json` | The categories: what each is for, the files it owns, its exceptions, and the shared files. |
@@ -49,6 +49,10 @@ states your own category's.
 - **Behaviour changes are attributable.** A card that changes the program's behaviour is in the
   category that owns that behaviour, or locks every file it changes.
 - **Never** edit another category's cards in `queue/`, except to tick a dependency.
+- **Only `plans/` holds plans.** A design document (`docs/design/...`) is an input to a plan, not a plan: when a
+  design is carded, the planner writes its plan in `plans/`, linking the design. Every card names its plan and
+  section, or says `none (<who>, <date>)` for a one-off. Plans plus cards, which are never deleted, are the complete
+  record of a project's development.
 - **Plans** in `plans/` are the planner's. A worker may update a plan's progress or status lines
   for its own card; anything more goes to a request.
 
@@ -161,9 +165,8 @@ Move-Item ($f + '.tmp') ($f + '.move')
    **Developer replies.** A section headed `## Dev` is the developer's reply. Read every one
    before acting on a card; where it conflicts with the card, it wins. Never edit or remove it;
    answer it in Result.
-7. **Archive the plan** if every card naming it is now in `done/`: plans are not cards, so this move
-   stays yours - move it to `archive/` with git and commit it with your own work. When claiming a
-   card, also archive any plan whose cards are all in `done/`.
+7. **Plans stay.** A plan whose cards are all in `done/` is not moved or archived: it stays in `plans/` for good
+   and the Plans page shows it with a green check.
 8. **Next.** Under the scheduler, stop: the next card is someone else's session. Run by hand, go
    back to step 1.
 

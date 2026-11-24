@@ -30,6 +30,8 @@ public sealed class ProcessStartCheck
     private readonly IClock _clock;
     private readonly ISchedulerLog _log;
     private readonly Func<int, double> _rate;
+    private readonly ForegroundLockFix? _foreground;
+    private readonly ITokenCount? _tokens;
     private readonly Lock _lock = new();
     private DateTimeOffset? _last;
     private Thread? _thread;
@@ -38,10 +40,14 @@ public sealed class ProcessStartCheck
     /// <param name="clock">The clock.</param>
     /// <param name="log">The pool log.</param>
     /// <param name="rate">Starts the given number of processes side by side and returns starts per second; null = <c>whoami.exe</c>.</param>
-    public ProcessStartCheck(IClock clock, ISchedulerLog log, Func<int, double>? rate = null)
+    /// <param name="foreground">1161-B: the foreground lock workaround, checked again with each check; null = none.</param>
+    /// <param name="tokens">1161-B: the live token count logged next to the rate; null = none.</param>
+    public ProcessStartCheck(IClock clock, ISchedulerLog log, Func<int, double>? rate = null, ForegroundLockFix? foreground = null, ITokenCount? tokens = null)
     {
         _clock = clock;
         _log = log;
+        _foreground = foreground;
+        _tokens = tokens;
         _rate = rate ?? Measure;
     }
 
@@ -94,6 +100,9 @@ public sealed class ProcessStartCheck
         try
         {
             ThreadId = Environment.CurrentManagedThreadId;
+            _foreground?.Apply(quietWhenZero: true); // 1161-B: Windows may have put the value back
+            var live = _tokens?.Live();
+            var tokens = live is { } t ? $", tokens: {t.ToString("0", CultureInfo.InvariantCulture)} live" : "";
             var rate = _rate(Starts);
             var n = rate.ToString("0", CultureInfo.InvariantCulture);
             var slow = rate < WarnBelow;
@@ -103,8 +112,8 @@ public sealed class ProcessStartCheck
             }
 
             _log.Write(slow
-                ? $"process starts: {n}/s - warning: under {WarnBelow.ToString("0", CultureInfo.InvariantCulture)}/s, everything that starts processes runs slowly"
-                : $"process starts: {n}/s");
+                ? $"process starts: {n}/s - warning: under {WarnBelow.ToString("0", CultureInfo.InvariantCulture)}/s, everything that starts processes runs slowly{tokens}"
+                : $"process starts: {n}/s{tokens}");
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {

@@ -281,6 +281,7 @@ function Install-CanonicalLayout {
     Put '.gitattributes'              (Template 'gitattributes') $true
     Put 'README.md'                   ((Template 'readme.md').Replace('{{PROJECT}}', $Project))
     Put 'docs/conventions.md'         ((Template 'conventions.md').Replace('{{PROJECT}}', $Project))
+    Put 'docs/planner-brief.md'       ((Template 'docs/planner-brief.md').Replace('{{PROJECT}}', $Project))
     Put "docs/design/gdd/$Safe.md"           ((Template 'design/gdd.md').Replace('{{PROJECT}}', $Project))
     Put "docs/design/tdd/$Safe-technical.md" ((Template 'design/tdd.md').Replace('{{PROJECT}}', $Project))
 }

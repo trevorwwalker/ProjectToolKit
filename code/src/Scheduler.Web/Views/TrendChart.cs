@@ -240,7 +240,7 @@ public static class TrendChart
 
         // The current type a run's model key counts under (963-C): the type named it, the type that
         // runs it as its model, a type it was renamed from, or - for the names the free type's work
-        // went by before the types existed - the one type that is not premium. Null when no type
+        // went by before the types existed - the default type (1146-A). Null when no type
         // claims the key, which leaves the run's own name in the legend.
         private static string? TypeNameFor(string model, IReadOnlyList<PageWorkerTypeView>? types)
         {
@@ -263,7 +263,7 @@ public static class TrendChart
             var freeTypes = 0;
             foreach (var type in types)
             {
-                if (!type.Premium)
+                if (type.IsDefault)
                 {
                     free = type;
                     freeTypes++;

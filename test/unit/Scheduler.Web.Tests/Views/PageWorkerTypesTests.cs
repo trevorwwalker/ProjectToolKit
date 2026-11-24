@@ -102,7 +102,7 @@ public sealed class PageWorkerTypesTests
 
     /// <summary>
     /// WT-P3: the panel's rows are the config's order, each with its running-of-cap, its cap, agent,
-    /// model, endpoint, metrics, premium and areas; cap 0 is how a type is off; Add type, Remove and
+    /// model, endpoint, metrics and areas; cap 0 is how a type is off; Add type, Remove and
     /// Save are there; and the whole panel posts to /worker-types.
     /// </summary>
     [Fact]
@@ -127,7 +127,12 @@ public sealed class PageWorkerTypesTests
         Assert.Contains("name='wmodel' value='claude-sonnet-5-5'", sonnet, StringComparison.Ordinal);
         Assert.Contains("name='wendpoint' value='http://claude.local:8080/v1'", sonnet, StringComparison.Ordinal);
         Assert.Contains("name='wmetrics' value='http://claude.local:9090/metrics'", sonnet, StringComparison.Ordinal);
-        Assert.Contains("<option value='1' selected>yes</option>", sonnet, StringComparison.Ordinal);
+        Assert.DoesNotContain("wpremium", sonnet, StringComparison.Ordinal); // 1146-A: no premium
+        // 1147-C: Default is a radio per row, checked on the default type only, with the tooltip.
+        Assert.Contains("<input type='radio' name='wdefault' value='worker' checked", worker, StringComparison.Ordinal);
+        Assert.Contains("title='Cards with no Worker: line go to this type'", worker, StringComparison.Ordinal);
+        Assert.Contains("name='wdefault' value='Sonnet'", sonnet, StringComparison.Ordinal);
+        Assert.DoesNotContain("checked", sonnet[sonnet.IndexOf("name='wdefault'", StringComparison.Ordinal)..sonnet.IndexOf("</td>", sonnet.IndexOf("name='wdefault'", StringComparison.Ordinal), StringComparison.Ordinal)], StringComparison.Ordinal);
 
         // Cap 0 is off: the row says "0 of 0", and its Remove works because none of it runs.
         Assert.Contains(">0 of 0</span>", opus, StringComparison.Ordinal);

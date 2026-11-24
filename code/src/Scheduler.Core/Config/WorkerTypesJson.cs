@@ -18,11 +18,10 @@ public static class WorkerTypesJson
     public const string About =
         "The scheduler's worker types: how many workers may run at once in all (pool maxWorkers), and "
         + "each type's cap (max; 0 is off), the agent it runs (an entry of scheduler.json's agents; empty "
-        + "means its worker section), model, model server (an OpenAI-style /v1 endpoint), metrics address, "
-        + "and whether it is premium "
-        + "(true: it takes only cards that ask for it with Worker: premium). In a pool a type may also "
-        + "name the projects it serves (projects); empty means every project. A card's Worker: line names a "
-        + "type by its name or its model. The scheduler reads this file from main; changes made from its "
+        + "means its worker section), model, model server (an OpenAI-style /v1 endpoint), and metrics "
+        + "address. In a pool a type may also name the projects it serves (projects); empty means every "
+        + "project. A card's Worker: line names a type by its name or its model; a card with none goes to "
+        + "the default type (pool defaultWorker). The scheduler reads this file from main; changes made from its "
         + "page are committed and pushed for you, so a cap change is a commit.";
 
     /// <summary>
@@ -79,6 +78,7 @@ public static class WorkerTypesJson
         var taken = new HashSet<string>(Text.Comparer);
         var section = ConfigJson.GetObject(pool, "types");
         var areasSeen = false;
+        string? firstPlain = null;   // 1146-A: the migration's default, the first type the old premium flag left off
         if (section is not null)
         {
             // WT-C5: the file's order is the order types are offered to a card, so it is kept.
@@ -103,6 +103,12 @@ public static class WorkerTypesJson
                     areasSeen = true;
                 }
 
+                // 1146-A: premium is no longer a setting; it is read only to choose the default of a file that names none.
+                if (firstPlain is null && ConfigJson.GetBool(v, "premium") is not true)
+                {
+                    firstPlain = name;
+                }
+
                 var max = ConfigJson.GetInt(v, "max");
                 types.Add(new WorkerType
                 {
@@ -113,7 +119,6 @@ public static class WorkerTypesJson
                     Model = ConfigJson.GetString(v, "model") ?? "",
                     Endpoint = ConfigJson.GetString(v, "endpoint") ?? "",
                     MetricsUrl = ConfigJson.GetString(v, "metricsUrl") ?? "",
-                    Premium = ConfigJson.GetBool(v, "premium") ?? false,
                     Projects = ConfigJson.GetStringList(v, "projects", dropEmpty: true) ?? [],
                 });
             }
@@ -130,8 +135,24 @@ public static class WorkerTypesJson
             return null;
         }
 
+        // 1146-A: defaultWorker names the type a card with no Worker: line goes to. A file that names
+        // none (written before it existed) gets the first type its premium flag left off, else the
+        // first type; one that names no listed type is logged and falls back the same way.
+        var fallback = firstPlain ?? types[0].Name;
+        var named = (ConfigJson.GetString(pool, "defaultWorker") ?? "").Trim();
+        var defaultWorker = types.FirstOrDefault(t => Text.Same(t.Name, named))?.Name;
+        if (defaultWorker is null)
+        {
+            if (named.Length > 0)
+            {
+                log?.Write($"workers.json: defaultWorker {named} names no worker type; the default is {fallback}");
+            }
+
+            defaultWorker = fallback;
+        }
+
         // WT-C6: the caps may add up to more than the total; that is the point of them sharing it.
-        return new WorkerPool { MaxWorkers = maxWorkers, Types = types };
+        return new WorkerPool { MaxWorkers = maxWorkers, Types = types, DefaultWorker = defaultWorker };
     }
 
     /// <summary>
@@ -157,7 +178,26 @@ public static class WorkerTypesJson
             root = null;
         }
 
-        return FromSlots(config, ConfigJson.GetInt(root, "slots") ?? 0, ReadWorkers(root), enabled, modelShort);
+        return WithSlotDefault(FromSlots(config, ConfigJson.GetInt(root, "slots") ?? 0, ReadWorkers(root), enabled, modelShort), root);
+    }
+
+    /// <summary>
+    /// 1146-A: a migrated <paramref name="pool"/> with its default type: the type of the first slot
+    /// whose worker in <paramref name="root"/>'s <c>workers</c> the old premium flag left off, else the first type.
+    /// </summary>
+    public static WorkerPool WithSlotDefault(WorkerPool pool, JsonObject? root)
+    {
+        var section = ConfigJson.GetObject(root, "workers");
+        for (var slot = 1; slot <= pool.Types.Sum(t => t.Slots.Count); slot++)
+        {
+            var v = section?.FirstOrDefault(p => p.Key == slot.ToString(CultureInfo.InvariantCulture)).Value as JsonObject;
+            if (!Truthy(v is null ? null : GetNode(v, "premium")) && pool.Types.FirstOrDefault(t => t.Slots.Contains(slot)) is { } type)
+            {
+                return pool with { DefaultWorker = type.Name };
+            }
+        }
+
+        return pool with { DefaultWorker = pool.Types.FirstOrDefault()?.Name ?? "" };
     }
 
     /// <summary>
@@ -211,7 +251,6 @@ public static class WorkerTypesJson
                 Model = group.First.Model,
                 Endpoint = group.First.Endpoint,
                 MetricsUrl = group.First.MetricsUrl,
-                Premium = group.First.Premium,
                 Slots = [.. group.Slots], // WT-C10.5: kept for `Worker: <number>` (WT-3)
             });
         }
@@ -221,7 +260,7 @@ public static class WorkerTypesJson
 
     /// <summary>
     /// The workers.json <c>workers</c> section as definitions (WRK-1): every numeric key with its
-    /// name, agent, endpoint, model, metrics URL, categories (upper-cased) and premium.
+    /// name, agent, endpoint, model, metrics URL, and categories (upper-cased); premium is no longer read (1146-A).
     /// </summary>
     public static Dictionary<int, WorkerDefinition> ReadWorkers(JsonObject? root)
     {
@@ -249,7 +288,6 @@ public static class WorkerTypesJson
                 Model = ConfigJson.GetString(v, "model") ?? "",
                 MetricsUrl = ConfigJson.GetString(v, "metricsUrl") ?? "",
                 Categories = (ConfigJson.GetString(v, "lanes") ?? "").ToUpperInvariant(),
-                Premium = Truthy(v is null ? null : GetNode(v, "premium")),
             };
         }
 
@@ -269,6 +307,7 @@ public static class WorkerTypesJson
             $"  \"about\": {Quote(about ?? About)},",
             "  \"pool\": {",
             $"    \"maxWorkers\": {pool.MaxWorkers.ToString(CultureInfo.InvariantCulture)},",
+            $"    \"defaultWorker\": {Quote(pool.DefaultType)},",
             "    \"types\": {",
         };
 
@@ -282,8 +321,7 @@ public static class WorkerTypesJson
             lines.Add(
                 $"      {Quote(t.Name)}: {{ \"max\": {t.Max.ToString(CultureInfo.InvariantCulture)},"
                 + $" \"agent\": {Quote(t.Agent)}, \"model\": {Quote(t.Model)},"
-                + $" \"endpoint\": {Quote(t.Endpoint)}, \"metricsUrl\": {Quote(t.MetricsUrl)},"
-                + $" \"premium\": {(t.Premium ? "true" : "false")}{projects} }}{comma}");
+                + $" \"endpoint\": {Quote(t.Endpoint)}, \"metricsUrl\": {Quote(t.MetricsUrl)}{projects} }}{comma}");
         }
 
         lines.AddRange(["    }", "  }", "}", ""]);
@@ -300,14 +338,13 @@ public static class WorkerTypesJson
     private static string? Refused(string name) => name switch
     {
         { Length: 0 } => "a type must be named",
-        _ when Text.Same(name, "premium") => "premium means something else in a Worker: line (WT-3)",
         _ when name.All(char.IsDigit) => "a name of only digits is a slot number, which means something else in a Worker: line (WT-3)",
         _ => null,
     };
 
     /// <summary>WT-C10.3: the settings that make two workers one type; categories compare upper-cased.</summary>
     private static string SettingsKey(WorkerDefinition w) =>
-        string.Join('\n', w.Agent, w.Endpoint, w.Model, w.MetricsUrl, w.Categories.ToUpperInvariant(), w.Premium ? "1" : "0");
+        string.Join('\n', w.Agent, w.Endpoint, w.Model, w.MetricsUrl, w.Categories.ToUpperInvariant());
 
     // A slot the local state never saw is enabled (WRK-2).
     private static bool IsEnabled(IReadOnlyDictionary<int, bool>? enabled, int slot) =>
@@ -353,13 +390,12 @@ public static class WorkerTypesJson
         Model = w.Model,
         Endpoint = w.Endpoint,
         MetricsUrl = w.MetricsUrl,
-        Premium = w.Premium,
     };
 
     private static JsonNode? GetNode(JsonObject obj, string name) =>
         obj.FirstOrDefault(p => Text.Same(p.Key, name)).Value;
 
-    // PowerShell's [bool], as workers.json's premium has always been read: text is true when not empty
+    // PowerShell's [bool], as workers.json's old premium was read (now only to choose the default, 1146-A): text is true when not empty
     // ("false" included), a number when not 0.
     private static bool Truthy(JsonNode? node) => node?.GetValueKind() switch
     {

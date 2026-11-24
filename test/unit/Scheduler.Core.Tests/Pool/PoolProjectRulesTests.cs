@@ -142,8 +142,8 @@ public class PoolProjectRulesTests
         Assert.Contains(PoolFakes.StartAll([o], [claude], T0, maxWorkers: 5), x => x.Candidate.Card.Id == "030-B");
     }
 
-    // DISP-18, WT-3, spec B3 Q13: the Worker: request is kept in the shared pool: no line means only a
-    // non-premium type; premium only a premium type; otherwise the type's slot number (while migrated),
+    // DISP-18, WT-3, spec B3 Q13: the Worker: request is kept in the shared pool: no line means only the
+    // default type (1146-A); premium is just a name; otherwise the type's slot number (while migrated),
     // name, model or the model's short name, in any case.
     [Fact]
     public void PoolTypes_WorkerRequest_Kept()
@@ -152,17 +152,17 @@ public class PoolProjectRulesTests
             PoolFakes.StartAll([project], [type], T0, migrated: migrated).FirstOrDefault()?.Candidate.Card.Id;
 
         var plain = Type("w1", model: "big-model", slots: [1]);
-        var premium = Type("w2", premium: true);
+        var other = Type("w2", isDefault: false);
 
-        // No Worker: line - only a non-premium type.
+        // No Worker: line - only the default type.
         var open = Project("P", 70, Card(CardFolder.Queue, "010-A-open"));
         Assert.Equal("010-A", Pick(open, plain));
-        Assert.Null(Pick(open, premium));
+        Assert.Null(Pick(open, other));
 
-        // Worker: premium - only a premium type.
+        // Worker: premium - a name like any other: no type here has it (1146-A).
         var wantsPremium = Project("P", 70, Card(CardFolder.Queue, "020-A-prem", worker: "premium"));
         Assert.Null(Pick(wantsPremium, plain));
-        Assert.Equal("020-A", Pick(wantsPremium, premium));
+        Assert.Null(Pick(wantsPremium, other));
 
         // Worker: a name, slot number (migrated) or model - that type only, in any case.
         foreach (var request in new[] { "W1", "1", "BIG-MODEL" })

@@ -12,7 +12,7 @@ public sealed partial class PageRouter
     // and /open-workers write one project's files, so they are its too; /accept-lane is dead (AREA-2).
     private static readonly HashSet<string> PerProject = new(StringComparer.Ordinal)
     {
-        "/answer", "/card", "/done", "/health", "/health-now", "/kill", "/log", "/open", "/open-lanes",
+        "/answer", "/plan-mark", "/card", "/done", "/health", "/health-now", "/kill", "/log", "/open", "/open-lanes",
         "/open-workers", "/plan", "/planner-toggle", "/repo-file", "/request", "/resume-card", "/retry", "/review",
         "/send", "/stop", "/template-keep", "/template-overwrite", "/categories",
     };
@@ -59,7 +59,7 @@ public sealed partial class PageRouter
                 pool.Data.PoolSnapshot(),
                 remote: !request.IsLocal,
                 controlsAllowed: request.IsLocal || RemoteControl,
-                view: request.Query("view"))),
+                view: ViewOf(request))),
             // MP-H8: the project the page's dropdown picked, or every project for All.
             (false, "/pause") => Now(request, "pause", name, () => pool.Actions.Pause(name)),
             (false, "/drain") => Now(request, "drain", name, () => pool.Actions.Drain(name)),

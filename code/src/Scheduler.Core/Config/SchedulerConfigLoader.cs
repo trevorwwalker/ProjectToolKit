@@ -162,16 +162,17 @@ public static class SchedulerConfigLoader
             var quota = ConfigJson.GetStringList(source, "quotaPatterns", dropEmpty: true);
             var hasEndpoint = ConfigJson.Has(source, "endpoint");
             var format = ConfigJson.GetString(source, "format");
+            var cli = Cfg.Value(ConfigJson.GetString(source, "cli"), entry.Key);
 
             agents[entry.Key] = new AgentDefinition
             {
                 Name = entry.Key,
-                Cli = Cfg.Value(ConfigJson.GetString(source, "cli"), entry.Key),
+                Cli = cli,
                 Args = args,
                 Env = ConfigJson.GetMap(source, "env"),
                 QuotaPatterns = quota is { Count: > 0 } ? quota : SchedulerConfig.DefaultAgentQuotaPatterns,
                 Model = Cfg.Value(ConfigJson.GetString(source, "model"), ""),
-                Format = format is null ? Agents.GuessFormat(args) : Agents.FormatOf(format),
+                Format = format is null ? Agents.GuessFormat(cli, args) : Agents.FormatOf(format),
 
                 // CFG-10 with WRK-4: the key's presence is recorded apart from its value.
                 HasEndpoint = hasEndpoint,

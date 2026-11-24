@@ -770,7 +770,7 @@ public sealed class PoolCombinedPageTests
 
     // 1087-C (WT-P3): the panel built from the pool's own types (no project page carries them) fills
     // its boxes from the pool file: a type with a model shows it as the Model box's value, with its
-    // endpoint, metrics and premium; one with a blank model shows the effective model the Host
+    // endpoint and metrics; one with a blank model shows the effective model the Host
     // resolved greyed as the placeholder, the value still empty so an untouched Save writes no model.
     [Fact]
     public void MP_P7_PoolWorkerTypes_ModelFromThePoolFile_ValueAndPlaceholder()
@@ -782,7 +782,7 @@ public sealed class PoolCombinedPageTests
             Running = 0,
             Types =
             [
-                new PoolTypeView { Name = "Sonnet", Max = 2, Agent = "claude", Model = "claude-sonnet-5-5", Endpoint = "http://claude.local:8080/v1", MetricsUrl = "http://claude.local:9090/metrics", Premium = true },
+                new PoolTypeView { Name = "Sonnet", Max = 2, Agent = "claude", Model = "claude-sonnet-5-5", Endpoint = "http://claude.local:8080/v1", MetricsUrl = "http://claude.local:9090/metrics" },
                 new PoolTypeView { Name = "Spark", Max = 4, Agent = "qwen", Model = "", EffectiveModel = "qwen3.8-1m" },
             ],
             Pages = [AmigaX() with { WorkerTypes = [] }, Other() with { WorkerTypes = [] }],
@@ -792,7 +792,7 @@ public sealed class PoolCombinedPageTests
         Assert.Contains("name='wmodel' value='claude-sonnet-5-5' size='14'", html, StringComparison.Ordinal);
         Assert.Contains("name='wendpoint' value='http://claude.local:8080/v1'", html, StringComparison.Ordinal);
         Assert.Contains("name='wmetrics' value='http://claude.local:9090/metrics'", html, StringComparison.Ordinal);
-        Assert.Contains("<option value='1' selected>yes</option>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("wpremium", html, StringComparison.Ordinal); // 1146-A
         Assert.Contains("name='wmodel' value='' size='14' placeholder='qwen3.8-1m'", html, StringComparison.Ordinal);
     }
 
@@ -946,7 +946,7 @@ public sealed class PoolCombinedPageTests
         var html = new CombinedPageRenderer().Render(
             [AmigaX() with { WorkerTypes = [new PageWorkerTypeView { Name = "opus", Max = 2 }] }, Other()], Theme, remote: false, controlsAllowed: true);
 
-        Assert.Contains("#themesel:focus, #projsel:focus')) return true;", PageScript.Html, StringComparison.Ordinal);
+        Assert.Contains("#themesel:focus, #projsel:focus, #viewsel:focus')) return true;", PageScript.Html, StringComparison.Ordinal);
         Assert.Contains("<button type='button' class='wttoggle' data-key='wtypes-open'", html, StringComparison.Ordinal);
         Assert.Matches("<div class='wtbody'>.*<table class='wtypes'>.*name='wname' value='opus'", html);
         // In refresh, after the desk is replaced: the logs' sizes and then the Worker types' open state.

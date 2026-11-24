@@ -76,7 +76,7 @@ out); anything that runs git is Host.
 
 ### Cards_WorkerRequest_TextBeforeParenthesis
 - Checks: CARD-10 · Project: Core
-- Setup: `Worker: Opus (premium, for the core)`; `Worker: 3`; `Worker:  qwen 32b  `.
+- Setup: `Worker: Opus (premium, for the core)` (the words in parentheses are free text, not a flag); `Worker: 3`; `Worker:  qwen 32b  `.
 - Expected: `Opus`; `3`; `qwen 32b`.
 
 ### Cards_DependsOn_AllIdsLastLineWins

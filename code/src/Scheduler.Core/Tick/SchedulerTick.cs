@@ -146,7 +146,7 @@ public sealed class SchedulerTick
 
     /// <summary>
     /// The types as dispatch sees them (WT-2, WT-12): this project's running count and cards per
-    /// type, with the model, endpoint and premium its own scheduler.json gives the type (MP-C8).
+    /// type, with the model and endpoint its own scheduler.json gives the type (MP-C8).
     /// </summary>
     public IReadOnlyList<DispatchType> DispatchTypes() => DispatchTypes(Pool());
 
@@ -524,7 +524,7 @@ public sealed class SchedulerTick
     /// make - rebuilt each tick, since Disable and Enable change the caps without changing the text.
     /// </summary>
     private WorkerPool Pool() => _poolTypes ?? (Workers.Pool.Migrated
-        ? WorkerTypesJson.FromSlots(_config, Workers.Slots, Workers.Workers, Workers.Enabled)
+        ? WorkerTypesJson.FromSlots(_config, Workers.Slots, Workers.Workers, Workers.Enabled) with { DefaultWorker = Workers.Pool.DefaultWorker }
         : Workers.Pool);
 
     private IEnumerable<int> SlotNumbers() => Enumerable.Range(1, Workers.Slots);
@@ -543,7 +543,7 @@ public sealed class SchedulerTick
                 RunningCards = [.. ofType.Select(w => w.Id)],   // WT-12 (935-A): the note names the cards, by slot
                 Model = e.Model,
                 ModelNames = _models.GetValueOrDefault(e.Model) ?? [],
-                Premium = e.Premium,
+                IsDefault = pool.IsDefault(t.Name),   // 1146-A: only the default takes a card with no Worker: line
                 Endpoint = e.Endpoint,
                 Agent = t.Agent,
                 Slots = t.Slots,

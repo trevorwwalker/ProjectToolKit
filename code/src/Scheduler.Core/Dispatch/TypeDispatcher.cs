@@ -12,22 +12,17 @@ namespace Scheduler.Core.Dispatch;
 public static class TypeDispatcher
 {
     /// <summary>
-    /// WT-3 (<c>Worker:</c>): no line -> only non-premium types; <c>premium</c> -> only premium types;
-    /// otherwise the type's name, its effective model, <c>Model-Short</c> of it or models.json's short.
+    /// WT-3 (<c>Worker:</c>): no line, or a blank one (<see cref="IsBlank"/>) -> the pool's default
+    /// type only (1146-A); otherwise the type's name, its effective model, <c>Model-Short</c> of it or models.json's short.
     /// A value of only digits names the type migrated from that slot, and only while
     /// <paramref name="migrated"/> (the pool form is not yet saved; 530-D Q3).
     /// </summary>
     public static bool WorkerFits(DispatchType type, Card card, bool migrated)
     {
         var req = (card.WorkerReq ?? "").Trim();
-        if (req.Length == 0)
+        if (IsBlank(req))
         {
-            return !type.Premium;
-        }
-
-        if (Text.IsMatch(req, "^premium$"))
-        {
-            return type.Premium;
+            return type.IsDefault;
         }
 
         if (Text.IsMatch(req, @"^\d+$"))
@@ -37,6 +32,16 @@ public static class TypeDispatcher
 
         return Text.Same(req, type.Name)
             || (type.Model.Length > 0 && (Text.Same(req, type.Model) || type.ModelNames.Any(m => Text.Same(req, m))));
+    }
+
+    /// <summary>
+    /// 1146-A: a <c>Worker:</c> value that asks for no type: empty, or the card template's own text
+    /// ("one worker type by name or model (optional; ...)") left in place.
+    /// </summary>
+    public static bool IsBlank(string? req)
+    {
+        var r = (req ?? "").Trim();
+        return r.Length == 0 || r.StartsWith("one worker type by name or model", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>WT-3: the type fits the card by its <c>Worker:</c> line alone (969-A); the card's category does not matter.</summary>
@@ -201,8 +206,8 @@ public static class TypeDispatcher
         var fitting = types.Where(t => Fits(t, card, migrated)).ToList();
         if (fitting.Count == 0)
         {
-            return string.IsNullOrEmpty(card.WorkerReq)
-                ? "next up; no non-premium worker type exists"
+            return IsBlank(card.WorkerReq)
+                ? "next up; no default worker type exists"
                 : $"next up; asks for worker {card.WorkerReq}, and no worker type fits";
         }
 

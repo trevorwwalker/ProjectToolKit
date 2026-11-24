@@ -2,7 +2,8 @@
 
 A kit for building software with AI agents working a shared job queue. It is three things, not one
 application: the **canonical project layout** with the templates and documentation that go with it,
-the **job queue system** the agents work, and the **scheduler** that runs a queue. Start with
+the **job queue system** the agents work, and the **scheduler** that runs a queue. New here? Start with the
+[user guide](docs/guide/README.md): what each tool is for and how to run it. Then
 [`docs/workflow.md`](docs/workflow.md): the workflow, and in section 11, how to use this kit.
 Point an LLM at that document to stand up a new project.
 

@@ -45,9 +45,6 @@ public sealed record PageSlotView
     /// <summary>The model's short name from models.json, or empty (510-B).</summary>
     public string ModelShort { get; init; } = "";
 
-    /// <summary>Whether workers.json marks the worker premium (510-B).</summary>
-    public bool Premium { get; init; }
-
     /// <summary>The running card's title, or empty (510-B).</summary>
     public string CardTitle { get; init; } = "";
 

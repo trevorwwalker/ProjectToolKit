@@ -97,7 +97,7 @@ public sealed class WorkerSettings
         }
 
         // WT-C10: without a pool the types are derived from the slots and workers, in memory only.
-        Pool = WorkerTypesJson.FromSlots(_config, Slots, Workers, Enabled);
+        Pool = WorkerTypesJson.WithSlotDefault(WorkerTypesJson.FromSlots(_config, Slots, Workers, Enabled), root);
         return true;
     }
 

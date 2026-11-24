@@ -39,7 +39,7 @@ public class PoolTests
     private static PoolProject O(params Card[] cards) => new("O", 30, Plan(cards));
     /// <summary>A type as dispatch sees it, roomy enough for one start (WT-2). Categories are letters, "B,C" as "BC".</summary>
     private static DispatchType Worker(string name = "w1", string model = "", string categories = "", params string[] projects) =>
-        new() { Name = name, Model = model, Max = 9, Projects = projects };
+        new() { Name = name, Model = model, Max = 9, Projects = projects, IsDefault = true }; // 1146-A: takes cards with no Worker: line
 
     private static ServerCache Servers() => new(new UpProbe(), new FixedClock(), new NoLog());
 

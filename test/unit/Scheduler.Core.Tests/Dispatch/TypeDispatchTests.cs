@@ -8,7 +8,7 @@ namespace Scheduler.Core.Tests.Dispatch;
 /// <summary>
 /// Dispatch by worker type (worker-types.md section 2, WT-1 to WT-14). Test plan: the table in
 /// section 5 of that design. Shared setup: three types in file order - worker (cap 2, areas ABC),
-/// Sonnet (premium, cap 1) and Opus (premium, cap 1) - maxWorkers 4, servers up, state running.
+/// Sonnet (cap 1) and Opus (cap 1), worker the default type (1146-A) - maxWorkers 4, servers up, state running.
 /// </summary>
 public class TypeDispatchTests
 {
@@ -54,17 +54,17 @@ public class TypeDispatchTests
 
     // `cards` is what the type's running workers hold (WT-12, 935-A), in slot order, as the caller gives it.
     private static DispatchType Worker(int max = 2, int running = 0, string endpoint = "", string[]? cards = null) =>
-        new() { Name = "worker", Max = max, Running = running, Endpoint = endpoint, Slots = [1, 2], RunningCards = cards ?? [] };
+        new() { Name = "worker", Max = max, Running = running, Endpoint = endpoint, Slots = [1, 2], RunningCards = cards ?? [], IsDefault = true };
 
     private static DispatchType Sonnet(int max = 1, int running = 0, string[]? cards = null) => new()
     {
-        Name = "Sonnet", Max = max, Running = running, Premium = true, Agent = "claude",
+        Name = "Sonnet", Max = max, Running = running, Agent = "claude",
         Model = "claude-sonnet-5-5", ModelNames = ["Sonnet-5-5", "sonnet"], Slots = [3], RunningCards = cards ?? [],
     };
 
     private static DispatchType Opus(int max = 1, int running = 0, string[]? cards = null) => new()
     {
-        Name = "Opus", Max = max, Running = running, Premium = true, Agent = "claude",
+        Name = "Opus", Max = max, Running = running, Agent = "claude",
         Model = "claude-opus-5-5", ModelNames = ["Opus-5-5", "opus"], Slots = [4], RunningCards = cards ?? [],
     };
 
@@ -110,9 +110,9 @@ public class TypeDispatchTests
     [Fact]
     public void TypeDispatch_TypeAtCap_NextCardOfOtherTypeStarts()
     {
-        // WT-2, WT-6: Sonnet is full, so the premium card waits and the next card (non-premium) goes on.
+        // WT-2, WT-6: Sonnet is full, so the Sonnet card waits and the next card (the default type's) goes on.
         var types = new List<DispatchType> { Worker(), Sonnet(running: 1) };
-        var plan = Plan([Card("queue/010-A-x", "Status: ready\nWorker: premium"), Card("queue/020-B-y")]);
+        var plan = Plan([Card("queue/010-A-x", "Status: ready\nWorker: Sonnet"), Card("queue/020-B-y")]);
 
         var result = Dispatch(plan, types);
 
@@ -184,7 +184,7 @@ public class TypeDispatchTests
     public void TypeDispatch_CapZero_TypeOff_NoteSaysOff()
     {
         // WT-2, WT-12 step 3: max 0 is what Disable was.
-        var plan = Plan([Card("queue/010-A-x", "Status: ready\nWorker: premium")]);
+        var plan = Plan([Card("queue/010-A-x", "Status: ready\nWorker: Sonnet")]);
 
         var result = Dispatch(plan, [Worker(), Sonnet(max: 0)]);
 
@@ -205,9 +205,9 @@ public class TypeDispatchTests
     }
 
     [Fact]
-    public void TypeDispatch_NoWorkerLine_OnlyNonPremium()
+    public void TypeDispatch_NoWorkerLine_OnlyDefault()
     {
-        // WT-3: Sonnet is listed first and has room, but a card without a Worker: line goes to a non-premium type.
+        // WT-3, 1146-A: Sonnet is listed first and has room, but a card without a Worker: line goes to the default type.
         var plan = Plan([Card("queue/010-A-x")]);
 
         var result = Dispatch(plan, [Sonnet(), Worker()]);
@@ -215,15 +215,66 @@ public class TypeDispatchTests
         Assert.Equal(["010-A->worker"], StartedOn(result));
     }
 
-    [Fact]
-    public void TypeDispatch_WorkerPremium_OnlyPremium_FirstListed()
+    [Theory]
+    [InlineData("Status: ready\nWorker:")]
+    [InlineData("Status: ready\nWorker: one worker type by name or model (optional; blank = the pool's default type)")]
+    public void TypeDispatch_BlankWorkerLine_OnlyDefault(string header)
     {
-        // WT-3, WT-5: of the premium types, the one listed first.
-        var plan = Plan([Card("queue/010-A-x", "Status: ready\nWorker: Premium")]);
+        // 1146-A: an empty Worker: line, or the template's text left in, is no line at all.
+        var plan = Plan([Card("queue/010-A-x", header)]);
+
+        var result = Dispatch(plan, [Sonnet(), Opus(), Worker()]);
+
+        Assert.Equal(["010-A->worker"], StartedOn(result));
+    }
+
+    [Fact]
+    public void TypeDispatch_DefaultFull_NoLineWaits_OthersNotUsed()
+    {
+        // 1146-A: the default type is full; a card with no Worker: line waits for it rather than taking Sonnet.
+        var plan = Plan([Card("queue/010-A-x")]);
+
+        var result = Dispatch(plan, [Worker(max: 1, running: 1), Sonnet()]);
+
+        Assert.Empty(result.Starts);
+        Assert.Equal("next up; waiting for worker (1 of 1 running)", NoteFor(result, "010-A-x"));
+    }
+
+    [Fact]
+    public void TypeDispatch_NoDefaultType_NoLineNotDispatched()
+    {
+        // 1146-A: with no type marked default, a card with no Worker: line has nowhere to go.
+        var plan = Plan([Card("queue/010-A-x")]);
+
+        var result = Dispatch(plan, [Sonnet(), Opus()]);
+
+        Assert.Empty(result.Starts);
+        Assert.Equal("next up; no default worker type exists", NoteFor(result, "010-A-x"));
+    }
+
+    [Theory]
+    [InlineData("premium")]
+    [InlineData("Premium")]
+    public void TypeDispatch_WorkerPremium_IsUnknownName_NotDispatched(string name)
+    {
+        // 1146-A: premium is no longer special; no type is named premium, so nothing fits.
+        var plan = Plan([Card("queue/010-A-x", "Status: ready\nWorker: " + name)]);
 
         var result = Dispatch(plan, [Worker(), Opus(), Sonnet()]);
 
-        Assert.Equal(["010-A->Opus"], StartedOn(result));
+        Assert.Empty(result.Starts);
+        Assert.Equal($"next up; asks for worker {name}, and no worker type fits", NoteFor(result, "010-A-x"));
+    }
+
+    [Fact]
+    public void TypeDispatch_TypeNamedPremium_TakesItsCards()
+    {
+        // 1146-A: a type may be named Premium; Worker: premium then names it like any other type.
+        var plan = Plan([Card("queue/010-A-x", "Status: ready\nWorker: premium")]);
+
+        var result = Dispatch(plan, [Worker(), Opus() with { Name = "Premium" }]);
+
+        Assert.Equal(["010-A->Premium"], StartedOn(result));
     }
 
     [Theory]
@@ -275,23 +326,25 @@ public class TypeDispatchTests
         // WT-4, WT-10: the first type's server does not answer, so the second takes the card.
         var probe = new FakeProbe();
         probe.Down.Add("http://spark:1/v1");
-        var spark = Worker(endpoint: "http://spark:1/v1") with { Name = "spark" };
-        var local = new DispatchType { Name = "local", Max = 1 };
+        // 1146-A: the card names the model both types run, since only the default takes a card with no line.
+        var spark = Worker(endpoint: "http://spark:1/v1") with { Name = "spark", Model = "m" };
+        var local = new DispatchType { Name = "local", Max = 1, Model = "m" };
+        var card = Card("queue/010-A-x", "Status: ready\nWorker: m");
 
-        var result = Dispatch(Plan([Card("queue/010-A-x")]), [spark, local], probe: probe);
+        var result = Dispatch(Plan([card]), [spark, local], probe: probe);
         Assert.Equal(["010-A->local"], StartedOn(result));
 
-        var alone = Dispatch(Plan([Card("queue/010-A-x")]), [spark], probe: probe);
+        var alone = Dispatch(Plan([card]), [spark], probe: probe);
         Assert.Equal("next up; waiting for spark: model server does not answer", NoteFor(alone, "010-A-x"));
     }
 
     [Fact]
     public void TypeDispatch_SeveralTypesUsable_FirstListedTakesIt()
     {
-        // WT-5, WT-C5: the cheaper type is listed first.
-        var types = new List<DispatchType> { new() { Name = "cheap", Max = 1 }, new() { Name = "dear", Max = 1 } };
+        // WT-5, WT-C5: the cheaper type is listed first. 1146-A: the cards name the model both run.
+        var types = new List<DispatchType> { new() { Name = "cheap", Max = 1, Model = "m" }, new() { Name = "dear", Max = 1, Model = "m" } };
 
-        var result = Dispatch(Plan([Card("queue/010-A-x"), Card("queue/020-B-y")]), types);
+        var result = Dispatch(Plan([Card("queue/010-A-x", "Status: ready\nWorker: m"), Card("queue/020-B-y", "Status: ready\nWorker: m")]), types);
 
         Assert.Equal(["010-A->cheap", "020-B->dear"], StartedOn(result));
     }
@@ -324,12 +377,12 @@ public class TypeDispatchTests
         // WT-9: claude out of quota - Claude types wait, the default agent's type runs on.
         var quota = new AgentQuota();
         quota.Mark("claude", Noon.AddMinutes(-35));   // 11:25
-        var plan = Plan([Card("queue/010-A-x", "Status: ready\nWorker: premium"), Card("queue/020-B-y")]);
+        var plan = Plan([Card("queue/010-A-x", "Status: ready\nWorker: Opus"), Card("queue/020-B-y")]);
 
         var result = Dispatch(plan, Types(), quota: quota);
 
         Assert.Equal(["020-B->worker"], StartedOn(result));
-        Assert.Equal("next up; waiting for Sonnet: claude out of quota since 11:25, Opus: claude out of quota since 11:25",
+        Assert.Equal("next up; waiting for Opus: claude out of quota since 11:25",
             NoteFor(result, "010-A-x"));
     }
 
@@ -393,7 +446,8 @@ public class TypeDispatchTests
         var types = new List<DispatchType> { Worker(running: 2), Sonnet(max: 0), Opus(running: 1) };
 
         Assert.Equal("worker", TypeDispatcher.Fitting(types, Card("queue/010-A-x"), migrated: false)?.Name);
-        Assert.Equal("Opus", TypeDispatcher.Fitting(types, Card("queue/010-A-x", "Status: ready\nWorker: premium"), migrated: false)?.Name);
+        Assert.Equal("Opus", TypeDispatcher.Fitting(types, Card("queue/010-A-x", "Status: ready\nWorker: opus"), migrated: false)?.Name);
+        Assert.Null(TypeDispatcher.Fitting(types, Card("queue/010-A-x", "Status: ready\nWorker: premium"), migrated: false)); // 1146-A
         Assert.Equal("worker", TypeDispatcher.Fitting(types, Card("queue/010-D-x"), migrated: false)?.Name); // 969-A: any category
         Assert.Null(TypeDispatcher.Fitting(types, Card("queue/010-A-x", "Status: ready\nWorker: nobody"), migrated: false));
     }

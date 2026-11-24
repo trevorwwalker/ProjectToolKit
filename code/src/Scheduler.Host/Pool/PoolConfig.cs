@@ -51,6 +51,9 @@ public sealed record PoolConfig(
     /// <summary>MP-C3: the pool's own log folder; "" = <c>%LOCALAPPDATA%\ProjectToolkit\pool</c>.</summary>
     public string LogDir { get; init; } = "";
 
+    /// <summary>1161-B: <c>foregroundLockFix</c>, default true: set the live foreground lock timeout to 0 at start (see <see cref="ForegroundLockFix"/>). False = read and log it, change nothing.</summary>
+    public bool ForegroundLockFix { get; init; } = true;
+
     /// <summary>The file's <c>about</c> line, kept for the reader.</summary>
     public string About { get; init; } = "";
 
@@ -130,6 +133,7 @@ public sealed record PoolConfig(
             Listen = listen.Length == 0 ? "localhost" : listen,
             LogDir = Str(root, "logDir"),
             About = Str(root, "about"),
+            ForegroundLockFix = !(bool.TryParse(Str(root, "foregroundLockFix"), out var fix) && !fix),
             Pool = WorkerTypesJson.Parse(root, new SchedulerConfig()),
             Skipped = skipped,
             Valid = root is not null,

@@ -40,10 +40,13 @@ internal sealed class FakePageActions : IPageActions
     public string? LastTemplate { get; set; }
 
     /// <summary>
-    /// The last Worker types panel Save carried, as <c>total|name:max:agent:model:endpoint:metrics:premium:areas:projects;...</c>
+    /// The last Worker types panel Save carried, as <c>total|name:max:agent:model:endpoint:metrics:projects;...</c>
     /// (WT-P3, WT-P4).
     /// </summary>
     public string? LastWorkerTypes { get; set; }
+
+    /// <summary>1147-C: the default type the last Worker types Save named.</summary>
+    public string? LastDefaultWorker { get; set; }
 
     /// <summary>
     /// The name each Worker types panel row was loaded as, <c>;</c> separated in row order (947-B):
@@ -141,6 +144,10 @@ internal sealed class FakePageActions : IPageActions
         }
     });
 
+    public string? LastPlanMark { get; set; }
+
+    public ActionResult PlanMark(string plan, string step) => Run("/plan-mark", () => LastPlanMark = plan + "|" + step);
+
     public ActionResult OpenCategories() => Run("/open-lanes");
 
     public ActionResult OpenWorkers() => Run("/open-workers");
@@ -174,12 +181,13 @@ internal sealed class FakePageActions : IPageActions
     public ActionResult Kill(int slot) => Run("/kill", () => LastSlot = slot);
 
     // WT-P4: the Worker types panel's Save and one agent's Resume.
-    public ActionResult SaveWorkerTypes(int maxWorkers, IReadOnlyList<PageWorkerTypeView> types) =>
+    public ActionResult SaveWorkerTypes(int maxWorkers, IReadOnlyList<PageWorkerTypeView> types, string defaultWorker) =>
         Run("/worker-types", () =>
         {
+            LastDefaultWorker = defaultWorker;
             LastWorkerTypes = maxWorkers + "|" + string.Join(
                 ";",
-                types.Select(type => $"{type.Name}:{type.Max}:{type.Agent}:{type.Model}:{type.Endpoint}:{type.MetricsUrl}:{(type.Premium ? "yes" : "no")}:{string.Join(",", type.Projects)}"));
+                types.Select(type => $"{type.Name}:{type.Max}:{type.Agent}:{type.Model}:{type.Endpoint}:{type.MetricsUrl}:{string.Join(",", type.Projects)}"));
             LastWorkerTypesOriginal = string.Join(";", types.Select(type => type.OriginalName));
         });
 

@@ -135,20 +135,16 @@ The board, the Plans view and the Gantt are three drawings of the same snapshot.
 
 ### Plans
 
-- **VW-11 What a plan is.** A plan is a file a card's `Plan:` names, or a `*_plan.md` in `jobs/plans/` or
-  `jobs/archive/` even with no card naming it. The Plans view lists, per project: the plans in `jobs/plans/` first (by
-  name), then the documents cards name that are elsewhere (by path), then the archived ones (folded under "Archived
-  plans"), then **No plan**.
+- **VW-11 What a plan is** (1126-C). A plan is a file in `jobs/plans/` and nothing else: not a design document, not the
+  roadmap, not anything in `jobs/archive/`. Plans are never archived; a finished plan stays and shows its green check,
+  collapsed. The Plans view lists, per project: the plans in `jobs/plans/` (by name, one with no card naming it too),
+  then **No plan**. A card whose `Plan:` names any other path is listed under No plan with that path shown.
 - **VW-12 Resolving a card's plan path** (read time, permanent). The path from 1030-A's `Plan:` (backticks and a
-  trailing `;`/`,` dropped), then: a leading `docs/jobs/` becomes `jobs/` (the 2026-11-18 move); `jobs/plans/X` that is
-  not on main resolves to `jobs/archive/X` (archiving a plan needs no card edits); a path that is still not on main is
-  shown under its own name marked **missing**. `none...`, an empty `Plan:` and no `Plan:` line are No plan.
+  trailing `;`/`,` dropped), then: a leading `docs/jobs/` becomes `jobs/`; `jobs/archive/X` becomes `jobs/plans/X` when
+  that is on main (plans were archived before 1126-C); a path in `jobs/plans/` not on main is shown under its own
+  name marked **missing**; any other path, `none...`, an empty `Plan:` and no `Plan:` line are No plan.
 - **VW-13 A plan's status.** The first line of the file that starts with `Status:` (also `*Status`, `**Status`), cut at
-  200 characters; none shows "no status line". For ProjectToolkit's roadmap
-  (`docs/design/gdd/scheduler-roadmap.md`) each `## <n>.` item is a plan of its own, named "Roadmap item n: <title>",
-  with its italic `*Status ...*` line as its status; a design document is listed under the item named by its own
-  `Roadmap: item n` line (open point 3, decided). Adding those lines to the design documents is part of the build
-  cards, not of card 1031-D.
+  200 characters; none shows "no status line". The roadmap is no longer a plan (1126-C): its items are not listed.
 - **VW-14 Counts.** Per plan, and per step within it: **created** (every card naming it), **done** (done/ and
   archive/), and **pending** split as the board's columns: queue, running, review, waiting on you, waiting on the
   planner. A bar per plan shows done against created. The same counts for No plan.

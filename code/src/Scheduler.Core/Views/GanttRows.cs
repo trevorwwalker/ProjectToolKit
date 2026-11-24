@@ -50,15 +50,16 @@ public static class GanttRows
 {
     /// <summary>
     /// The project row with its groups and card rows. A card is listed when it has a run or a running bar inside
-    /// [from, to], or is in active/; a group with no listed card is dropped.
+    /// [from, to], is in active/, or is in <paramref name="listed"/> (the cards with an estimate, VW-18: the
+    /// unfinished ones); a group with no listed card is dropped.
     /// </summary>
-    public static GanttRow Of(ViewsSnapshot snapshot, GanttGroupBy groupBy, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now)
+    public static GanttRow Of(ViewsSnapshot snapshot, GanttGroupBy groupBy, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now, IReadOnlySet<string>? listed = null)
     {
         var rows = new Dictionary<string, GanttRow>(StringComparer.Ordinal);
         foreach (var card in snapshot.Cards)
         {
             var bars = GanttBars.ForCard(snapshot.Runs, card.Id, from, to, now);
-            if (bars.Count == 0 && card.Folder != ViewFolder.Active)
+            if (bars.Count == 0 && card.Folder != ViewFolder.Active && listed?.Contains(card.Id) != true)
             {
                 continue;
             }

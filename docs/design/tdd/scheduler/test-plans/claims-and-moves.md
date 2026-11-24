@@ -78,11 +78,16 @@ side of a claim is covered by `Dispatch_Orphan_*` and `Cards_ReadFromRemoteMainO
 
 ### Moves_ResumeCard_EachSource
 - Checks: MOVE-7 · Project: Core
-- Cases: review card -> active/ ready, journal "sent back from review", retries cleared; active needs-human -> ready, "resumed", retries cleared; active waiting-on-dev -> active ready, retries cleared; queue waiting-on-dev -> queue ready, retries **not** cleared.
+- Cases: review card -> active/ ready, journal "sent back from review", retries cleared; active needs-human -> ready, "resumed", retries cleared; active waiting-on-dev -> active ready, retries cleared; queue waiting-on-dev -> queue ready, retries **not** cleared; queue needs-human (1149-B) -> queue ready, "resumed", retries cleared.
+
+### Moves_ResumeQueuedNeedsHuman_StaysInQueueReadyAndClearsRetries
+- Checks: MOVE-7 (1149-B) · Project: Core
+- Action: `CardMoves.Resume` on a `queue/` card whose Status starts `needs-human`.
+- Expected: ok; stays in queue/ (never pulled into the pool) with Status ready; journal "resumed from the page; read any ## Dev section first."; commit "jobs: resumed <name> (from the page)"; this card's retry entry cleared, another card's kept.
 
 ### Moves_ResumeQueueCard_RetriesNotCleared
 - Checks: MOVE-7 · Project: Core · **blocked on C9**
-- Expected today: queue resume and every Answer keep the retry count. Expected after C9: to be written.
+- Expected today: queue resume of a waiting-on-developer card and every Answer keep the retry count. A queue resume of a *needs-human* card clears it (1149-B). Expected after C9: to be written.
 
 ### Moves_RetryAndResumeState_ClearRetries
 - Checks: MOVE-8 · Project: Core

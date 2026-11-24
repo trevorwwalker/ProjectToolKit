@@ -27,6 +27,13 @@ public static class WorkerArgs
     ];
 
     /// <summary>
+    /// What Codex is given when the worker has no web (AG-11): its search tool off. The value is
+    /// written without quotes, which the Windows argument parser would strip anyway; Codex reads a
+    /// value that is not TOML as a string. Downloads from its shell cannot be denied (known_gaps.md).
+    /// </summary>
+    public static IReadOnlyList<string> CodexNoWeb { get; } = ["-c", "web_search=disabled"];
+
+    /// <summary>
     /// The agent's arguments, one element per argument. Only <c>{prompt}</c>, which comes from
     /// <paramref name="pointer"/>, and <c>{model}</c>, <c>{endpoint}</c>, <c>{jobs}</c> and
     /// <c>{project}</c> (CFG-12) are substituted; anything else is passed through as it is. With
@@ -63,6 +70,10 @@ public static class WorkerArgs
             if (agent.Format == AgentFormat.Claude)
             {
                 list.AddRange(ClaudeNoWeb);
+            }
+            else if (agent.Format == AgentFormat.Codex)
+            {
+                list.AddRange(CodexNoWeb);   // AG-11
             }
             else if (Text.IsMatch(agent.Cli, "copilot"))
             {

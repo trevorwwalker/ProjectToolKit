@@ -27,7 +27,4 @@ public sealed record WorkerDefinition
 
     /// <summary>Category letters it may take, upper-cased; "" means any category (WRK-1, DISP-17).</summary>
     public string Categories { get; init; } = "";
-
-    /// <summary>A premium worker takes <c>Worker: premium</c> cards and no unmarked ones (DISP-18).</summary>
-    public bool Premium { get; init; }
 }

@@ -40,6 +40,9 @@ public interface IPageActions
     /// <summary><c>/answer</c>: answer a card question (MOVE-2).</summary>
     ActionResult Answer(string card, int question, string choice, string note);
 
+    /// <summary>1125-C: <c>/plan-mark</c>: cycle the mark of a plan (step "plan") or step, automatic to checked to cleared, in jobs/plan-marks.json.</summary>
+    ActionResult PlanMark(string plan, string step) => ActionResult.Failed("plan marks are set on the project page");
+
     /// <summary><c>/open-categories</c>.</summary>
     ActionResult OpenCategories();
 
@@ -100,6 +103,15 @@ public interface IPageActions
     /// open cards still name (947-B).
     /// </summary>
     ActionResult SaveWorkerTypes(int maxWorkers, IReadOnlyList<PageWorkerTypeView> types) =>
+        SaveWorkerTypes(maxWorkers, types, "");
+
+    /// <summary>
+    /// 1146-A: <see cref="SaveWorkerTypes(int, IReadOnlyList{PageWorkerTypeView})"/> that also sets the
+    /// pool's <c>defaultWorker</c>, the type that takes cards with no <c>Worker:</c> line (WT-3).
+    /// <paramref name="defaultWorker"/> names a row by its new name; "" keeps the current default
+    /// (following it through a rename). A default that names no row is refused.
+    /// </summary>
+    ActionResult SaveWorkerTypes(int maxWorkers, IReadOnlyList<PageWorkerTypeView> types, string defaultWorker) =>
         ActionResult.Failed("worker types cannot be saved by this scheduler yet");
 
     /// <summary><c>/agent-resume?agent=&lt;name&gt;</c> (WT-9): clears that agent's out-of-quota mark.</summary>

@@ -95,8 +95,8 @@ public sealed record PoolTypeView
     /// <summary>1087-C: the metrics URL, or "" (WT-C4).</summary>
     public string MetricsUrl { get; init; } = "";
 
-    /// <summary>1087-C: premium, as the pool file sets it (WT-3).</summary>
-    public bool Premium { get; init; }
+    /// <summary>1146-A: the pool's default type, which takes the cards with no <c>Worker:</c> line (WT-3).</summary>
+    public bool IsDefault { get; init; }
 
     /// <summary>
     /// 1087-C: the model the type really runs when its own is blank - the agent's default or the

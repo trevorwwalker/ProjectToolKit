@@ -16,7 +16,7 @@ public sealed class ReviewPage(PageThemes? themes = null)
     private PageThemes Themes { get; } = themes ?? PageThemes.BuiltIn;
 
     /// <summary>The page for <paramref name="panel"/>.</summary>
-    public string Render(ReviewPanel panel, PageHealthView health, bool controlsAllowed)
+    public string Render(ReviewPanel panel, PageHealthView health, bool controlsAllowed, string? project = null)
     {
         ArgumentNullException.ThrowIfNull(panel);
         ArgumentNullException.ThrowIfNull(health);
@@ -34,7 +34,7 @@ public sealed class ReviewPage(PageThemes? themes = null)
             "<div class='review-status'>" + Enc(panel.Status) + "</div><div class='review-actions'>"
             + Post(NoteId(panel.Name), "/done", "Done", "Reviewed: mark this card done and move it to done/. The note, if any, goes into the card's ## Dev section.", controlsAllowed)
             + Post(NoteId(panel.Name), "/resume-card", "Send back", "Not finished: back to active/, ready. The note, if any, goes into the card's ## Dev section.", controlsAllowed)
-            + NoteBox(panel.Name, controlsAllowed)
+            + NoteBox(panel.Name, project, controlsAllowed)
             + " <a href='/'>Back to the page</a></div>");
 
         if (panel.Questions.Count > 0)
@@ -105,9 +105,11 @@ public sealed class ReviewPage(PageThemes? themes = null)
     // buttons of this form, so what is typed goes with whichever is pressed.
     private static string NoteId(string card) => Regex.Replace($"n-{card}", "[^A-Za-z0-9-]", "-");
 
-    private static string NoteBox(string card, bool allowed) =>
+    // 1156-B: in a pool the form also carries project=, which every button of it sends along.
+    private static string NoteBox(string card, string? project, bool allowed) =>
         allowed
             ? $"<form id='{NoteId(card)}' method='post' action='/note' class='g' data-tip='Type a note, then press any button of this card to send it with that, or Save note to file it in the card&#39;s ## Dev section without moving it.'>"
+              + (string.IsNullOrEmpty(project) ? "" : $"<input type='hidden' name='project' value='{Enc(project)}'>")
               + $"<input type='hidden' name='card' value='{Enc(card)}'><input name='note' maxlength='500' placeholder='note (optional)'> <button>Save note</button></form>"
             : "";
 

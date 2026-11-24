@@ -88,21 +88,21 @@ public class WorkerTypesTests
         Assert.Equal("spark", spark.Model);
         Assert.Equal("http://spark.local:18400/v1", spark.Endpoint);
         Assert.Equal("http://spark.local:18400/metrics", spark.MetricsUrl);
-        Assert.False(spark.Premium);
+        Assert.Equal("spark", pool.DefaultType); // 1146-A: no defaultWorker -> the first type premium left off
         Assert.Empty(spark.Projects);
         Assert.Empty(spark.Slots);
 
         var sonnet = pool.Types[1];
         Assert.Equal("claude", sonnet.Agent);
         Assert.Equal("claude-sonnet-5-5", sonnet.Model);
-        Assert.True(sonnet.Premium);
+        Assert.False(pool.IsDefault("sonnet"));
 
-        // WT-C3: a type with nothing on it takes the total for its cap, is not premium and takes every area.
+        // WT-C3: a type with nothing on it takes the total for its cap and takes every area.
         var plain = WorkerTypesJson.Parse("""{"pool":{"types":{"plain":{}}}}""", cfg, new FakeLog());
         Assert.NotNull(plain);
         Assert.Equal(3, plain.MaxWorkers); // WT-C1: no maxWorkers -> scheduler.json's slots
         Assert.Equal(3, plain.Types[0].Max); // WT-C3: no max -> maxWorkers
-        Assert.False(plain.Types[0].Premium);
+        Assert.Equal("plain", plain.DefaultType);
         Assert.Empty(plain.Types[0].Slots); // WT-C10.5: only a migrated type has slot numbers
 
         // WT-C1: a maxWorkers that is 0 or not a number is "invalid" and gives scheduler.json's slots.
@@ -126,9 +126,10 @@ public class WorkerTypesTests
         Assert.Equal(5, WorkerTypesJson.Parse("""{"pool":{"maxWorkers":4,"types":{"a":{}}}}""", pinned)!.MaxWorkers);
     }
 
-    // WT-C2: a name that is `premium` or only digits is refused, and names compare case-insensitively.
+    // WT-C2: a name that is only digits is refused, and names compare case-insensitively. 1146-A:
+    // `premium` is an ordinary name now.
     [Fact]
-    public void WorkerTypes_NamePremiumOrDigits_Refused()
+    public void WorkerTypes_NameDigits_Refused_PremiumIsAName()
     {
         var log = new FakeLog();
         var cfg = Load("{}");
@@ -139,12 +140,12 @@ public class WorkerTypesTests
 
         var pool = WorkerTypesJson.Parse(text, cfg, log);
         Assert.NotNull(pool);
-        Assert.Equal(["Spark"], [.. pool.Types.Select(t => t.Name)]);
+        Assert.Equal(["premium", "Spark"], [.. pool.Types.Select(t => t.Name)]);
         Assert.DoesNotContain(pool.Types, t => Text.Same(t.Name, "12"));
 
-        // Each refusal is logged: three by WT-C2 and one for the case-insensitive duplicate.
-        Assert.Equal(4, log.Lines.Count);
-        Assert.Contains(log.Lines, l => l.Contains("premium") && l.Contains("refused"));
+        // Each refusal is logged: one by WT-C2 and two for the case-insensitive duplicates.
+        Assert.Equal(3, log.Lines.Count);
+        Assert.Contains(log.Lines, l => l.Contains("Premium") && l.Contains("duplicate"));
         Assert.Contains(log.Lines, l => l.Contains("12") && l.Contains("refused"));
         Assert.Contains(log.Lines, l => l.Contains("SPARK") && l.Contains("duplicate"));
     }
@@ -171,7 +172,7 @@ public class WorkerTypesTests
         Assert.False(settings.Apply("""{"pool":{"maxWorkers":2,"types":{}}}""", []));
         Assert.Equal(beforeTypes, Describe(settings.Pool.Types));
         Assert.Contains(log.Lines, l => l.Contains("no valid worker type"));
-        Assert.False(settings.Apply("""{"pool":{"maxWorkers":2,"types":{"premium":{},"7":{}}}}""", []));
+        Assert.False(settings.Apply("""{"pool":{"maxWorkers":2,"types":{"12":{},"7":{}}}}""", []));
         Assert.Equal(beforeTypes, Describe(settings.Pool.Types));
 
         // WT-C6: caps may add up to more than the total: that is the point of them sharing it.
@@ -248,18 +249,16 @@ public class WorkerTypesTests
         Assert.Equal(["worker", "Sonnet", "Opus"], [.. pool.Types.Select(t => t.Name)]);
 
         var worker = pool.Types[0];
-        Assert.False(worker.Premium);
+        Assert.Equal("worker", pool.DefaultType); // 1146-A: the slot the old premium flag left off
         Assert.Equal(2, worker.Max);
         Assert.Equal("", worker.Agent); // WT-C3: empty is the worker section
 
         var sonnet = pool.Types[1];
-        Assert.True(sonnet.Premium);
         Assert.Equal(1, sonnet.Max);
         Assert.Equal("claude", sonnet.Agent);
         Assert.Equal("claude-sonnet-5-5", sonnet.Model);
 
         var opus = pool.Types[2];
-        Assert.True(opus.Premium);
         Assert.Equal(1, opus.Max);
         Assert.Equal("claude", opus.Agent);
         Assert.Equal("claude-opus-5-5", opus.Model);
@@ -292,7 +291,7 @@ public class WorkerTypesTests
             """;
 
         var pool = WorkerTypesJson.FromWorkersJson(cfg, text, null, ShortFor(("b", "Beta"), ("sonnet-a", "Sonnet"), ("sonnet-b", "Sonnet")));
-        Assert.Equal(["Named", "Beta", "worker", "Sonnet", "Sonnet-2", "worker-premium"], [.. pool.Types.Select(t => t.Name)]);
+        Assert.Equal(["Named", "Beta", "worker", "Sonnet", "Sonnet-2", "premium"], [.. pool.Types.Select(t => t.Name)]);
 
         // A model nothing knows the short of is no name either: the type is `worker`, and two of
         // those are `worker` and `worker-2`.
@@ -383,7 +382,8 @@ public class WorkerTypesTests
         Assert.Contains("\"model\": \"opus-5\"", text);
         Assert.Contains("\"endpoint\": \"http://s:1/v1\"", text);
         Assert.Contains("\"metricsUrl\": \"http://s:1/metrics\"", text);
-        Assert.Contains("\"premium\": true", text);
+        Assert.DoesNotContain("\"premium\"", text); // 1146-A: no premium flag; the default type is named instead
+        Assert.Contains("\"defaultWorker\": \"worker\"", text);
 
         // What Save writes is what Parse reads back, field for field (the slot numbers are the
         // migration's own and are not written).
@@ -393,6 +393,7 @@ public class WorkerTypesTests
         Assert.False(again.Migrated);
         Assert.Equal(saved.MaxWorkers, again.MaxWorkers);
         Assert.Equal(Describe([.. saved.Types.Select(t => t with { Slots = [] })]), Describe(again.Types));
+        Assert.Equal("worker", again.DefaultType);
 
         // A type that serves named projects keeps them (WT-C3, Q1); a type without them says nothing.
         var withProjects = new WorkerPool
@@ -415,7 +416,7 @@ public class WorkerTypesTests
 
     /// <summary>A type as one line, so a record holding lists can be compared as written.</summary>
     private static IReadOnlyList<string> Describe(IReadOnlyList<WorkerType> types) =>
-        [.. types.Select(t => $"{t.Name}|{t.Max}|{t.Agent}|{t.Model}|{t.Endpoint}|{t.MetricsUrl}|{t.Premium}|{string.Join(",", t.Projects)}|{string.Join(",", t.Slots)}")];
+        [.. types.Select(t => $"{t.Name}|{t.Max}|{t.Agent}|{t.Model}|{t.Endpoint}|{t.MetricsUrl}|{string.Join(",", t.Projects)}|{string.Join(",", t.Slots)}")];
 
     // 969-A: an old areas key is ignored with one log line; the type then takes any category.
     [Fact]

@@ -22,6 +22,7 @@ public class MovesResumeTests
     [InlineData("active", "needs-human: which?", CardFolder.Active, "resumed from the page; read any ## Dev section first.", "jobs: resumed 010-A-x (from the page)", true)]
     [InlineData("active", "waiting: developer", CardFolder.Active, "resumed from the page; read any ## Dev section first.", "jobs: resumed 010-A-x (from the page)", true)]
     [InlineData("queue", "waiting: you", CardFolder.Queue, "set ready from the page; read any ## Dev section first.", "jobs: ready 010-A-x (from the page)", false)]
+    [InlineData("queue", "needs-human: which?", CardFolder.Queue, "resumed from the page; read any ## Dev section first.", "jobs: resumed 010-A-x (from the page)", true)]
     public void Moves_ResumeCard_EachSource(string from, string status, CardFolder folder, string journal, string message, bool clears)
     {
         var text = $"# T\nStatus: {status}\n  more\nLocks: none\n\n## Result\n";
@@ -44,7 +45,6 @@ public class MovesResumeTests
     [Theory]
     [InlineData("active", "ready")]
     [InlineData("queue", "ready")]
-    [InlineData("queue", "needs-human: x")]
     [InlineData("done", "done")]
     [InlineData("active", "waiting: planner (request #3)")]
     public void Moves_ResumeCard_EachSource_NotWaitingIsError(string from, string status)
@@ -78,6 +78,28 @@ public class MovesResumeTests
         Assert.True(answer.Ok, answer.Error);
         Assert.Equal(CardFolder.Active, answer.Folder);
         Assert.Equal(2, retries["010-A"]);
+    }
+
+    // MOVE-7 as 1149-B extended it: a needs-human card parked in queue/ is waiting on the developer
+    // too (the dispatcher never takes it), so Resume sets it ready where it stands and clears its
+    // retries as for an active card. It stays in queue/ - it was never claimed.
+    [Fact]
+    public void Moves_ResumeQueuedNeedsHuman_StaysInQueueReadyAndClearsRetries()
+    {
+        var text = "# T\nStatus: needs-human: leave it, or remove its worktree?\n  more\nLocks: none\n\n## Result\n";
+        var retries = Retries();
+
+        var edit = CardMoves.Resume(MovesAnswerTests.Card("queue", text), text, Now);
+        CardMoves.Committed(edit, retries);
+
+        Assert.True(edit.Ok, edit.Error);
+        Assert.Equal(CardFolder.Queue, edit.Folder);
+        Assert.Equal("ready", edit.Status);
+        Assert.Equal($"# T\nStatus: ready\nLocks: none\n\n## Result\n\n- 2026-11-18 11:20 developer: resumed from the page; read any ## Dev section first.\n", edit.Text);
+        Assert.Equal("jobs: resumed 010-A-x (from the page)", edit.Message);
+        Assert.True(edit.ClearsRetries);
+        Assert.False(retries.ContainsKey("010-A"));
+        Assert.Equal(2, retries["020-B"]);
     }
 
     // MOVE-8: Retry removes the card's entry; Resume from paused clears them all (HealthCheck.Resume).

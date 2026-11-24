@@ -161,28 +161,33 @@ public static class CardMoves
 
     /// <summary>
     /// MOVE-7 (Resume-Card L1530): a review card goes back to active/ ready ("sent back from
-    /// review"), an active needs-human card becomes ready ("resumed"), and a card waiting on the
-    /// developer becomes ready where it is. The retry count is cleared once pushed, except for a
-    /// queue card (Spec C9). Any other card is an error.
+    /// review"), a needs-human card becomes ready ("resumed") whichever folder it is parked in, and
+    /// a card waiting on the developer becomes ready where it is. A needs-human card parked in
+    /// queue/ (1149-B) goes back to ready there - the dispatcher never takes a parked card, so a
+    /// queued one must stay in queue/ for the planner or its owner to claim it again. The retry
+    /// count is cleared once pushed for every path except a queue card that merely waits on the
+    /// developer (Spec C9). Any other card is an error.
     /// </summary>
     public static CardEdit Resume(Card card, string text, DateTimeOffset now)
     {
+        var parked = Text.IsMatch(card.Status, "^needs-human");
         var waits = card.Folder == CardFolder.Review ||
-            (card.Folder == CardFolder.Active && Text.IsMatch(card.Status, "^needs-human")) ||
+            (parked && card.Folder is CardFolder.Active or CardFolder.Queue) ||
             CardWaits.OnDeveloper(card);
         if (!waits)
         {
             return CardEdit.Failed($"{card.Id} is not waiting on you");
         }
 
-        if (card.Folder == CardFolder.Queue)
+        if (card.Folder == CardFolder.Queue && !parked)
         {
             // Spec C9: today's behaviour, kept until the developer decides (003-D review).
             return Update(card, text, "ready", CardFolder.Queue, "set ready from the page; read any ## Dev section first.", $"jobs: ready {card.Name} (from the page)", now, clearsRetries: false);
         }
 
+        var to = card.Folder == CardFolder.Queue ? CardFolder.Queue : CardFolder.Active;
         var how = card.Folder == CardFolder.Review ? "sent back from review" : "resumed";
-        return Update(card, text, "ready", CardFolder.Active, $"{how} from the page; read any ## Dev section first.", $"jobs: {how.Replace(" from review", "", StringComparison.Ordinal)} {card.Name} (from the page)", now, clearsRetries: true);
+        return Update(card, text, "ready", to, $"{how} from the page; read any ## Dev section first.", $"jobs: {how.Replace(" from review", "", StringComparison.Ordinal)} {card.Name} (from the page)", now, clearsRetries: true);
     }
 
     /// <summary>After <paramref name="edit"/> is pushed: clears the card's retry count when it says so (MOVE-7, L1541).</summary>

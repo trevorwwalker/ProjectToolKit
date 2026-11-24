@@ -1,6 +1,7 @@
 using System.Text;
 using Scheduler.Core.Contracts;
 using Scheduler.Core.PageModel;
+using Scheduler.Core.WebContract;
 
 namespace Scheduler.Host.Processes;
 
@@ -125,13 +126,21 @@ public sealed class WorkerLogRenderer(IClock clock)
             return;
         }
 
-        var scan = live.Format == AgentFormat.Claude
-            ? WorkerLogScan.Claude(text, live.Stats, live.Partial, clock)
-            : WorkerLogScan.Copilot(text, live.Stats, live.Partial);
+        var scan = live.Format switch
+        {
+            AgentFormat.Claude => WorkerLogScan.Claude(text, live.Stats, live.Partial, clock),
+            AgentFormat.Codex => WorkerEvents.ScanCodex(text, live.Stats, live.Partial),
+            AgentFormat.OpenCode => WorkerEvents.ScanOpenCode(text, live.Stats, live.Partial),
+            _ => WorkerLogScan.Copilot(text, live.Stats, live.Partial),
+        };
         live.Partial = scan.Partial;
-        var render = live.Format == AgentFormat.Claude
-            ? (Func<string, IReadOnlyList<string>>)WorkerEventRender.Claude
-            : WorkerEventRender.Copilot;
+        var render = live.Format switch
+        {
+            AgentFormat.Claude => (Func<string, IReadOnlyList<string>>)WorkerEventRender.Claude,
+            AgentFormat.Codex => CodexLines,
+            AgentFormat.OpenCode => OpenCodeLines,
+            _ => WorkerEventRender.Copilot,
+        };
         var lines = scan.Lines.SelectMany(render).ToList();
         if (lines.Count > 0)
         {
@@ -151,6 +160,20 @@ public sealed class WorkerLogRenderer(IClock clock)
 
         live.Position = position;
     }
+
+    // A Codex or OpenCode event line as readable lines: the page's own events, marked as the other formats' are,
+    // so the live view and the readable log cannot disagree (AG-16).
+    private static IReadOnlyList<string> CodexLines(string line) => AgentLines(AgentFormat.Codex, line);
+
+    private static IReadOnlyList<string> OpenCodeLines(string line) => AgentLines(AgentFormat.OpenCode, line);
+
+    private static IReadOnlyList<string> AgentLines(AgentFormat format, string line) =>
+        [.. WorkerEvents.Render(format, line).Select(e => e.Mark switch
+        {
+            LiveMark.Message or LiveMark.ToolCall or LiveMark.Error => e.Prefix + " " + e.Text,
+            LiveMark.FailedTool or LiveMark.Reasoning => "  " + e.Prefix + " " + e.Text,
+            _ => "  " + e.Text,
+        })];
 
     // The whole lines after position, and the position after them; everything left when final.
     private static (string Text, long Position) ReadNew(string path, long position, bool final)

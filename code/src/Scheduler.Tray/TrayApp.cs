@@ -15,6 +15,12 @@ public sealed class TrayApp : ApplicationContext
     /// <summary>How long the scheduler is given to end by itself after the Ctrl+C before it is ended outright.</summary>
     private static readonly TimeSpan StopGrace = TimeSpan.FromSeconds(20);
 
+    /// <summary>
+    /// What the log window is titled: "Switchyard - log", the same in pool mode and single-project
+    /// mode, where the project name would only say one project (1145-C).
+    /// </summary>
+    public const string LogTitle = "Switchyard - log";
+
     private readonly TrayArguments _args;
     private readonly string _exe;
     private readonly LogBuffer _log = new();
@@ -584,7 +590,7 @@ public sealed class TrayApp : ApplicationContext
             return;
         }
 
-        _logForm = new LogForm(_log, $"{_project} scheduler - log");
+        _logForm = new LogForm(_log, LogTitle);
         _logForm.Show();
     }
 }

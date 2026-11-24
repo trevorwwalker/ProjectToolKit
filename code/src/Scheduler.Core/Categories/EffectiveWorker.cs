@@ -23,7 +23,4 @@ public sealed record EffectiveWorker
 
     /// <summary>The agent's command.</summary>
     public string Cli { get; init; } = "";
-
-    /// <summary>Whether it is a premium worker.</summary>
-    public bool Premium { get; init; }
 }

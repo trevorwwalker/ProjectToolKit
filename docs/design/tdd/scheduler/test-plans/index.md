@@ -103,7 +103,7 @@ the decision is "keep".
 | C10 /slots-add, /slots-remove | `Page_SlotsAddRemove_ApiOnly` |
 | C12 category overlap with globs | `Lanes_Overlaps_GlobOwnsNotSeenAsFolder` |
 | C13 accounting.csv quoting | `Acct_Row_QuoteOrCommaInFields` |
-| C14 Card.Premium unused | `Dispatch_CardPremiumFlag_Unused` |
+| C14 Card.Premium unused (resolved 2026-11-23: no premium, 1146-A) | `Dispatch_CardPremiumFlag_Unused` (retired) |
 | C15 waiting card shown twice | `Page_WaitingOnDevInActive_ShownTwice` |
 | C16 health kill limit | `Health_KillLimit_UsesMaxMinutes` |
 
@@ -174,7 +174,7 @@ the claim; see claims-and-moves.md. C18 (solution already scaffolded) needs no t
 | DISP-15 | *Superseded by the WT rules (960-D).* `Dispatch_AllWorkersBusy_ThenOneFinishes_StartsNextTick` (dispatch.md), `Dispatch_ServerUp_CachedFor20Seconds` (ServerCacheTests.cs), `TypeDispatch_StartWorkerFails_CardNotTriedAgainButTheNextIs` (TypeDispatchTests.cs); the slot tests `Dispatch_AllWorkersBusy_CandidateWaitsForFreeWorker`, `Dispatch_LowestFittingSlot` and `Dispatch_NoSlotFits_LaneStaysTaken` are retired |
 | DISP-16 | `Dispatch_OrphanRetriesOneBelowMax_Resumed` (dispatch.md) |
 | DISP-17 | *Superseded by the WT rules (960-D).* `TypeDispatch_AreaNotInTypesAreas_DoesNotFit` (worker-types.md); `Dispatch_LaneAllowed` is retired |
-| DISP-18 | *Superseded by the WT rules (960-D).* `TypeDispatch_NoWorkerLine_OnlyNonPremium`, `TypeDispatch_WorkerPremium_OnlyPremium_FirstListed` (worker-types.md), `Pool_WorkerRequest_Kept` (weighted-effort.md); `Dispatch_WorkerFits_Rules` and `Dispatch_CardPremiumFlag_Unused` are retired |
+| DISP-18 | *Superseded by the WT rules (960-D).* `TypeDispatch_NoWorkerLine_OnlyDefault`, `TypeDispatch_WorkerPremium_IsUnknownName_NotDispatched` (worker-types.md; were `..._OnlyNonPremium` and `..._OnlyPremium_FirstListed` until 2026-11-23, 1146-A), `Pool_WorkerRequest_Kept` (weighted-effort.md); `Dispatch_WorkerFits_Rules` and `Dispatch_CardPremiumFlag_Unused` are retired |
 | DISP-19 | *Superseded by WT-12 (960-D).* `TypeDispatch_Notes_EachReasonInOrder` (worker-types.md); `Dispatch_NotStartedNote_NamesWhatStopsEachFittingSlot`, `Dispatch_AllWorkersBusy_CandidateWaitsForFreeWorker`, `Dispatch_NotRunning_NoStartsNoteSaysState` and `Dispatch_NotStartedNotes_AllVariants` are retired |
 | DISP-20 | `Dispatch_LocksLineIgnored` (dispatch.md; reversed by 560-A, now expects the wait), `Scope_LocksLine_IsPartOfScope` (scopes.md) |
 | DISP-22 | `Dispatch_LocksPathsAreScope_AndAreaDefault` (dispatch.md), `Scope_LocksLine_IsPartOfScope` (scopes.md), `Dispatch_OverlappingCandidates_OnlyFirstStartsPerTick` (dispatch.md) |

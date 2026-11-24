@@ -285,7 +285,8 @@ public sealed class ProjectParts : IDisposable
         };
         Data = new HostPageData(config, clock, Tick, main, files, () => HealthLog(health), sources);
         // 1090-B: the views data (VW-20 to VW-22), from the model of main and the page's slots only.
-        Views = new ViewsSource(config.Project, config.JobsDir, () => Model.Model, () => Data.Snapshot().Slots);
+        Views = new ViewsSource(config.Project, config.JobsDir, () => Model.Model, () => Data.Snapshot().Slots, accountingPath: accounting.FilePath,
+            maxWorkers: () => Tick?.Workers.Pool.MaxWorkers ?? 0, now: () => clock.Now);
         // 680-B: Open (MOVE-9) opens the card or file with this PC's default program. Opening belongs
         // to the PC running the scheduler (PAGE-7), and an observe run's page refuses it outright
         // (ObservePageActions), so an observe composition is given no launcher at all.

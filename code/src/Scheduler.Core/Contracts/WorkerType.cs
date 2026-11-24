@@ -26,9 +26,6 @@ public sealed record WorkerType
     /// <summary>The metrics URL, or "" (WT-C4).</summary>
     public string MetricsUrl { get; init; } = "";
 
-    /// <summary>Premium: it takes only the cards that ask for it with <c>Worker: premium</c> (WT-3).</summary>
-    public bool Premium { get; init; }
-
     /// <summary>The projects this type serves, pool only (WT-C8); empty is every project (530-D Q1).</summary>
     public IReadOnlyList<string> Projects { get; init; } = [];
 

@@ -44,7 +44,6 @@ public class WorkersTests
         Assert.Equal("m1", w.Model);
         Assert.Equal("http://w:9/m", w.MetricsUrl);
         Assert.Equal("AB", w.Categories);
-        Assert.True(w.Premium);
         Assert.Equal(3, settings.Slots);
     }
 

@@ -185,9 +185,9 @@ From the developer's own notes (formerly BestPractices.md).
 - **Tune the workers to the work and the machine.** Adjust how many there are to the workload and
   to what the PC and the model server can carry; watch the accounting and the server's load, and
   change the count when a bottleneck shows.
-- **Add frontier (premium) workers for the hard cards.** Mark them premium in `workers.json`; a
-  card that needs one asks with `Worker: premium` (or names the worker). Premium workers take no
-  other cards, so their cost goes only where it is needed.
+- **Add frontier workers for the hard cards.** Name one worker type the pool's `defaultWorker` for everyday cards; a
+  card that needs a frontier type names it with `Worker: <type>`. Only the default type takes cards with no
+  `Worker:` line, so the costly types' spend goes only where it is asked for.
 - **Divide lanes by code that belongs together**, so cards that can run at the same time do; when
   the kind of work changes, redraw them.
 - **Let a model write the configuration.** Hand it the codebase and have it draft `lanes.json`

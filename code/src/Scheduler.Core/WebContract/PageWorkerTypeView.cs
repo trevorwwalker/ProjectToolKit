@@ -39,8 +39,8 @@ public sealed record PageWorkerTypeView
     /// <summary>The metrics URL, or empty.</summary>
     public string MetricsUrl { get; init; } = "";
 
-    /// <summary>Takes only cards that ask for <c>Worker: premium</c>.</summary>
-    public bool Premium { get; init; }
+    /// <summary>1146-A: the pool's default type, which takes the cards with no <c>Worker:</c> line (WT-3).</summary>
+    public bool IsDefault { get; init; }
 
     /// <summary>The projects it serves, in a pool; empty = every project.</summary>
     public IReadOnlyList<string> Projects { get; init; } = [];

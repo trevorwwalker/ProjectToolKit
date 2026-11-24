@@ -87,7 +87,7 @@ Order of a tick (`Tick` L2795): sample host, sample model servers, reap health c
 - **DISP-15** *Superseded by the WT rules (card 850-D; the slot dispatcher is removed by 939-A) (worker types).* A candidate goes to a worker type, not a slot: WT-3 (fit), WT-4 (usable now), WT-5 (which type), WT-6 (order); a candidate with no usable type is skipped this tick and its scope stays taken (WT-8, DISP-13). (Was: the lowest-numbered enabled idle slot that fits, L2924-2925.)
 - **DISP-16** A resume increments the card's retry count before starting; the run that follows is not counted again when it settles (TIME-17). A count carried in below 0 is read as 0 (`DispatchPlanner.CountResume`). (L2927)
 - **DISP-17** *Superseded by the WT rules (card 850-D; the slot dispatcher is removed by 939-A).* A type fitted a category when its categories list was empty or held the card's category letter. *Gone (969-A): worker types have no categories list; WT-3 has no category test.* (Was `Lane-Allowed` on a worker's lanes string, L2718.)
-- **DISP-18** *Superseded by the WT rules (card 850-D; the slot dispatcher is removed by 939-A).* `Worker:` matching is WT-3: no line -> only non-premium types; `premium` -> only premium types; otherwise a type's name, effective model, `Model-Short` or models.json `short` (case-insensitive); a slot number only until the pool form is first saved (WT-C10, WT-C11). (Was `Worker-Fits`, L2710.)
+- **DISP-18** *Superseded by the WT rules (card 850-D; the slot dispatcher is removed by 939-A).* `Worker:` matching is WT-3: no line -> only the default type (*was: only non-premium types; `premium` -> only premium types; superseded 2026-11-23 by 1146-A*); otherwise a type's name, effective model, `Model-Short` or models.json `short` (case-insensitive); a slot number only until the pool form is first saved (WT-C10, WT-C11). (Was `Worker-Fits`, L2710.)
 - **DISP-19** *Superseded by WT-12 (the slot dispatcher is removed by card 939-A); kept for the history.* (decided 2026-11-19, 760-A Q3, 800-B) The not-started note of a card that names a `Worker:` line lists, for each slot that fits that line, what stops it: "disabled", "category not allowed", "server down", or "busy with <card id>" ("busy" when the card it runs is not known); a slot that is busy and has its server down says "server down". Slots that do not fit the line are not listed. WT-12 gives the notes of the type dispatcher; this rule is the per-slot wording, and WT-12's busy reason names the cards the same way (WT-12, check 3).
 - **DISP-20** *Reversed by card 560-A.* The scheduler reads a card's `Locks:` line: its paths are part of the card's scope (SC-1, DISP-22). (Until 560-A: locks were honoured by workers only, L50, L1762.)
 - **DISP-21** Dry run: logs "DRY RUN slot N <- card" instead of starting, then the loop exits after the first tick. (`Start-Worker` L1785, L4304)
@@ -185,7 +185,7 @@ Workers claim cards (queue/ -> active/) themselves, per the README; the schedule
 - **MOVE-4** Update-Card first collects the developer's uncommitted edits to the card (repository working tree and answers worktree; conflicts left from a failed try ignored) as patches and replays them with `git apply --3way`; if that fails and the edit only appends text at the end, that text is appended to main's copy; otherwise error "could not be merged with main". On success the repository's copy is reverted (main has it). (L1168-1230, L1268)
 - **MOVE-5** Update-Card adds a journal line at the end: blank, `- yyyy-MM-dd HH:mm developer: <line>`, blank. (L1250-1254)
 - **MOVE-6** Done (review cards only): Status done, to done/, "reviewed, done (from the page).", commit "jobs: done <name> (reviewed from the page)". (`Done-Card` L1521)
-- **MOVE-7** Resume / Send back / Ready: a review card -> active/ ready ("sent back from review"); an active needs-human card -> ready ("resumed"); a card waiting on the developer -> ready where it is (queue stays queue; active becomes active ready). Retry count cleared for the non-queue cases. (`Resume-Card` L1530)
+- **MOVE-7** Resume / Send back / Ready: a review card -> active/ ready ("sent back from review"); a needs-human card in active/ *or* queue/ -> ready ("resumed"), staying in its own folder (1149-B: a card parked by a worker or the planner while still queued waits on the developer just as an active one does, and the dispatcher never takes it, so it goes back to the queue rather than into the pool); a card waiting on the developer -> ready where it is (queue stays queue; active becomes active ready). Retry count cleared for every case except a queue card that only waits on the developer (Spec C9). (`Resume-Card` L1530)
 - **MOVE-8** Retry: removes the card's retry entry. Resume (state): clears all retry entries. (L3950-3953, L3855)
 - **MOVE-9** Open: the repository's copy if present, else the answers worktree's; opened with the .md handler and brought to the front (up to 5 s wait). (`Open-Card`/`Open-Path` L1547-1562, `Raise-Editor` L1575)
 - **MOVE-10** Worker settings from the page: endpoint/metrics must start `http(s)://`; categories limited to known category letters; workers.json rewritten by hand-formatted text keeping main's line endings and committed "scheduler: workers - <what>"; nothing committed when unchanged. (L3906-3929, `Commit-Repo-File` L2649, `Workers-Text` L2633)
@@ -279,8 +279,8 @@ that built it, it says so: that is current behaviour, not a decision.
   suggestion.
 - **TLH-3** The typical length is the median (an even count: the mean of the two middles, rounded up on a
   half) and the long end is the 90th percentile by nearest rank (the ceil(0.9n)-th of the sorted minutes).
-- **TLH-4** "The worker type it will get" is the lowest enabled slot whose premium-ness fits the
-  card (DISP-18; busy slots and server state ignored). Accounting rows are matched to it through
+- **TLH-4** "The worker type it will get" is the lowest enabled slot that fits the
+  card (DISP-18; *premium-ness no longer counts since 2026-11-23, 1146-A;* busy slots and server state ignored). Accounting rows are matched to it through
   the same `ModelColumn.Resolve` that wrote them (ACCT-2).
 - **TLH-5** The Queue window warns when a card's Time box is shorter than the group's usual length and
   suggests a Time box when it has none. The words are built in Core and tested there (`TimeBoxAdviceTests`);
@@ -385,9 +385,10 @@ The version is `Major.Minor.Rev`, written once, as `<Version>` in `code/src/Dire
   "maxWorkers": 4,
   "types": {
     "spark":  { "max": 2, "agent": "",       "model": "spark", "endpoint": "http://spark.local:18400/v1" },
-    "sonnet": { "max": 1, "agent": "claude", "model": "claude-sonnet-5-5", "premium": true },
-    "opus":   { "max": 1, "agent": "claude", "model": "claude-opus-5-5",   "premium": true }
-  }
+    "sonnet": { "max": 1, "agent": "claude", "model": "claude-sonnet-5-5" },
+    "opus":   { "max": 1, "agent": "claude", "model": "claude-opus-5-5" }
+  },
+  "defaultWorker": "spark"
 }
 ```
 
@@ -395,11 +396,11 @@ The version is `Major.Minor.Rev`, written once, as `<Version>` in `code/src/Dire
   An integer of 1 or more; missing or invalid -> scheduler.json's `slots` (CFG-6, default 2).
   `-Slots` on the command line pins it for one run, as it pins the slot count today (CFG-8).
 - **WT-C2** `types`: an object; each key is a type's name. Names compare case-insensitively (G-1).
-  A name that is `premium` or only digits is refused (logged, the type skipped): those words mean
-  something else in a `Worker:` line (DISP-18).
+  A name that is only digits is refused (logged, the type skipped): a number means a slot in a
+  `Worker:` line (DISP-18). *Superseded 2026-11-23 (1146-A): `premium` was refused too; it is now an ordinary name.*
 - **WT-C3** A type's fields: `max` (integer, 0 or more; 0 = off, which is what Disable was; missing
   -> `maxWorkers`), `agent` (an entry of scheduler.json's `agents`; empty = the `worker` section, as
-  a worker's `agent` today), `model`, `endpoint`, `metricsUrl`, `premium` (bool, default false),
+  a worker's `agent` today), `model`, `endpoint`, `metricsUrl`,
   and, in a pool only, `projects` (list of project names the type serves; empty = every project). A type has no categories list (969-A): it takes a card of any category.
 - **WT-C4** A type's effective worker (endpoint, model, metrics, agent, cli) is `Effective-Worker`
   (WRK-4) with the type in place of the worker definition. Nothing else about agents changes.
@@ -429,7 +430,7 @@ The version is `Major.Minor.Rev`, written once, as `<Version>` in `code/src/Dire
   1. `maxWorkers` = `slots` (or `-Slots`).
   2. Each slot 1..`slots` is one worker: its `workers.<n>` entry, or an empty one (the `worker`
      section) when it has none.
-  3. Workers with the same agent, endpoint, model, metricsUrl, categories (upper-cased) and premium are
+  3. Workers with the same agent, endpoint, model, metricsUrl, categories (upper-cased) are
      one type. Its `max` = how many of them are enabled in workers-state.json (WRK-3), so a disabled
      slot carries over as one less in the cap, and all disabled is cap 0.
   4. A type's name: the first member's `name`; else `Model-Short` of its effective model; else
@@ -440,8 +441,8 @@ The version is `Major.Minor.Rev`, written once, as `<Version>` in `code/src/Dire
   `workers`, and updates the file's `about` text. From then on workers-state.json is not read. Until
   that Save nothing is written: an existing project keeps working with no change to its files.
 - **WT-C12** This project's workers.json migrates to: `maxWorkers` 4; `worker` (spark through the
-  default agent, max 2); `Sonnet` (claude, claude-sonnet-5-5, premium, max 1); `Opus`
-  (claude, claude-opus-5-5, premium, max 1). `Worker: Opus` on a card picks the Opus type by its
+  default agent, max 2); `Sonnet` (claude, claude-sonnet-5-5, max 1); `Opus`
+  (claude, claude-opus-5-5, max 1); `defaultWorker` `worker`. `Worker: Opus` on a card picks the Opus type by its
   name, as it picks slot 4 by its name today.
 
 ### 2. Dispatch
@@ -459,13 +460,17 @@ retries (310-A Q4), and the meaning of a `Worker:` line (310-A Q3; a slot number
   the running workers finish, and no new one of that type (or none at all) starts until the count
   is below again (as WRK-2 never lowers the slot count below a running slot).
 - **WT-3 Fit.** Type T fits card C when all hold:
-  - `Worker:` (DISP-18, unchanged in meaning): no `Worker:` line -> T is not premium;
-    `Worker: premium` -> T is premium; any other value -> it equals T's name, T's effective model,
+  - `Worker:` (DISP-18): no `Worker:` line (or a blank one, or the card template's placeholder text left in) -> T is
+    the pool's `defaultWorker` type, and no other type takes it; `Worker: premium` is no longer special (it fits only a
+    type named Premium; *superseded 2026-11-23, 1146-A*); any other value -> it equals T's name, T's effective model,
     `Model-Short` of that model, or models.json's `short` for it (case-insensitive). A value of only
     digits (a slot number) matches the type made from that slot by WT-C10 until the first Save from the Worker types panel writes the `pool` form (WT-C11), and nothing after.
   - Category: none. A type fits a card of any category; it has no categories list (card 969-A removed `areas`; an old `areas` key is ignored and logged once).
   - Pool only: T serves C's project (`projects` empty or naming it), and the project defines
     T's agent (WT-C9).
+- **WT-C3a** `defaultWorker` (1146-A): the type that takes a card with no `Worker:` line. Missing -> the first type whose old
+  `premium` was not true, else the first type; a name that is no type -> logged, same fallback. Save writes it and never
+  `premium`; renaming the default type renames it; a Save whose default names no row is refused.
 - **WT-4 Usable now.** A type that fits is usable now when WT-2 allows one more, its agent is not
   out of quota (WT-9) and its model server answers (`Server-Up`, ACCT-8, cached 20 s; no endpoint =
   up).
@@ -546,7 +551,7 @@ retries (310-A Q4), and the meaning of a `Worker:` line (310-A Q3; a slot number
 - **WT-P3 Worker types panel** (in the control window, replacing the per-worker Settings dialogs):
   the total (`maxWorkers`, a number); then one row per type, in config order: name, "<running> of
   <max>", the cap (a number; 0 = off), agent (a choice of scheduler.json's agents and the default),
-  model, endpoint, metrics URL, premium, categories, and in a pool projects; an Add type row; Remove on a
+  model, endpoint, metrics URL, a Default column, categories, and in a pool projects; an Add type row; Remove on a
   type with none running (WT-P7); Save. An agent out of quota shows "out of quota since HH:mm" and Resume.
   Save writes the config as WT-C7 / WT-C8 say and applies it on the next tick.
 - **WT-P4 Routes.** Gone: `/enable`, `/disable`, `/worker-settings`, `/slots-add`, `/slots-remove`
@@ -889,7 +894,7 @@ One page on the pool's port, `CombinedPageRenderer`, fed one page snapshot per p
 1. **High priority vs weights**: may a high-priority card jump the project weights? (roadmap)
 2. Window and weight arithmetic: exact window length; "furthest below" as weight share minus actual share, or ratio; tie-break; do running workers' minutes so far count; does a project with no minutes in the window win outright?
 3. Do orphan resumes go through the weights, or always first (today orphans come first within a priority)?
-4. Worker definitions in a shared pool: today workers.json lives in each project repo. Where do pool workers (endpoint, model, premium, agent) live - top-level config? What replaces a worker's old lanes list? (Answered by 969-A: nothing; worker types have no categories list.)
+4. Worker definitions in a shared pool: today workers.json lives in each project repo. Where do pool workers (endpoint, model, agent) live - top-level config? What replaces a worker's old lanes list? (Answered by 969-A: nothing; worker types have no categories list.)
 5. Scope syntax: globs, folders with trailing `/`, `except` entries? Is it `Locks:` renamed, or a new `Scope:` line? Which file holds overlap-allowed paths (per card, or categories.json `shared.addOnly`)?
 6. Overlap across projects: two repositories never share files - is the cross-project check only for projects that share a repository, or by absolute path?
 7. *Answered (SC-8, DISP-25).* Overlap test for patterns: when do two globs "overlap" (exact rule for `src/*` vs `src/a.c`, `**`)?
@@ -898,7 +903,7 @@ One page on the pool's port, `CombinedPageRenderer`, fed one page snapshot per p
 10. *Answered by card 560-A (developer): a redefined category is accepted at once and never held (AREA-2, LANE-2).*
 11. Red health / quota pause in a pool: does red main in project A pause only A's cards? Does an agent's quota pause stop all projects using that agent?
 12. One page, one port: which project's theme, `listen`, `remoteControl` and logDir apply? Per-project state files (retries, accepted categories, planner switch) stay per project?
-13. Is the per-worker `Worker:` request (slot number, name, model, premium) kept unchanged in the pool?
+13. Is the per-worker `Worker:` request (slot number, name, model) kept unchanged in the pool?
 14. maxRetries and time limits: per project config, or global?
 15. Review panel Send back (REV-4): the note box exists but `/resume-card` takes no note, so the note is not stored. Should it be stored (in the card's Dev section, or as a journal line) or should the box go? Open, not decided (card 650-C, gap (d)).
 
@@ -921,8 +926,13 @@ Not guessed; each needs a decision whether the port keeps or fixes it.
 11. **Three-digit ids**: decided 2026-11-19 (card 931-A): ids are any width; CARD-4, CARD-11, WRK-9, ACCT-5, PAGE-9 and CARD-20 say so.
 12. **Category overlap check with globs**: `Lane-Overlaps` tests `$pa.EndsWith('/')` before trimming `*`, so an `owns` entry like `src/*` is never seen as containing another category's path (L1670).
 13. **accounting.csv quoting**: only stop_reason is quoted; a `"` in it, or a comma in a card name, breaks the row (L852).
-14. **Card.Premium** is set by any `Worker:` line (L625) but never read; `Worker-Fits` uses WorkerReq only.
+14. *Resolved 2026-11-23 (1146-A: no premium anywhere).* **Card.Premium** was set by any `Worker:` line (L625) but never read; `Worker-Fits` uses WorkerReq only.
 15. **Waiting-on-dev cards in active/** appear both in Waiting on you and in the Queue window's orphan list ("claimed earlier; resumes when its category is free"), though they are not resumed (L3650 vs DISP-4).
 16. **Health kill limit** uses maxMinutes (240), not a health-specific limit (L1725). Intended?
 17. **Worker protocol not seen**: claim (README "step 3"), card fields and the session report are defined in the project's `docs/jobs/README.md`, which is outside the connected folders. Part A covers only what schedule.ps1 does; the README should be read before porting the prompt and claim rules.
 18. **Already scaffolded**: the repository already holds a .NET solution (SchedulerNext.slnx, `code/src/Scheduler.Core`, `Scheduler.Host`, `Scheduler.Web`, three test projects under `test/unit/` with placeholder tests, xunit 2.9.3, net10.0, TreatWarningsAsErrors), created 2026-11-18 18:16. Left untouched.
+
+
+### Foreground lock workaround (1161-B)
+
+Temporary. Windows 11 leaks a kernel token for each process started while its starter does not own the foreground window; the pool host sets the live `ForegroundLockTimeout` to 0 (`SystemParametersInfo`, live only, no registry write) at its start and with each hourly process-start check, and logs one line (`foreground lock timeout: ...`); the hourly rate line carries `tokens: <n> live`. Pool file switch `foregroundLockFix` (default true). Side effect: at 0 any app may take the foreground. To tell whether Microsoft has fixed it, switch it off and repeat the run in `docs/perf/process-start-log.md` (2026-11-23): no `Toke` growth means remove `ForegroundLockFix`.

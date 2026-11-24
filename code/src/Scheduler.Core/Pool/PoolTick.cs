@@ -196,7 +196,7 @@ public sealed class PoolTick
                     Model = t.Model,
                     Endpoint = t.Endpoint,
                     MetricsUrl = t.MetricsUrl,
-                    Premium = t.Premium,
+                    IsDefault = Types.IsDefault(t.Name),
                     Projects = t.Projects,
                     RunningByProject = _projects.Concat(_leaving)
                         .Select(p => (p.Name, Count: p.Tick.Busy().Count(w => Text.Same(w.Type, t.Name))))

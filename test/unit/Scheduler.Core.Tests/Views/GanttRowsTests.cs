@@ -105,6 +105,22 @@ public class GanttRowsTests
     }
 
     [Fact]
+    public void Listed_QueuedCardsWithAnEstimate_GetARowWithoutABar()
+    {
+        var snap = ViewsSnapshot.Build(
+            "p",
+            [Card("1-A-x"), Card("4-D-q", ViewFolder.Queue), Card("5-D-r", ViewFolder.Queue)],
+            [],
+            runs: [Run("1-A-x", 0, 1)]);
+
+        var root = GanttRows.Of(snap, GanttGroupBy.Category, T0, T0.AddHours(5), Now, new HashSet<string>(["4-D-q"], StringComparer.Ordinal));
+
+        Assert.Equal(["A", "D"], root.Children.Select(c => c.Label));
+        Assert.Equal(["card:4-D-q"], root.Children[1].Children.Select(c => c.Key));
+        Assert.Empty(root.Children[1].Children[0].Bars);
+    }
+
+    [Fact]
     public void SeveralRuns_OnOneCard_GiveOneBarEachInOrder_AndOneSummary()
     {
         var snap = ViewsSnapshot.Build(

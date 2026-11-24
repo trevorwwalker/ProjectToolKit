@@ -23,8 +23,8 @@ public sealed record DispatchType
     /// <summary>The other names the model answers to in a <c>Worker:</c> line: <c>Model-Short</c> and models.json's <c>short</c> (WT-3).</summary>
     public IReadOnlyList<string> ModelNames { get; init; } = [];
 
-    /// <summary>A premium type (WT-3).</summary>
-    public bool Premium { get; init; }
+    /// <summary>1146-A: the pool's default type, the only one that takes a card with no <c>Worker:</c> line (WT-3).</summary>
+    public bool IsDefault { get; init; }
 
     /// <summary>The effective model server endpoint; empty = always up (WT-4, ACCT-8).</summary>
     public string Endpoint { get; init; } = "";

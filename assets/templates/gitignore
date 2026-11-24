@@ -20,6 +20,13 @@ cmake-build-*/
 *.pdb
 *.ilk
 
+# .NET build output. A project's top-level bin/ holds scripts that are committed, so the .NET
+# folders are ignored only under the source trees.
+code/**/bin/
+code/**/obj/
+test/**/bin/
+test/**/obj/
+
 # Generated content. The generators live in code/tools/ and their output is rebuilt, not
 # hand-committed.
 assets/generated/

@@ -6,7 +6,7 @@ Priority: high | low (optional; leave the line out for normal)
 Depends on: <n>-L (or "none")
 Locks: <files or functions in another category's area this card changes> (or "none")
 Time box: 120 min (set by the planner; most cards finish well inside 150)
-Worker: premium, or one worker by name, number or model (optional, only when the developer asks)
+Worker: one worker type by name or model (optional; blank = the pool's default type)
 Plan: jobs/plans/<plan>.md (the steps this card covers)
 Type: feature | bug (optional; read from the header only; a card with none is untyped)
 Version: <the version a bug was seen in; bug cards only>

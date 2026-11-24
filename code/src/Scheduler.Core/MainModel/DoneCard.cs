@@ -62,6 +62,9 @@ public sealed record DoneCard
 
     /// <summary>The Worker line, if any.</summary>
     public string? WorkerReq { get; init; }
+
+    /// <summary>The Scope line, if any (1141-A).</summary>
+    public string? ScopeLine { get; init; }
 }
 
 /// <summary>The done/archive header parse (views.md's header-only parse, MM-5).</summary>
@@ -128,6 +131,7 @@ public static class DoneHeaders
         Version = card.Version,
         Depends = card.Depends,
         TimeBox = card.TimeBox,
+        ScopeLine = card.ScopeLine,
         WorkerReq = card.WorkerReq is null ? null : string.Intern(card.WorkerReq),
     };
 }

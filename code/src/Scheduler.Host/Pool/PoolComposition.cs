@@ -139,8 +139,19 @@ public sealed class PoolComposition : IDisposable
         _start = start;
         _wipSweep = new WipSweep(start.Clock);
         _log = new LockedLog(start.Log); // 1015-B: projects join on tasks of their own, and log as they go
-        _startRate = new ProcessStartCheck(start.Clock, _log);
         var pool = start.File.Current ?? throw new SchedulerStartException($"The pool file {start.File.Path} names no valid project.");
+
+        // 1161-B: the token leak workaround, once at the start (microseconds, in process) and again with each hourly check.
+        ForegroundLockFix? foreground = null;
+        ITokenCount? tokens = null;
+        if (OperatingSystem.IsWindows())
+        {
+            foreground = new ForegroundLockFix(new Win32ForegroundLockApi(), _log, pool.ForegroundLockFix);
+            tokens = new PoolTokenCount();
+            foreground.Apply();
+        }
+
+        _startRate = new ProcessStartCheck(start.Clock, _log, null, foreground, tokens);
 
         // 1043-B, 1081-B: the one git, resolved once, before any project's git runner: the pool file's setting, else the
         // first project's scheduler.json (read from its working copy, as no runner exists yet to read it from main).
@@ -198,6 +209,7 @@ public sealed class PoolComposition : IDisposable
             ClearAgent = quota.Clear,
             WritePool = start.File.WritePool,
             WriteWorkspaces = start.File.WriteWorkspaces,
+            Pool = () => Tick.Types,
         });
         // 1015-B: the pool's and the scheduler's themes now; each project's own is added once all have joined.
         _themes = LoadThemes();

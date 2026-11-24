@@ -24,8 +24,9 @@ public sealed class StartupBlockTests
         {
             MaxWorkers = 3,
             Types = [
-                new WorkerType { Name = "local", Max = 2, Agent = "x", Model = "m1", Endpoint = "http://srv:1234", Premium = false },
-                new WorkerType { Name = "big", Max = 1, Agent = "x", Model = "m2", Premium = true }],
+                new WorkerType { Name = "local", Max = 2, Agent = "x", Model = "m1", Endpoint = "http://srv:1234" },
+                new WorkerType { Name = "big", Max = 1, Agent = "x", Model = "m2" }],
+            DefaultWorker = "local",
         };
         var agent = new AgentDefinition
         {
@@ -52,8 +53,10 @@ public sealed class StartupBlockTests
         Assert.Contains(lines, l => l.Contains("memory", StringComparison.Ordinal) && l.Contains("MB free", StringComparison.Ordinal));
         Assert.Contains(lines, l => l.Contains("process id", StringComparison.Ordinal));
         Assert.Contains(lines, l => l.Contains("port 9001, listen lan, remote control on, maxWorkers 3", StringComparison.Ordinal));
-        Assert.Single(lines, l => l.Contains("worker type local: max 2, agent x, model m1, premium no", StringComparison.Ordinal));
-        Assert.Single(lines, l => l.Contains("worker type big: max 1", StringComparison.Ordinal) && l.Contains("premium yes", StringComparison.Ordinal));
+        Assert.Single(lines, l => l.EndsWith("worker type local: max 2, agent x, model m1", StringComparison.Ordinal));
+        Assert.Single(lines, l => l.EndsWith("worker type big: max 1, agent x, model m2", StringComparison.Ordinal));
+        Assert.Single(lines, l => l == "startup: pool: default worker type local"); // 1146-A
+        Assert.DoesNotContain(lines, l => l.Contains("premium", StringComparison.Ordinal));
         Assert.Single(lines, l => l.EndsWith("model server http://srv:1234", StringComparison.Ordinal));
         Assert.Equal(2, lines.Count(l => l.StartsWith("startup: project ", StringComparison.Ordinal)));
         Assert.Contains(lines, l => l.Contains("env keys API_KEY", StringComparison.Ordinal));

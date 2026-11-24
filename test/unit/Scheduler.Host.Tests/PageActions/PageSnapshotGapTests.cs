@@ -9,7 +9,7 @@ namespace Scheduler.Host.Tests.PageActions;
 /// <summary>
 /// 510-B: the facts the page lacked after 480-C (its "Host gap" list), each filled from the tick or
 /// from what Host keeps beside it: the time limit and kill time of a running worker, the model's
-/// short name, premium, the card's title and category name, planner push, the queue's depends and logs,
+/// short name, the card's title and category name, planner push, the queue's depends and logs,
 /// the events as fields, the waiting cards' titles and where their reasons came from.
 /// </summary>
 public class PageSnapshotGapTests
@@ -56,9 +56,9 @@ public class PageSnapshotGapTests
         Assert.Equal("", slot.CategoryName);
     }
 
-    // DISP-18, 510-B: the worker title's extras: the model's short name from models.json, and premium.
+    // DISP-18, 510-B: the worker title's extras: the model's short name from models.json.
     [Fact]
-    public void Slot_ModelShortNameAndPremium()
+    public void Slot_ModelShortName()
     {
         using var harness = Paused(new PageActionHarness(categoriesJson: Categories, workersJson: Workers, project: "ptk-510b-model"));
         var models = new Dictionary<string, IReadOnlyList<string>> { ["claude-opus-5-5"] = ["Opus"] };
@@ -67,9 +67,7 @@ public class PageSnapshotGapTests
         var slots = HostPageSnapshot.Build(harness.Config, harness.Clock, harness.Tick, sources).Slots;
 
         Assert.Equal("Opus", slots[0].ModelShort);
-        Assert.True(slots[0].Premium);
         Assert.Equal("", slots[1].ModelShort);
-        Assert.False(slots[1].Premium);
     }
 
     // PAGE-3, TIME-9, 510-B: the live time is "minutes run/time limit min", as status.json writes it.

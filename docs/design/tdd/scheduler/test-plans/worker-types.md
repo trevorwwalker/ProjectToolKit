@@ -6,21 +6,22 @@ These tests replace those that checked DISP-15, DISP-17 to DISP-19, WRK-1 to WRK
 TIME-15's state, ADOPT-2 and ACCT-1 on slots: each is rewritten to the WT rule that replaces it, never
 deleted without one in its place. Tests are written first (cards 2 to 7 of the design's section 6).
 
-Shared setup unless a test says otherwise: `maxWorkers` 4; types in this order: `worker` (non-premium,
-max 2, default agent), `Sonnet` (premium, max 1, agent `claude`), `Opus` (premium, max 1, agent `claude`);
+Shared setup unless a test says otherwise: `maxWorkers` 4; types in this order: `worker` (the `defaultWorker`,
+max 2, default agent), `Sonnet` (max 1, agent `claude`), `Opus` (max 1, agent `claude`);
 nothing running, servers up, no agent out of quota, state `running`, one project, cards with no `Worker:` line.
 
 ## Config and migration (Core)
 
 ### WorkerTypes_PoolSection_ParsedInOrder_DefaultsApplied
 - Checks: WT-C1, WT-C3, WT-C5 · Project: Core
-- Setup: workers.json with `pool` `{maxWorkers: 4, types: {spark, sonnet, opus}}`; a second text with a type lacking `max`, `premium` and `areas`, and with `maxWorkers` missing and scheduler.json `slots` 3.
-- Expected: types in file order; every field read; missing `max` -> `maxWorkers`; `premium` false; no categories list (every category fits; an old `areas` key is ignored); missing, 0 or non-numeric `maxWorkers` -> 3. `-Slots 5` on the command line gives 5 whatever the file says.
+- Setup: workers.json with `pool` `{maxWorkers: 4, types: {spark, sonnet, opus}}`; a second text with a type lacking `max`, `defaultWorker` and `areas`, and with `maxWorkers` missing and scheduler.json `slots` 3.
+- Expected: types in file order; every field read; missing `max` -> `maxWorkers`; missing `defaultWorker` -> the first type (see `DefaultWorker_*`, 1146-A); no categories list (every category fits; an old `areas` key is ignored); missing, 0 or non-numeric `maxWorkers` -> 3. `-Slots 5` on the command line gives 5 whatever the file says.
 
-### WorkerTypes_NamePremiumOrDigits_Refused
+### WorkerTypes_NameDigits_Refused_PremiumIsAName
+- *Renamed 2026-11-23 (1146-A, was `WorkerTypes_NamePremiumOrDigits_Refused`): `premium` is no longer refused.*
 - Checks: WT-C2 · Project: Core
 - Setup: types named `premium`, `Premium`, `12`, `Spark`, `SPARK`.
-- Expected: the first three are logged and skipped; `Spark` stays; names compare case-insensitively, so the second `SPARK` is also refused as a duplicate.
+- Expected: only `12` is logged and skipped; `premium` and `Premium` are two names that compare equal, so the second is refused as a duplicate; `Spark` stays; names compare case-insensitively, so the second `SPARK` is also refused as a duplicate.
 
 ### WorkerTypes_InvalidJson_PreviousKept
 - Checks: WT-C6 · Project: Core
@@ -34,13 +35,13 @@ nothing running, servers up, no agent out of quota, state `running`, one project
 
 ### WorkerTypes_Migration_ThisProjectsWorkersJson_GivesWorkerSonnetOpus
 - Checks: WT-C10, WT-C12 · Project: Core
-- Setup: this project's workers.json as it stands (4 slots; 1 and 2 default agent on spark; 3 Sonnet premium; 4 Opus premium), all enabled.
-- Expected: `maxWorkers` 4; `worker` (max 2), `Sonnet` (premium, max 1), `Opus` (premium, max 1), in that order. `Worker: Opus` picks the Opus type by name.
+- Setup: this project's workers.json as it stands (4 slots; 1 and 2 default agent on spark; 3 Sonnet; 4 Opus; the old premium marks on 3 and 4 are read only to pick the default), all enabled.
+- Expected: `maxWorkers` 4; `worker` (max 2), `Sonnet` (max 1), `Opus` (max 1), in that order; `defaultWorker` `worker`. `Worker: Opus` picks the Opus type by name.
 
 ### WorkerTypes_Migration_NamesFromModelShort_ClashesNumbered
 - Checks: WT-C10 · Project: Core
-- Setup: slots with: an explicit `name`; no name but a model; no name and no model; two types that would both be called `Sonnet`; one named `premium`.
-- Expected: names are the first member's `name`, else `Model-Short` of the effective model, else `worker`; the clash becomes `Sonnet-2`; the refused name becomes `worker-premium`.
+- Setup: slots with: an explicit `name`; no name but a model; no name and no model; two types that would both be called `Sonnet`.
+- Expected: names are the first member's `name`, else `Model-Short` of the effective model, else `worker`; the clash becomes `Sonnet-2`.
 
 ### WorkerTypes_PoolKeyPresent_SlotsAndWorkersIgnored
 - Checks: WT-C10 · Project: Core
@@ -61,7 +62,7 @@ nothing running, servers up, no agent out of quota, state `running`, one project
 
 ### TypeDispatch_TypeAtCap_NextCardOfOtherTypeStarts
 - Checks: WT-2, WT-6 · Project: Core
-- Setup: `worker` has 2 running (max 2); cards in order: 1 without `Worker:` (category A), 2 with `Worker: premium`.
+- Setup: `worker` has 2 running (max 2); cards in order: 1 without `Worker:` (category A), 2 with `Worker: Sonnet`.
 - Expected: card 2 starts on `Sonnet`; card 1 is skipped with note "next up; waiting for worker (2 of 2 running: <cards>)"; no card waits behind another card's type.
 
 ### TypeDispatch_CapZero_TypeOff_NoteSaysOff
@@ -74,15 +75,17 @@ nothing running, servers up, no agent out of quota, state `running`, one project
 - Setup: `worker` has 2 running; its max is lowered to 1; then one finishes (1 running), then the other (0); a variant removes the type while one runs.
 - Expected: no stop request while 2 run; no new `worker` start at 1 running; a start at 0. A running worker whose type was removed counts toward WT-1, and its window says "(removed)".
 
-### TypeDispatch_NoWorkerLine_OnlyNonPremium
+### TypeDispatch_NoWorkerLine_OnlyDefault
+- *Was `TypeDispatch_NoWorkerLine_OnlyNonPremium`; superseded 2026-11-23 by 1146-A.* Also `TypeDispatch_BlankWorkerLine_OnlyDefault`, `TypeDispatch_DefaultFull_NoLineWaits_OthersNotUsed`, `TypeDispatch_NoDefaultType_NoLineNotDispatched`.
 - Checks: WT-3 · Project: Core
-- Setup: card without `Worker:`; all non-premium types at cap.
-- Expected: a premium type never takes it; it waits.
+- Setup: card without `Worker:` (or a blank line, or the template's placeholder text); the default type at cap.
+- Expected: no other type takes it; it waits. With no default type at all it is not dispatched (note says so).
 
-### TypeDispatch_WorkerPremium_OnlyPremium_FirstListed
-- Checks: WT-3, WT-5 · Project: Core
-- Setup: `Worker: premium`; `Sonnet` and `Opus` both usable.
-- Expected: starts on `Sonnet` (first listed); a non-premium type never takes it.
+### TypeDispatch_WorkerPremium_IsUnknownName_NotDispatched
+- *Replaces `TypeDispatch_WorkerPremium_OnlyPremium_FirstListed` (2026-11-23, 1146-A); also `TypeDispatch_TypeNamedPremium_TakesItsCards`.*
+- Checks: WT-3 · Project: Core
+- Setup: `Worker: premium`; `Sonnet` and `Opus` usable; then a type named `Premium`.
+- Expected: with no such type, no type fits (note "asks for worker premium, and no worker type fits"); with one, that type takes it.
 
 ### TypeDispatch_WorkerName_ModelOrShort_PicksThatType
 - Checks: WT-3 · Project: Core
@@ -96,17 +99,17 @@ nothing running, servers up, no agent out of quota, state `running`, one project
 
 ### TypeDispatch_AreaNotInTypesAreas_DoesNotFit
 - Checks: WT-3, WT-12 · Project: Core
-- Setup: card in category D without `Worker:`; `worker` is the only non-premium type.
+- Setup: card in category D without `Worker:`; `worker` is the only type.
 - Expected: not started; note "next up; no worker type takes category D". *Retired by 969-A:* worker types have no categories list, so a card of any category fits a type (`TypeDispatch_AnyCategory_FitsATypeWithoutAWorkerLine`). No per-category or per-scope count limit applies to a type.
 
 ### TypeDispatch_ServerDown_TypeNotUsable_OtherTypeTakesCard
 - Checks: WT-4, WT-10 · Project: Core
-- Setup: `worker`'s model server does not answer (cached 20 s); another non-premium type with no endpoint.
+- Setup: `worker`'s model server does not answer (cached 20 s); another type with no endpoint.
 - Expected: the card starts on the other type; with no other type, the note says "worker: model server does not answer". A type with no endpoint counts as up. There is no per-server limit.
 
 ### TypeDispatch_SeveralTypesUsable_FirstListedTakesIt
 - Checks: WT-5, WT-C5 · Project: Core
-- Setup: two non-premium types, the cheaper listed second, then listed first.
+- Setup: two types, the cheaper listed second, then listed first.
 - Expected: the first in file order takes the card in both runs.
 
 ### TypeDispatch_WaitingCardKeepsScope_OverlappingLaterCardWaits
@@ -131,7 +134,7 @@ nothing running, servers up, no agent out of quota, state `running`, one project
 
 ### TypeDispatch_Notes_EachReasonInOrder
 - Checks: WT-12 · Project: Core
-- Setup: one candidate per reason: state `draining`; `Worker: x` fitting nothing; a category left out by every non-premium type; several fitting types each unusable for a different reason; every fitting type usable but the total reached; an orphan.
+- Setup: one candidate per reason: state `draining`; `Worker: x` fitting nothing; a category left out by every type; several fitting types each unusable for a different reason; every fitting type usable but the total reached; an orphan.
 - Expected: the notes of WT-12 in the order of its checks, reasons joined by ", ", with "orphan to resume; " in front for the orphan.
 
 ### TypeDispatch_FullType_NoteNamesHeldCards
@@ -163,7 +166,7 @@ nothing running, servers up, no agent out of quota, state `running`, one project
 
 ### PoolTypes_TypeServesOnlyItsProjects
 - Checks: WT-3, WT-7, WT-12 · Project: Core
-- Setup: `Opus` has `projects: [P1]`; a premium card in P2; another in P1.
+- Setup: `Opus` has `projects: [P1]`; a card asking for `Opus` in P2; another in P1.
 - Expected: P2's card has no type, note "next up; no worker type serves project P2"; P1's starts on `Opus`. A type with empty `projects` serves both.
 
 ### PoolTypes_ProjectWithoutTheAgent_TypeDoesNotFit

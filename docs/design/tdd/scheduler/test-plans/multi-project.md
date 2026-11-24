@@ -7,8 +7,8 @@ are covered here by the rules that settle them. Cards: 997-A (Core: MP_10 to MP_
 999-C (Web: MP_P*), 1000-B and 1001-B (serve the pool, one-project pool). Tests are written first.
 
 Shared setup unless a test says otherwise: projects `AmigaX` (weight 70) and `ProjectToolkit` (weight 30), in that order,
-separate repositories; types `spark` (max 6, default agent), `Sonnet` (max 4, agent `claude`, premium), `Opus` (max 2,
-agent `claude`, premium), all serving both projects; `maxWorkers` 6; fake clock; both projects `running`, servers up, no
+separate repositories; types `spark` (max 6, default agent), `Sonnet` (max 4, agent `claude`), `Opus` (max 2,
+agent `claude`), `defaultWorker` `spark`, all serving both projects; `maxWorkers` 6; fake clock; both projects `running`, servers up, no
 agent out of quota, nothing running, no minutes in the 2 h window. Core tests use fake projects: no git or processes.
 
 ## Config (MP-C*)

@@ -8,6 +8,7 @@
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Launch/Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
     <Using Include="Xunit" />
     <ProjectReference Include="..\..\..\code\src\Scheduler.Core\Scheduler.Core.csproj" />
   </ItemGroup>

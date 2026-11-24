@@ -17,7 +17,7 @@ namespace Scheduler.Host.Tests.Views;
 /// </summary>
 public sealed class ViewsSourceTests
 {
-    private const string Roadmap = ViewsSource.Roadmap;
+    private const string Roadmap = "docs/design/gdd/scheduler-roadmap.md";
     private static readonly DateTimeOffset Now = new(2026, 11, 22, 14, 0, 0, TimeSpan.Zero);
 
     private static string CardOf(string title, string category, string status, string plan) =>
@@ -32,7 +32,7 @@ public sealed class ViewsSourceTests
         ["jobs/done/7-A-none.md"] = CardOf("7-A: None", "A", "done", "none (developer, 2026-11-01)"),
         ["jobs/plans/alpha_plan.md"] = "# Alpha plan\n\nStatus: accepted (developer, 2026-11-20)\n",
         ["jobs/plans/beta_plan.md"] = "# Beta plan\n\nNo status here.\n",
-        ["jobs/archive/old_plan.md"] = "# Old plan\n\n**Status: finished**\n",
+        ["jobs/plans/old_plan.md"] = "# Old plan\n\n**Status: finished**\n",
         ["docs/design/doc.md"] = "# A design\n\nRoadmap: item 2\n",
         [Roadmap] = "# Roadmap\n\n## 2. Page views\n\n*Status 2026-11-19: being built*\n",
     };
@@ -41,7 +41,7 @@ public sealed class ViewsSourceTests
         [.. cards.Select((c, i) => new PageSlotView { Slot = i + 1, Card = c })];
 
     [Fact]
-    public void VW_21_SnapshotFromTheModel_OpenAndDoneCards_PlanFilesAndRoadmap()
+    public void VW_21_SnapshotFromTheModel_OpenAndDoneCards_PlanFilesOnlyInPlans()
     {
         var main = new FakeMain(Seed());
         var source = new ViewsSource("ptk", "jobs", () => main, () => Slots("11-B-doc-two"));
@@ -63,22 +63,16 @@ public sealed class ViewsSourceTests
         Assert.Equal("Alpha plan", plans["jobs/plans/alpha_plan.md"].Title);
         Assert.Equal("Status: accepted (developer, 2026-11-20)", plans["jobs/plans/alpha_plan.md"].Status);
         Assert.Equal(PlanStatus.None, plans["jobs/plans/beta_plan.md"].Status);     // VW-11: no card names it
-        Assert.Equal(PlanKind.Archived, plans["jobs/archive/old_plan.md"].Kind);     // VW-12: docs/jobs/ and archive
-        Assert.Equal(PlanKind.Elsewhere, plans["docs/design/doc.md"].Kind);
-        Assert.Equal("A design", plans["docs/design/doc.md"].Title);
-        Assert.Equal(PlanKind.Missing, plans["docs/gone.md"].Kind);
-        Assert.Equal(PlanKind.Elsewhere, plans[ViewsSource.Roadmap].Kind);          // 1114-C: the roadmap is one plan, its items the steps
-        Assert.Contains("Page views", views.Snapshot.PlanTexts[ViewsSource.Roadmap], StringComparison.Ordinal);
+        Assert.Equal(PlanKind.Plans, plans["jobs/plans/old_plan.md"].Kind);          // 1126-C: docs/jobs/plans/ and archive/ resolve to jobs/plans/
+        Assert.DoesNotContain("docs/design/doc.md", plans.Keys);                      // 1126-C: a design document is not a plan
+        Assert.DoesNotContain("docs/gone.md", plans.Keys);
+        Assert.DoesNotContain(Roadmap, plans.Keys);                                   // 1126-C: nor is the roadmap
         Assert.StartsWith("# Alpha plan", views.Snapshot.PlanTexts["jobs/plans/alpha_plan.md"], StringComparison.Ordinal);
-        Assert.DoesNotContain(views.Snapshot.Plans, p => p.Path.StartsWith("Roadmap item", StringComparison.Ordinal));
-        Assert.Equal(2, views.RoadmapItemOf["docs/design/doc.md"]);
-        Assert.DoesNotContain(views.Snapshot.Plans, p => p.Kind == PlanKind.NoPlan);
+        Assert.DoesNotContain(views.Snapshot.Plans, p => p.Kind is PlanKind.NoPlan or PlanKind.Elsewhere or PlanKind.Archived);
 
         // What the page needs to count them (1091-C): the counts come out of the snapshot and its sets alone.
         var counts = PlanCounts.Of(views.Snapshot.Cards, new HashSet<string>(views.Running), new HashSet<string>(views.OnMain));
-        var doc = counts.Single(c => c.Plan.Path == "docs/design/doc.md");
-        Assert.Equal(1, doc.Tally.Running);
-        Assert.Equal(1, counts.Single(c => c.Plan.Path == "jobs/archive/old_plan.md").Tally.Done);
+        Assert.Equal(1, counts.Single(c => c.Plan.Path == "jobs/plans/old_plan.md").Tally.Done);
     }
 
     [Fact]
@@ -148,7 +142,7 @@ public sealed class ViewsSourceTests
     {
         // Every way in is the model, the slots or plain text: there is no git reader or process runner to call.
         var types = typeof(ViewsSource).GetConstructors().Single().GetParameters().Select(p => p.ParameterType).ToList();
-        Assert.Equal([typeof(string), typeof(string), typeof(Func<IMainModel?>), typeof(Func<IReadOnlyList<PageSlotView>>), typeof(string)], types);
+        Assert.Equal([typeof(string), typeof(string), typeof(Func<IMainModel?>), typeof(Func<IReadOnlyList<PageSlotView>>), typeof(string), typeof(Func<int>), typeof(Func<int>), typeof(Func<DateTimeOffset>)], types);
     }
 
     [Fact]

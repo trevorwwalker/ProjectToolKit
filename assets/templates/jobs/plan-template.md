@@ -1,5 +1,7 @@
 # Plan: <what it delivers>
 
+Lives in jobs/plans/ for good, finished or not; never archived. Links the design document it carries out (a design is an input, not a plan); one `##` section per step, each with its cards.
+
 Scope: which categories and files it touches. What it must not change.
 
 ## What the code does today
