@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text.Json;
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Launch;
@@ -120,8 +122,8 @@ public class TickHostTests
         using var rig = new TickRig(Ends);
         Assert.True(rig.TickUntilSettled(() => rig.LogFiles("010-B-2*.log").Length > 0));
 
-        var log = rig.LogFiles("010-B-2*.log").Single();
-        var prompt = rig.LogFiles("*.prompt.txt").Single();
+        var log = ExactlyOne(rig, "worker logs", rig.LogFiles("010-B-2*.log"));
+        var prompt = ExactlyOne(rig, "prompts", rig.LogFiles("*.prompt.txt"));
         Assert.True(rig.TickUntilSettled(() => TickRig.ReadShared(log).Contains("LANE-RESULT", StringComparison.Ordinal)));
         var text = TickRig.ReadShared(log);
         Assert.Contains("Your whole brief is in the file", text);
@@ -191,7 +193,11 @@ public class TickHostTests
         using var rig = new TickRig(Ends);
         // 1005-B: no wall-clock limit - each tick waits for the git writer and the worker's exit.
         Assert.True(rig.TickUntilSettled(() => rig.LogFiles("accounting.csv").Length > 0 && File.ReadAllText(Path.Combine(rig.LogDir, "accounting.csv")).Contains("010-B-x", StringComparison.Ordinal)), string.Join("\n", rig.Log.Lines));
-        Assert.Empty(rig.Composition.Tick.Running);
+        if (rig.Composition.Tick.Running.Count != 0)
+        {
+            Assert.Fail("Running still holds " + rig.Composition.Tick.Running.Count + " card(s) after the card settled.\n" + string.Join("\n", rig.Log.Lines));
+        }
+
         var csv = File.ReadAllText(Path.Combine(rig.LogDir, "accounting.csv"));
         Assert.Contains("010-B-x", csv);
         Assert.Contains("done", csv);
@@ -305,9 +311,13 @@ public class TickHostTests
             Thread.Sleep(300);
         }
 
-        Assert.True(rig.RemoteHas("jobs/done/010-B-x.md"), string.Join("\n", rig.Log.Lines.TakeLast(4))
-            + "\nFILES: " + string.Join(" | ", Directory.GetFiles(rig.LogDir).Select(Path.GetFileName))
-            + "\nLOG: " + string.Join("\n", rig.LogFiles("010-B-2*.log").Take(1).Select(File.ReadAllText)));
+        if (!rig.RemoteHas("jobs/done/010-B-x.md"))
+        {
+            Assert.Fail(string.Join("\n", rig.Log.Lines.TakeLast(4))
+                + "\nFILES: " + string.Join(" | ", Directory.GetFiles(rig.LogDir).Select(Path.GetFileName))
+                + "\nLOG: " + string.Join("\n", rig.LogFiles("010-B-2*.log").Take(1).Select(TickRig.ReadShared)));
+        }
+
         Assert.False(rig.RemoteHas("jobs/queue/010-B-x.md"));
 
         // Wait for the exit to be settled, then drain.
@@ -333,6 +343,18 @@ public class TickHostTests
         Assert.Empty(rig.LogFiles("*.prompt.txt"));
     }
 
+    // The one file of a kind; when there are none or several, fail with the count, the names and the scheduler's whole log.
+    private static string ExactlyOne(TickRig rig, string what, string[] found)
+    {
+        if (found.Length != 1)
+        {
+            Assert.Fail("Expected exactly 1 of " + what + ", found " + found.Length + ": " + string.Join(", ", found.Select(Path.GetFileName))
+                + "\nSCHEDULER LOG:\n" + string.Join("\n", rig.Log.Lines));
+        }
+
+        return found[0];
+    }
+
     private static void FinishesDone(AgentFormat format, string resultLine)
     {
         var script = Ends.Replace("echo LANE-RESULT: done\r\n", resultLine, StringComparison.Ordinal);
@@ -341,8 +363,8 @@ public class TickHostTests
         Assert.True(rig.TickUntilSettled(() => File.Exists(csv) && File.ReadAllText(csv).Contains("010-B-x", StringComparison.Ordinal)));
 
         Assert.Contains(rig.Log.Lines, l => l.Contains("finished: 010-B-x -> done", StringComparison.Ordinal));
-        Assert.Single(rig.LogFiles("010-B-2*.jsonl"));
-        var view = rig.LogFiles("010-B-2*.log").Single();
+        _ = ExactlyOne(rig, "raw worker logs", rig.LogFiles("010-B-2*.jsonl"));   // 1307-B: a second one is a card started twice
+        var view = ExactlyOne(rig, "worker logs", rig.LogFiles("010-B-2*.log"));
         Assert.Contains("* LANE-RESULT: done", File.ReadAllLines(view));
         Assert.DoesNotContain(File.ReadAllLines(view), l => l.StartsWith('{'));
     }
@@ -353,6 +375,6 @@ public class TickHostTests
         using var rig = new TickRig(Ends, format: format);
         var csv = Path.Combine(rig.LogDir, "accounting.csv");
         Assert.True(rig.TickUntilSettled(() => File.Exists(csv) && File.ReadAllText(csv).Contains("010-B-x", StringComparison.Ordinal)));
-        return (File.ReadAllText(rig.LogFiles("*.prompt.txt").Single()), WorkerFiles.MessageFile(rig.LogDir, 1));
+        return (File.ReadAllText(ExactlyOne(rig, "prompts", rig.LogFiles("*.prompt.txt"))), WorkerFiles.MessageFile(rig.LogDir, 1));
     }
 }

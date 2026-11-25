@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.WebContract;
 
 namespace Scheduler.Web.Views;
@@ -17,6 +19,13 @@ public static class HealthChecking
     public static string Sha(PageHealthView health)
     {
         ArgumentNullException.ThrowIfNull(health);
+
+        // The host sets the field; the text parse below is only for a view that leaves it empty.
+        if (!string.IsNullOrEmpty(health.CheckingSha))
+        {
+            return health.CheckingSha;
+        }
+
         var text = health.Text ?? "";
 
         for (var at = text.IndexOf(Marker, StringComparison.OrdinalIgnoreCase); at >= 0; at = text.IndexOf(Marker, at + Marker.Length, StringComparison.OrdinalIgnoreCase))

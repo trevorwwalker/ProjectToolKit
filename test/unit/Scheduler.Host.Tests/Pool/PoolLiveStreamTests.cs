@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Globalization;
 using System.Net;
 using System.Net.Http;
@@ -67,7 +69,7 @@ public class PoolLiveStreamTests
 
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
             using var response = await http.SendAsync(
-                new HttpRequestMessage(HttpMethod.Get, $"http://localhost:{pool.Config.Port}/live/stream"),
+                new HttpRequestMessage(HttpMethod.Get, $"http://localhost:{PoolCompositionTests.PoolRig.PagePort(pool, () => failed)}/live/stream"),
                 HttpCompletionOption.ResponseHeadersRead).WaitAsync(Long);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);

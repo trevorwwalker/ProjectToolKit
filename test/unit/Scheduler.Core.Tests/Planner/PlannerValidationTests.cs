@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Core.Tests.Planner;
 
 /// <summary>PLAN-3: a batch that does not validate fails whole, with nothing written. Test plan: planner.md.</summary>

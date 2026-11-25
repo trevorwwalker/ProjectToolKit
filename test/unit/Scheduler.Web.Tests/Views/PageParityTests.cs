@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Core.WebContract;
 using Scheduler.Web.Views;
@@ -185,9 +187,9 @@ public sealed class PageParityTests
         {
             Waiting =
             [
-                full.Waiting[2] with
+                full.Waiting[1] with
                 {
-                    Questions = [full.Waiting[2].Questions[0] with { Choices = [new CardChoice { Label = "json", Destination = CardFolder.Done }, new CardChoice { Label = "yaml" }] }],
+                    Questions = [full.Waiting[1].Questions[0] with { Choices = [new CardChoice { Label = "json", Destination = CardFolder.Done }, new CardChoice { Label = "yaml" }] }],
                 },
             ],
         });
@@ -205,7 +207,7 @@ public sealed class PageParityTests
     public void Page_Waiting_NoReason()
     {
         var full = ViewsFixture.Full();
-        var html = Render(full with { Waiting = [full.Waiting[1] with { Note = "" }] });
+        var html = Render(full with { Waiting = [full.Waiting[0] with { Note = "" }] });
 
         Assert.Contains("No reason given; see the card's Result.", System.Net.WebUtility.HtmlDecode(html), StringComparison.Ordinal);
     }

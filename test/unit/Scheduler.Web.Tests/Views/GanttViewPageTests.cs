@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Views;
 using Scheduler.Core.WebContract;
@@ -109,6 +111,45 @@ public sealed class GanttViewPageTests
         return end < 0 ? html[at..] : html[at..end];
     }
 
+    // 1180-C: a card with no Time box and no typical is estimated at its own project's maxMinutes, not the default 240.
+    [Fact]
+    public void Estimate_UsesEachProjectsOwnMaxMinutes()
+    {
+        static ProjectViews Views(string project) => new()
+        {
+            Project = project,
+            Snapshot = ViewsSnapshot.Build(project, [Card("9-A", ViewFolder.Queue) with { Status = "ready" }], [], new Dictionary<string, string>(), []),
+            DoneLoaded = true,
+        };
+        var pool = new PoolPageSnapshot
+        {
+            Built = Now,
+            MaxWorkers = 4,
+            Projects = [new PoolProjectView { Name = "Short", Weight = 1 }, new PoolProjectView { Name = "Long", Weight = 1 }, new PoolProjectView { Name = "Bare", Weight = 1 }],
+            Pages = [Page("Short") with { MaxMinutes = 90 }, Page("Long") with { MaxMinutes = 150 }, Page("Bare")],
+            Views = [Views("Short"), Views("Long"), Views("Bare")],
+        };
+
+        var html = new CombinedPageRenderer(theme: "slate").Render(pool, remote: false, controlsAllowed: true, "gantt");
+
+        Assert.Contains("90 min (max minutes)", html, StringComparison.Ordinal);
+        Assert.Contains("150 min (max minutes)", html, StringComparison.Ordinal);
+        Assert.Contains("240 min (max minutes)", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Gantt_GroupRowMarkers_AreWholeEscapes_NotControlCharactersOrStrayHex()
+    {
+        var html = Render("gantt");
+
+        // 1174-C: the fold markers are the CSS escapes of U+25B8 / U+25BE, a backslash and hex, never a raw control character.
+        Assert.Contains("content: '\\25B8  '", html, StringComparison.Ordinal);
+        Assert.Contains("details[open] > summary .glabel::before { content: '\\25BE  '", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("content: 'B8", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("content: 'BE", html, StringComparison.Ordinal);
+        Assert.DoesNotContain(html, c => c < ' ' && c is not ('\n' or '\r' or '\t'));
+    }
+
     [Fact]
     public void Gantt_IsAnEntryOfTheViewDropdown_AndShowsBothWindows()
     {
@@ -124,33 +165,31 @@ public sealed class GanttViewPageTests
     }
 
     [Fact]
-    public void GroupBy_Category_IsTheDefault()
+    public void Gantt_IsAlwaysGroupedByPlan_WithNoGroupByControl()
     {
         var html = Render("gantt");
 
-        Assert.Contains("data-group='category'", html, StringComparison.Ordinal);
-        Assert.Contains("<option value='category' selected", html, StringComparison.Ordinal);
-        Assert.Contains("data-key='g|AmigaX|category|category:A'", html, StringComparison.Ordinal);
-        Assert.Contains("data-key='g|AmigaX|category|category:B'", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("|plan:", html, StringComparison.Ordinal);
-        // Card rows: chip, the number and title as a link, and the plan tag.
-        Assert.Contains("href='/card?project=AmigaX&id=1-A'>1-A Title of 1-A</a>", html, StringComparison.Ordinal);
-        Assert.Contains("class='gplan' href='/plan?project=AmigaX&path=jobs%2Fplans%2Fgantt_plan.md'", html, StringComparison.Ordinal);
-        // A queued card with no run is a row too (VW-18, 1144-C): it carries its estimate, here a waiting mark.
-        Assert.Contains("data-gd='AmigaX|category|card:5-A'", html, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void GroupBy_Plan_GroupsByPlanAndRequests()
-    {
-        var html = Render("gantt?range=24h&group=plan");
-
-        Assert.Contains("data-group='plan'", html, StringComparison.Ordinal);
-        Assert.Contains("<option value='plan' selected", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Group by", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("ganttgroup", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("data-group=", html, StringComparison.Ordinal);
+        Assert.Contains("id='rangesel'", html, StringComparison.Ordinal);
         Assert.Contains("data-key='g|AmigaX|plan|plan:" + PlanPath + "'", html, StringComparison.Ordinal);
         Assert.Contains("data-key='g|AmigaX|plan|requests'", html, StringComparison.Ordinal);
         Assert.DoesNotContain("|category:", html, StringComparison.Ordinal);
+        // Card rows: chip, the number and title as a link, and the plan tag.
+        Assert.Contains("href='/card?project=AmigaX&id=1-A'>1-A Title of 1-A</a>", html, StringComparison.Ordinal);
+        Assert.Contains("class='gplan' href='/plan?project=AmigaX&path=jobs%2Fplans%2Fgantt_plan.md'", html, StringComparison.Ordinal);
         Assert.Contains("data-gd='AmigaX|plan|card:1-A'", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OldAddress_WithGroupCategory_StillRendersThePlanGrouping()
+    {
+        var html = Render("gantt?range=24h&group=category");
+
+        Assert.Contains("data-key='g|AmigaX|plan|plan:" + PlanPath + "'", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("|category:", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("data-group=", html, StringComparison.Ordinal);
     }
 
     // The 24 h window runs from 12:00 the day before to 15:00: a run from 06:00 to 09:00 starts 18 of its 27 hours in.
@@ -206,7 +245,7 @@ public sealed class GanttViewPageTests
     [Fact]
     public void Details_ForACard_RunsDependsPlanStepWorkerAndQuestions()
     {
-        var block = Details(Render("gantt"), "AmigaX|category|card:2-A");
+        var block = Details(Render("gantt"), "AmigaX|plan|card:2-A");
 
         Assert.Contains("href='/card?project=AmigaX&id=2-A'>2-A Title of 2-A</a>", block, StringComparison.Ordinal);
         Assert.Contains("path=jobs%2Fplans%2Fgantt_plan.md'>jobs/plans/gantt_plan.md</a>", block, StringComparison.Ordinal);
@@ -221,7 +260,7 @@ public sealed class GanttViewPageTests
     [Fact]
     public void Details_ForAGroup_DoneTotalRunningAndQueued()
     {
-        var block = Details(Render("gantt"), "AmigaX|category|category:A");
+        var block = Details(Render("gantt"), "AmigaX|plan|plan:" + PlanPath);
 
         Assert.Contains("done 1 of 3", block, StringComparison.Ordinal);
         Assert.Contains("Running (1)", block, StringComparison.Ordinal);
@@ -238,5 +277,55 @@ public sealed class GanttViewPageTests
         Assert.Equal("gantt?range=3h&group=plan", PageRouter.ViewOf(Get("view=gantt&range=3h&group=plan")));
         Assert.Equal("gantt", PageRouter.ViewOf(Get("view=gantt")));
         Assert.Null(PageRouter.ViewOf(Get("range=3h")));
+    }
+
+    // VW-32: a step row's Details lists its child plans' cards at every depth, by GanttRows' keys.
+    [Fact]
+    public void VW32_GanttDetails_StepMembersIncludeChildPlans()
+    {
+        const string Root = "jobs/plans/p_plan.md";
+        const string Mid = "jobs/plans/m_plan.md";
+        const string Leaf = "jobs/plans/l_plan.md";
+        var views = new ProjectViews
+        {
+            Project = "AmigaX",
+            Snapshot = ViewsSnapshot.Build(
+                "AmigaX",
+                [
+                    Card("1-A", ViewFolder.Done, Root, "1"),
+                    Card("2-A", ViewFolder.Queue, Mid, "1"),
+                    Card("3-A", ViewFolder.Queue, Leaf, "1"),
+                ],
+                [
+                    new ViewPlan { Path = Root, Kind = PlanKind.Plans, Title = "Root" },
+                    new ViewPlan { Path = Mid, Kind = PlanKind.Plans, Title = "Mid" },
+                    new ViewPlan { Path = Leaf, Kind = PlanKind.Plans, Title = "Leaf" },
+                ],
+                new Dictionary<string, string>
+                {
+                    [Root] = "# Root\n\n## 1. One\n",
+                    [Mid] = "# Mid\n\nParent: jobs/plans/p_plan.md, step 1\n\n## 1. Inner\n",
+                    [Leaf] = "# Leaf\n\nParent: jobs/plans/m_plan.md, step 1\n\n## 1. Deep\n",
+                },
+                []),
+            OnMain = new HashSet<string>([Root, Mid, Leaf], StringComparer.Ordinal),
+            DoneLoaded = true,
+        };
+        var pool = new PoolPageSnapshot
+        {
+            Built = Now,
+            MaxWorkers = 4,
+            Projects = [new PoolProjectView { Name = "AmigaX", Weight = 1 }],
+            Pages = [Page("AmigaX")],
+            Views = [views],
+        };
+
+        var html = new CombinedPageRenderer(theme: "slate").Render(pool, remote: false, controlsAllowed: true, "gantt?group=plan");
+
+        var step = Details(html, "AmigaX|plan|plan:" + Root + "/1");
+        Assert.Contains("done 1 of 3", step, StringComparison.Ordinal);
+        Assert.Contains("id=2-A'", step, StringComparison.Ordinal);
+        Assert.Contains("id=3-A'", step, StringComparison.Ordinal);
+        Assert.Contains("done 0 of 2", Details(html, "AmigaX|plan|plan:" + Mid), StringComparison.Ordinal);
     }
 }

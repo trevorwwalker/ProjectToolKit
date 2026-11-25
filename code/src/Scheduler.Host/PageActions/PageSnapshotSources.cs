@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Accounting;
 using Scheduler.Core.Health;
 using Scheduler.Core.PageModel;
@@ -14,6 +16,9 @@ namespace Scheduler.Host.PageActions;
 /// </summary>
 public sealed record PageSnapshotSources
 {
+    /// <summary>Dynamic locks (DL-24, DL-25): the lock table as the file has it; null when locks are off.</summary>
+    public Func<Scheduler.Core.Locks.LockTable>? Locks { get; init; }
+
     /// <summary>The health check of main (HLTH-5, HLTH-6), or null when the project has none.</summary>
     public HealthCheck? Health { get; init; }
 

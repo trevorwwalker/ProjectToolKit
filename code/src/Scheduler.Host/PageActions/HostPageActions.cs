@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text;
 using Scheduler.Core.Cards;
 using Scheduler.Core.Config;
@@ -192,8 +194,22 @@ public sealed class HostPageActions(PageActionParts parts) : IPageActions
     }
 
     /// <summary>
+    /// 1213-B: the marks clicked and not yet on main; the project's views lay them over plan-marks.json.
+    /// </summary>
+    public PendingPlanMarks PendingMarks { get; } = new();
+
+    /// <summary>1213-B: runs the plan-mark commit off the request thread (a test may run it some other way).</summary>
+    public Action<Action> Background { get; set; } = work => Task.Run(work);
+
+    private readonly object _marksGate = new();
+    private bool _marksDraining;
+
+    /// <summary>
     /// 1125-C: the developer clicked the mark of a plan or step: it goes automatic, checked, cleared, automatic, in
     /// jobs/plan-marks.json, committed as <c>jobs: plan mark &lt;plan&gt; &lt;step&gt; &lt;state&gt;</c>.
+    /// 1213-B: the click is answered at once. The new mark goes into <see cref="PendingMarks"/> (cycled from a pending
+    /// one when there is one, so quick clicks cycle in order) and the commit runs in the background through the
+    /// committer, which hands it to the background writer; clicks that come before it are one commit, last state wins.
     /// </summary>
     public ActionResult PlanMark(string plan, string step)
     {
@@ -204,22 +220,106 @@ public sealed class HostPageActions(PageActionParts parts) : IPageActions
             return Refused("plan mark not set: no plan or step was named");
         }
 
-        var rel = parts.Config.JobsDir.TrimEnd('/', (char)92) + "/" + PlanMarkFile.FileName;
-        var main = MainRead.Text(MainRead.Fresh(Feed), parts.Main, rel);
-        var next = PlanMarkFile.Next(PlanMarkFile.Of(PlanMarkFile.Read(main), plan, step));
-        var text = PlanMarkFile.With(main, plan, step, next);
-        var result = parts.Committer.Apply(new JobsChange
+        lock (_marksGate)
         {
-            Writes = new Dictionary<string, string>(StringComparer.Ordinal) { [rel] = text },
-            Message = $"jobs: plan mark {plan} {step} {PlanMarkFile.Name(next)}",
-        });
-        if (!result.Ok)
-        {
-            return Refused($"{rel} not committed: {result.Error}");
+            var current = PendingMarks.Of(plan, step) ?? PlanMarkFile.Of(PlanMarkFile.Read(MainRead.Text(Feed, parts.Main, MarksRel)), plan, step);
+            PendingMarks.Set(plan, step, PlanMarkFile.Next(current));
+            if (!_marksDraining)
+            {
+                _marksDraining = true;
+                Background(DrainMarks);
+            }
         }
 
         parts.TickNow();
         return ActionResult.Queued(Accepted());
+    }
+
+    /// <summary>1213-B: the background commit is done and no mark waits for one; false when <paramref name="timeout"/> passed first.</summary>
+    public bool MarksIdle(TimeSpan timeout)
+    {
+        var until = DateTime.UtcNow + timeout;
+        while (true)
+        {
+            lock (_marksGate)
+            {
+                if (!_marksDraining)
+                {
+                    return true;
+                }
+            }
+
+            if (DateTime.UtcNow >= until)
+            {
+                return false;
+            }
+
+            Thread.Sleep(5);
+        }
+    }
+
+    private string MarksRel => parts.Config.JobsDir.TrimEnd('/', (char)92) + "/" + PlanMarkFile.FileName;
+
+    // 1213-B: commits what waits, again while clicks keep coming; a failed commit drops the marks it carried and says so.
+    private void DrainMarks()
+    {
+        while (true)
+        {
+            IReadOnlyList<(string Plan, string Step, ManualMark Mark)> carried;
+            lock (_marksGate)
+            {
+                carried = PendingMarks.ToCommit();
+                if (carried.Count == 0)
+                {
+                    _marksDraining = false;
+                    return;
+                }
+            }
+
+            var rel = MarksRel;
+            try
+            {
+                var main = MainRead.Text(MainRead.Fresh(Feed), parts.Main, rel);
+                var text = main;
+                foreach (var (plan, step, mark) in carried)
+                {
+                    text = PlanMarkFile.With(text, plan, step, mark);
+                }
+
+                if (string.Equals(text, main ?? PlanMarkFile.Write(new Dictionary<string, IReadOnlyDictionary<string, ManualMark>>()), StringComparison.Ordinal))
+                {
+                    PendingMarks.Committed(carried, parts.Clock.Now);
+                    continue;
+                }
+
+                var result = parts.Committer.Apply(new JobsChange
+                {
+                    Writes = new Dictionary<string, string>(StringComparer.Ordinal) { [rel] = text! },
+                    Message = "jobs: plan mark " + string.Join(", ", carried.Select(c => $"{c.Plan} {c.Step} {PlanMarkFile.Name(c.Mark)}")),
+                });
+                if (result.Ok)
+                {
+                    PendingMarks.Committed(carried, parts.Clock.Now);
+                }
+                else
+                {
+                    MarksFailed(carried, $"{rel} not committed: {result.Error}");
+                }
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                MarksFailed(carried, $"{rel} not committed: {e.Message}");
+            }
+
+            parts.TickNow();
+        }
+    }
+
+    private void MarksFailed(IReadOnlyList<(string Plan, string Step, ManualMark Mark)> carried, string why)
+    {
+        PendingMarks.Failed(carried);
+        parts.Log.Write("plan mark not set: " + why);
+        parts.Notice?.Invoke("plan mark not set: " + why);
     }
 
     /// <summary>MOVE-2: answer a card's question, committed through 250-B's committer.</summary>
@@ -568,24 +668,6 @@ public sealed class HostPageActions(PageActionParts parts) : IPageActions
     public ActionResult OpenWorkers() => OpenFile(parts.WorkersRel);
 
     /// <summary>
-    /// LANE-3: accepting a category from the page stores its new definition as accepted, which frees the
-    /// category - the next tick reads categories.json against the accepted definitions and lets its cards go.
-    /// </summary>
-    public ActionResult AcceptCategory(string category)
-    {
-        var categories = parts.Tick.Categories.Current;
-        if (categories is null || !categories.Categories.TryGetValue(category, out var definition))
-        {
-            return Refused($"no category {category} in {CategoriesLocation.Rel(parts.Config.JobsDir, path => MainRead.Text(Feed, parts.Main, path))}");
-        }
-
-        AcceptedCategories.Store(parts.Files, category, definition.Json);
-        parts.TickNow();
-        parts.Log.Write($"category {category}: new definition accepted from the page");
-        return ActionResult.Queued(Accepted());
-    }
-
-    /// <summary>
     /// Roadmap item 1 (job card 580-A): Overwrite takes the toolkit's template for a generic file the
     /// project edited, in one commit through the answers worktree. The Waiting on you row goes away
     /// with the next snapshot, which reads <c>TemplateRefresh.Edited</c>.
@@ -801,7 +883,7 @@ public sealed class HostPageActions(PageActionParts parts) : IPageActions
         CommitResult result;
         if (parts.Committer is AnswersCommitter answers)
         {
-            result = answers.UpdateCard(found.Path, text => last = make(found, text));
+            result = answers.UpdateCard(found.Path, text => make(found, text), made: e => last = e); // 1300-B: as committed (CM-24)
         }
         else
         {
@@ -892,5 +974,48 @@ public sealed class HostPageActions(PageActionParts parts) : IPageActions
 
         one = one.Trim();
         return one.Length > max ? one[..max] : one;
+    }
+}
+
+/// <summary>
+/// PAGE-4 (1194-B): turns a burst of tick requests into one. <see cref="Ask"/> notes the request in a
+/// <see cref="ClickTickDebounce"/>; the tick is asked for once, 250 ms after the last request (2 s at most). A timer
+/// looks every <see cref="Look"/> only while a request is pending, so an idle gate holds no timer.
+/// </summary>
+public sealed class ClickTickGate(IClock clock, Action tick)
+{
+    /// <summary>How often a pending request is looked at.</summary>
+    public static readonly TimeSpan Look = TimeSpan.FromMilliseconds(50);
+
+    private readonly ClickTickDebounce _debounce = new(clock);
+    private readonly object _gate = new();
+    private Timer? _timer;
+
+    /// <summary>A click (or any caller) asks for a tick.</summary>
+    public void Ask()
+    {
+        lock (_gate)
+        {
+            _debounce.Request();
+            _timer ??= new Timer(_ => Poll(), null, Look, Look);
+        }
+    }
+
+    /// <summary>Runs the tick request if the debounce says it is due; the timer calls this.</summary>
+    public void Poll()
+    {
+        lock (_gate)
+        {
+            if (!_debounce.TickDue())
+            {
+                return;
+            }
+
+            _debounce.NoteTicked();
+            _timer?.Dispose();
+            _timer = null;
+        }
+
+        tick();
     }
 }

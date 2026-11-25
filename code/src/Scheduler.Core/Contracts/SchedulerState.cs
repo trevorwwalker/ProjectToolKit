@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Core.Contracts;
 
 /// <summary>The dispatching state (DISP-14, HLTH, TIME-10, TIME-15, PAGE-8, PAGE-12).</summary>

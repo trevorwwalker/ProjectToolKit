@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text.Json.Nodes;
 using Scheduler.Core;
 using Scheduler.Core.Config;
@@ -42,7 +44,7 @@ public sealed record PoolConfig(
     /// <summary>The page's port when the file gives none (as <c>SchedulerConfig.Port</c>).</summary>
     public const int DefaultPort = 8765;
 
-    /// <summary>Where ProjectToolkit is, for every project of the pool (card 540-B), or "" to look above the exe.</summary>
+    /// <summary>Where ProjectToolkit is, the default for every project of the pool that sets no <c>toolkit</c> of its own (cards 540-B, 1193-A), or "" to look above the exe.</summary>
     public string Toolkit { get; init; } = "";
 
     /// <summary>MP-C3: <c>localhost</c> or <c>lan</c>, beside the port (955-D Q2).</summary>
@@ -106,6 +108,15 @@ public sealed record PoolConfig(
                     continue;
                 }
 
+                // 1209-B (developer, 2026-11-23, request #028): one project per repository; the later one is left out.
+                var key = RepoKey(repo);
+                var first = projects.FirstOrDefault(p => Text.Same(RepoKey(p.Repo), key));
+                if (first is not null)
+                {
+                    skipped.Add($"pool: {name} left out: its repository {repo} is already used by {first.Name}");
+                    continue;
+                }
+
                 var jobs = Str(item, "jobsDir");
                 var remote = Str(item, "remote");
                 var branch = Str(item, "branch");
@@ -162,6 +173,22 @@ public sealed record PoolConfig(
         skipped.Add($"pool file: project {name} has workspaces {given.ToJsonString()}, not a whole number "
             + $"{PoolProjectEntry.MinWorkspaces} to {PoolProjectEntry.MaxWorkspaces}; the pool's maxWorkers is used");
         return null;
+    }
+
+    /// <summary>1209-B: a repository path made comparable: full, <c>.</c>/<c>..</c> resolved, one separator, no trailing one.</summary>
+    private static string RepoKey(string repo)
+    {
+        string full;
+        try
+        {
+            full = Path.GetFullPath(repo);
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            full = repo;
+        }
+
+        return full.Replace('\\', '/').TrimEnd('/');
     }
 
     private static string Str(JsonObject? obj, string name) =>

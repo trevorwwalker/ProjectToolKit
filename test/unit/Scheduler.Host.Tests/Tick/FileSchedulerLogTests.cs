@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Host.Tests.Slots;
 using Scheduler.Host.Tests.State;
@@ -37,7 +39,7 @@ public class FileSchedulerLogTests
             File.ReadAllLines(file));
         Assert.Equal(File.ReadAllLines(file), console);
 
-        // The state folder's undated file is what -Compare reads (390-B); it keeps working.
+        // The state folder's undated file is what -Compare read (390-B, retired by 1208-B); it keeps working.
         Assert.Equal(File.ReadAllLines(file), File.ReadAllLines(Path.Combine(state.Path, "scheduler.log")));
     }
 

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Moves;
 using Scheduler.Host.Git;
@@ -90,19 +92,20 @@ public class WipBranchCleanupTests
         }
     }
 
-    // 1049-B: a branch with a file main never got is kept and the card's Result says so.
+    // 1049-B, CM-24 (card 1300-B): a branch with a file main never got is kept, and a request to done/ no longer
+    // settles the card: it goes to queue/ to wait on the planner, naming the branch. (The note "holds work not on
+    // main" in a done card's Result is now made only for a planner batch: AnswersCommitterUnlandedTests.)
     [Fact]
-    public void BranchWithWorkNotOnMain_IsKeptAndReported()
+    public void BranchWithWorkNotOnMain_IsKeptAndCardWaitsOnPlanner()
     {
-        var (fx, step, log) = Setup();
+        var (fx, step, _) = Setup();
         using (fx)
         {
             PushBranch(fx, Branch, new Dictionary<string, string> { ["new.txt"] = "x\n", ["f.txt"] = "1\n" });
             Finish(step, "done");
             Assert.True(BranchExists(fx, Branch));
-            var card = GitFixture.Git(fx.Bare, "show", $"main:{Jobs}/done/{Name}.md");
-            Assert.Contains("wip/010-A holds work not on main: new.txt", card);
-            Assert.Contains(log, l => l.Contains("wip/010-A kept", StringComparison.Ordinal));
+            var card = GitFixture.Git(fx.Bare, "show", $"main:{Jobs}/queue/{Name}.md");
+            Assert.Contains("Status: waiting: planner (finished, but its work is not on main: wip/010-A)", card);
         }
     }
 

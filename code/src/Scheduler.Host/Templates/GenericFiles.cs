@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Host.Templates;
 
 /// <summary>One generic file: its template under the toolkit's <c>assets/templates/</c> and its copy in the project.</summary>
@@ -31,7 +33,6 @@ public static class GenericFiles
             new("jobs/card-template-bug.md", $"{q}/card-template-bug.md"),
             new("jobs/attachments/README.md", $"{q}/attachments/README.md"),
             new("jobs/requests/README.md", $"{q}/requests/README.md"),
-            new("ai/README.md", "docs/ai/README.md"),
         ];
     }
 }

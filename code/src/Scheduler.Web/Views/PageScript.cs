@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Web.Views;
 
 /// <summary>
@@ -271,7 +273,24 @@ public static class PageScript
           var planMem = {};
           function planGet(k) { try { return sessionStorage.getItem('plans-open:' + k); } catch (x) { return planMem[k] || null; } }
           function planSet(k, v) { try { sessionStorage.setItem('plans-open:' + k, v); } catch (x) { planMem[k] = v; } }
+          // 1256-C (VW-34): Hide completed / Show completed. Hidden by default; the choice is kept in localStorage (ptk-plans-hide-completed) and put back after every refresh.
+          function plansHide() { try { return localStorage.getItem('ptk-plans-hide-completed') !== '0'; } catch (x) { return planMem.hide !== false; } }
+          function applyPlansHide() {
+            var hide = plansHide();
+            document.querySelectorAll('#w-plans').forEach(function (w) {
+              if (hide) w.classList.add('plans-hide-done'); else w.classList.remove('plans-hide-done');
+              w.querySelectorAll('button[data-plans-hide-done]').forEach(function (b) { b.textContent = hide ? 'Show completed' : 'Hide completed'; });
+            });
+          }
+          document.addEventListener('click', function (e) {
+            var b = e.target && e.target.closest ? e.target.closest('button[data-plans-hide-done]') : null;
+            if (!b) return;
+            var hide = !plansHide();
+            try { localStorage.setItem('ptk-plans-hide-completed', hide ? '1' : '0'); } catch (x) { planMem.hide = hide; }
+            applyPlansHide();
+          });
           function applyPlans() {
+            applyPlansHide();
             document.querySelectorAll('details[data-key]').forEach(function (d) {
               var v = planGet(d.getAttribute('data-key'));
               if (v === '1' && !d.open) d.open = true;
@@ -284,41 +303,79 @@ public static class PageScript
             var d = s.parentNode;
             planSet(d.getAttribute('data-key'), d.open ? '0' : '1');
           });
-          // 1125-C: a click on the mark of a plan or step posts /plan-mark, which cycles automatic, checked, cleared; it
+          // 1212-C: Expand all and Collapse all in a Plans window's title bar open or close every <details> in that window and
+          // remember each node's new state (as a click on its summary does), so the next refresh keeps it. No server round trip.
+          document.addEventListener('click', function (e) {
+            var b = e.target && e.target.closest ? e.target.closest('button[data-plans-all]') : null;
+            if (!b) return;
+            var w = document.getElementById(b.getAttribute('data-window')), open = b.getAttribute('data-plans-all') === 'expand';
+            if (!w) return;
+            w.querySelectorAll('details[data-key]').forEach(function (d) {
+              d.open = open;
+              planSet(d.getAttribute('data-key'), open ? '1' : '0');
+            });
+          });
+          // 1213-B: shows a mark in a state (automatic, checked) at once: checked is a green check, automatic what its children give (data-auto); a set one carries the dot. The next refresh brings
+          // the server's own.
+          function markShow(m, manual) {
+            var auto = m.getAttribute('data-auto') || 'open';
+            var look = manual === 'checked' ? 'ok' : auto;
+            var pm = m.querySelector('.pm');
+            if (pm) {
+              pm.className = 'pm' + (look === 'ok' ? ' pm-ok' : look === 'bad' ? ' pm-bad' : '');
+              pm.title = look === 'ok' ? 'complete' : look === 'bad' ? 'cancelled or errored' : 'not complete';
+              pm.textContent = look === 'ok' ? '\u2713' : look === 'bad' ? '\u2717' : '\u2610';
+            }
+            var dot = m.querySelector('.pm-set');
+            if (manual === 'automatic') { if (dot) dot.parentNode.removeChild(dot); }
+            else if (!dot) { dot = document.createElement('span'); dot.className = 'pm-set'; dot.textContent = '\u2022'; m.appendChild(dot); }
+            m.setAttribute('data-manual', manual);
+          }
+          function markNext(manual) { return manual === 'automatic' ? 'checked' : 'automatic'; }
+          // 1125-C: a click on the mark of a plan or step posts /plan-mark, which toggles automatic, checked (1215-C); it
           // is taken before the summary's own toggle so the node stays as it is.
+          // 1213-B: the mark changes the moment it is clicked; a refusal puts it back.
           document.addEventListener('click', function (e) {
             var m = e.target && e.target.closest ? e.target.closest('.pm-click') : null;
             if (!m || !window.fetch || !window.URLSearchParams) return;
             e.preventDefault(); e.stopPropagation();
             var body = new URLSearchParams();
             body.set('project', m.getAttribute('data-project') || ''); body.set('plan', m.getAttribute('data-plan') || ''); body.set('step', m.getAttribute('data-step') || '');
-            document.body.style.cursor = 'progress';
-            get('/plan-mark', 15000, { method: 'POST', body: body, headers: { 'X-Requested-With': 'fetch' } })
-              .then(function (r) { return r.json(); })
-              .then(function (j) { document.body.style.cursor = ''; waitFor = j.id || 1; waitFrom = asked + 1; waitSince = Date.now(); schedule(); })
-              .catch(function () { document.body.style.cursor = ''; location.reload(); });
+            var was = m.getAttribute('data-manual') || 'automatic';
+            markShow(m, markNext(was));
+            // 1171-C: the click joins the pending clicks, so a refusal by the action (a plan it cannot
+            // mark, a commit that failed) reaches the notice line (settlePending); a refusal by the route
+            // (which project?, a 403) says its own reason there too, instead of a silent reload.
+            var mark = { id: 0, kind: 'plan-mark', project: body.get('project'), card: '', at: Date.now() };
+            pending.push(mark);
+            fetch('/plan-mark', { method: 'POST', body: body, cache: 'no-store', headers: { 'X-Requested-With': 'fetch' } })
+              .then(function (r) { return r.ok ? r.json() : r.text().then(function (t) { throw new Error(t || ('HTTP ' + r.status)); }); })
+              .then(function (j) { mark.id = j.id || 0; waitFor = j.id || 1; waitFrom = asked + 1; waitSince = Date.now(); schedule(); })
+              .catch(function (x) {
+                if (m.getAttribute('data-manual') === markNext(was)) markShow(m, was);
+                pending.splice(pending.indexOf(mark), 1);
+                sayNotice('plan mark not set: ' + ((x && x.message) || 'the scheduler did not answer'));
+              });
           }, true);
-          // 1132-C: the Gantt draws one range and one grouping, named in its address (range=, group=). The
-          // range is the page's one choice (ptk-range, as the runs summary's); Group by is remembered beside it.
-          // An address that names them is remembered; one that does not is sent to the remembered ones.
-          function ganttGo(r, g) { location.replace('/?view=gantt&range=' + encodeURIComponent(r) + '&group=' + encodeURIComponent(g)); }
+          // 1132-C: the Gantt draws one range, named in its address (range=); it is always grouped by plan (1241-C),
+          // so a group= in an old address is ignored. The range is the page's one choice (ptk-range, as the runs
+          // summary's): an address that names it is remembered; one that does not is sent to the remembered one.
+          function ganttGo(r) { location.replace('/?view=gantt&range=' + encodeURIComponent(r)); }
           (function () {
             var w = document.getElementById('w-gantt');
             if (!w) return;
-            var r = w.getAttribute('data-range'), g = w.getAttribute('data-group');
-            var hasR = /[?&]range=/.test(location.search), hasG = /[?&]group=/.test(location.search);
+            var r = w.getAttribute('data-range');
+            var hasR = /[?&]range=/.test(location.search);
             try {
               if (hasR) localStorage.setItem('ptk-range', r);
-              if (hasG) localStorage.setItem('ptk-gantt-group', g);
-              var sr = localStorage.getItem('ptk-range') || r, sg = localStorage.getItem('ptk-gantt-group') || g;
-              if ((!hasR && sr !== r) || (!hasG && sg !== g)) ganttGo(hasR ? r : sr, hasG ? g : sg);
+              var sr = localStorage.getItem('ptk-range') || r;
+              if (!hasR && sr !== r) ganttGo(sr);
             } catch (x) {}
           })();
           document.addEventListener('change', function (e) {
             var s = e.target, w = document.getElementById('w-gantt');
-            if (!s || !w || (s.id !== 'rangesel' && s.id !== 'ganttgroup')) return;
-            if (s.id === 'ganttgroup') { try { localStorage.setItem('ptk-gantt-group', s.value); } catch (x) {} }
-            ganttGo(s.id === 'rangesel' ? s.value : w.getAttribute('data-range'), s.id === 'ganttgroup' ? s.value : w.getAttribute('data-group'));
+            if (!s || !w || s.id !== 'rangesel') return;
+            ganttGo(s.value);
           });
           // 1132-C: a click on a Gantt row shows its Details; the choice survives a refresh and a reload.
           var ganttSel = null;
@@ -389,12 +446,12 @@ public static class PageScript
             var s = e.target;
             if (!s || s.id !== 'viewsel') return;
             var v = String(s.value || '').replace(/[^A-Za-z0-9_-]/g, '');
-            location.href = '/?view=' + (v || (typeof viewNames === 'undefined' ? '' : viewNames[0]));
+            location.href = '/?view=' + (v || (typeof defaultView === 'undefined' ? '' : defaultView));
           });
           // The user is in the middle of something a refresh would undo.
           function userBusy() {
             // 1004-C: the pool page's project dropdown, like the theme menu, is not rebuilt while it is open.
-            if (document.querySelector('dialog[open], .g:hover, pre.log:hover, #rangesel:focus, #ganttgroup:focus, #themesel:focus, #projsel:focus, #viewsel:focus')) return true;
+            if (document.querySelector('dialog[open], .g:hover, pre.log:hover, #rangesel:focus, #themesel:focus, #projsel:focus, #viewsel:focus')) return true;
             if (document.querySelector('input.wsbox:focus')) return true;   // 1033-C: a box being typed in
             var a = document.activeElement;
             if (a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && a.type === 'text')) && a.value) return true;
@@ -610,6 +667,7 @@ public static class PageScript
             if (f.requestSubmit) { f.requestSubmit(); } else { f.submit(); }
           });
           function showsPending(p) {
+            if (p.kind === 'plan-mark') return false;   // 1171-C: the refreshed tree shows the new mark itself
             if (p.kind === 'workspaces') {
               var wb = wsBox(p.project), fm = wb ? wb.form : null;
               return !!fm && String(fm.getAttribute('data-stored')) !== p.value;
@@ -637,6 +695,29 @@ public static class PageScript
             if (!n && top) { n = document.createElement('div'); n.className = 'notice'; top.insertBefore(n, top.firstChild); }
             if (n) { n.textContent = text; }
           }
+          // 1171-C: a press (mouse button or finger down) asks for the live view at once (interact), and a
+          // refresh that lands before the release replaced the node under the pointer: the browser then
+          // sends the click to what the old and new desks have in common, so a plan mark's click (or a
+          // summary's toggle) was lost. The rebuilt desk waits for the release, and goes in just after the
+          // click is delivered; a release the page never hears is given up on after HOLD ms.
+          var pressAt = 0, pressWaits = [], HOLD = 3000;
+          function pressed() { return pressAt > 0 && Date.now() - pressAt < HOLD; }
+          function released() {
+            pressAt = 0;
+            var w = pressWaits; pressWaits = [];
+            if (w.length) setTimeout(function () { w.forEach(function (go) { go(); }); }, 0);
+          }
+          document.addEventListener('pointerdown', function () { pressAt = Date.now(); }, true);
+          document.addEventListener('pointerup', released, true);
+          document.addEventListener('pointercancel', released, true);
+          function afterPress(t) {
+            if (!pressed()) return t;
+            return new Promise(function (go) {
+              var done = false, once = function () { if (!done) { done = true; go(t); } };
+              pressWaits.push(once);
+              setTimeout(once, HOLD);
+            });
+          }
           // Replace the top bar and the desk with the page as it is now. force: a click's result,
           // shown whatever the user is doing.
           function refresh(force) {
@@ -650,7 +731,7 @@ public static class PageScript
             noteLogs();
             pageBusy = true;
             var fetchedAt = Date.now();
-            get('/' + location.search, 15000).then(function (r) { return r.text(); }).then(function (t) {
+            get('/' + location.search, 15000).then(function (r) { return r.text(); }).then(afterPress).then(function (t) {
               var d = new DOMParser().parseFromString(t, 'text/html'), sx = window.scrollX, sy = window.scrollY;
               // 500-C: each column of the wide layout scrolls on its own; keep where it was.
               var cols = {};

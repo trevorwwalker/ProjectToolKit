@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text.RegularExpressions;
 using Scheduler.Core.Accounting;
 using Scheduler.Core.Contracts;
@@ -52,6 +54,9 @@ public sealed partial class ViewsSource(
     /// <summary>Why the last build failed (the previous snapshot was kept), or null.</summary>
     public string? LastError { get; private set; }
 
+    /// <summary>1213-B: the marks clicked and not yet on main, laid over plan-marks.json; null when none are kept.</summary>
+    public PendingPlanMarks? PendingMarks { get; set; }
+
     /// <summary>
     /// Rebuild when the model's commit, its done-loaded state or the running cards moved (VW-22); otherwise
     /// keep the snapshot. True when it was rebuilt. A failure keeps the previous one (views.md section 5).
@@ -71,8 +76,9 @@ public sealed partial class ViewsSource(
         // VW-22: the commit, the done-loaded state, accounting.csv's length and last write, and each worker's start.
         var key = at.Commit + "|" + at.DoneLoaded + "|" + string.Join(",", running.Order(StringComparer.Ordinal))
             + "|" + (_log?.Stamp() ?? "") + "|"
-            + string.Join(",", live.Select(r => r.CardId + "@" + r.Start.UtcTicks + "/" + r.Slot + "/" + r.Model + "/" + r.WorkerType + "/" + r.TimeBoxEnd?.UtcTicks));
-        if (key == _key)
+            + string.Join(",", live.Select(r => r.CardId + "@" + r.Start.UtcTicks + "/" + r.Slot + "/" + r.Model + "/" + r.WorkerType + "/" + r.TimeBoxEnd?.UtcTicks))
+            + "|";
+        if (key + PendingMarks?.Version == _key)
         {
             return false;
         }
@@ -85,7 +91,7 @@ public sealed partial class ViewsSource(
             }
 
             _current = Build(main, at, running, live);
-            _key = key;
+            _key = key + PendingMarks?.Version;   // 1213-B: after the build, which may have pruned the pending marks
             Builds++;
             LastError = null;
             return true;
@@ -218,13 +224,27 @@ public sealed partial class ViewsSource(
         return new ProjectViews
         {
             Project = project,
-            Snapshot = ViewsSnapshot.Build(project, cards, plans, texts, [.. _log?.Runs ?? [], .. live], WorkerCap(slots().Count), _typicals ?? [], PlanMarkFile.Read(onMain.Contains(_jobs + "/" + PlanMarkFile.FileName) ? main.Text(_jobs + "/" + PlanMarkFile.FileName) : null)),
+            Snapshot = ViewsSnapshot.Build(project, cards, plans, texts, [.. _log?.Runs ?? [], .. live], WorkerCap(slots().Count), _typicals ?? [], Marks(main, onMain)),
             Running = running,
             OnMain = onMain,
             DoneLoaded = at.DoneLoaded,
             Note = at.DoneLoaded ? "" : ProjectViews.ReadingDone,
             Commit = at.Commit,
         };
+    }
+
+    // 1213-B: main's plan-marks.json with the pending clicks over it; a pending mark main now says is dropped.
+    private IReadOnlyDictionary<string, IReadOnlyDictionary<string, ManualMark>> Marks(IMainModel main, IReadOnlySet<string> onMain)
+    {
+        var rel = _jobs + "/" + PlanMarkFile.FileName;
+        var marks = PlanMarkFile.Read(onMain.Contains(rel) ? main.Text(rel) : null);
+        if (PendingMarks is not { } pending)
+        {
+            return marks;
+        }
+
+        pending.Prune(marks, (now ?? (() => DateTimeOffset.Now))());
+        return pending.Over(marks);
     }
 
     // A plan file under the jobs folder, read in process by blob (MM-4) once per blob id.
@@ -245,14 +265,14 @@ public sealed partial class ViewsSource(
     [GeneratedRegex(@"^\d+-[A-Za-z]+")]
     private static partial Regex CardId();
 
-    // What the views keep of a plan file: its title (the first "# " line), status line and roadmap item.
-    private sealed record PlanText(string Title, string Status, int? RoadmapItem, string? Text)
+    // What the views keep of a plan file: its title (the first "# " line), and status line.
+    private sealed record PlanText(string Title, string Status, string? Text)
     {
         public static PlanText Of(string? text)
         {
             var title = (text ?? "").Split('\n').Select(l => l.TrimEnd('\r'))
                 .FirstOrDefault(l => l.StartsWith("# ", StringComparison.Ordinal))?[2..].Trim() ?? "";
-            return new PlanText(title, PlanStatus.Of(text), PlanStatus.RoadmapItemOf(text), text);
+            return new PlanText(title, PlanStatus.Of(text), text);
         }
     }
 }

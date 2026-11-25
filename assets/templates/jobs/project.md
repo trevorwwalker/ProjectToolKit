@@ -7,8 +7,7 @@ keeps this file current; workers follow it.
 
 The categories - what each is for, the files it owns, its exceptions, and the shared files every category
 may add to - are in [categories.json](categories.json); the worker types are the pool file's
-(see `Worker:` on a card). A category whose definition changes while it has cards in `queue/` or
-`active/` is held by the scheduler until the developer accepts the change on its page.
+(see `Worker:` on a card). A change to a category's definition applies at the next read of main.
 
 ## Gates
 

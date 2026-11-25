@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Core.Contracts;
 
 /// <summary>An unanswered <c>- Q&lt;n&gt;: &lt;text&gt; [&lt;c1&gt; | &lt;c2&gt; ...]</c> line under <c>## Questions</c> (CARD-12).</summary>

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Core.Categories;
 
 /// <summary>What a slot's worker really is once agent and config are applied (WRK-4, <c>Effective-Worker</c> L2695).</summary>

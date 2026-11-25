@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text.RegularExpressions;
 using Scheduler.Core.WebContract;
 using Scheduler.Web.Views;
@@ -39,18 +41,20 @@ public sealed class PageViewDropdownTests
     }
 
     // VW-2: the dropdown lists every view, and the view being shown is the selected one.
+    // 1301-C: the order is Plans, Workers, Gantt - Plans first, the developer (2026-11-24 11:52).
     [Theory]
-    [InlineData(null, "workers")]
-    [InlineData("", "workers")]
-    [InlineData("board", "workers")]
+    [InlineData(null, "plans")]
+    [InlineData("", "plans")]
+    [InlineData("board", "plans")]
     [InlineData("plans", "plans")]
     [InlineData("  PLANS  ", "plans")]
     [InlineData("gantt", "gantt")]
+    [InlineData("workers", "workers")]
     public void VW_2_Dropdown_ListsEveryViewWithTheCurrentSelected(string? view, string current)
     {
         var options = Options(Render(view));
 
-        Assert.Equal(new[] { "workers", "plans", "gantt" }, options.Select(o => o.Value).ToArray());
+        Assert.Equal(new[] { "plans", "workers", "gantt" }, options.Select(o => o.Value).ToArray());
         Assert.Single(options, o => o.Selected);
         Assert.Equal(current, options.Single(o => o.Selected).Value);
     }
@@ -97,5 +101,19 @@ public sealed class PageViewDropdownTests
         Assert.Contains("localStorage.setItem('ptk-view', knownView(", html, StringComparison.Ordinal);
         Assert.Contains("location.replace('/?view=' + p)", html, StringComparison.Ordinal);
         Assert.Contains("localStorage.getItem('ptk-view')", html, StringComparison.Ordinal);
+    }
+
+    // 1269-C: the default is Plans, named by the script rather than read off the list (which 1301-C now opens on Plans).
+    [Fact]
+    public void VW_2_DefaultView_IsPlans_AndTheScriptKnowsItByName()
+    {
+        var html = Render(null);
+
+        Assert.Contains("var defaultView = 'plans';", html, StringComparison.Ordinal);
+        Assert.Contains("return defaultView; }", html, StringComparison.Ordinal);
+        Assert.Contains("if (p !== defaultView) location.replace", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("viewNames[0]", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("viewNames[0]", PageScript.Html, StringComparison.Ordinal);
+        Assert.Contains("defaultView", PageScript.Html, StringComparison.Ordinal);
     }
 }

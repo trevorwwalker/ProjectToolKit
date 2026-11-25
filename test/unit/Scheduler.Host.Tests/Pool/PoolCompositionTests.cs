@@ -1,16 +1,18 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Diagnostics;
 using Scheduler.Core.Config;
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Tick;
 using Scheduler.Core.WebContract;
 using Scheduler.Host.Config;
-using Scheduler.Host.Observe;
 using Scheduler.Host.Pool;
 using Scheduler.Host.Processes;
 using Scheduler.Host.Program;
 using Scheduler.Host.Tests.Git;
 using Scheduler.Host.Tests.Slots;
 using Scheduler.Host.Tests.Tick;
+using Scheduler.Web.Views;
 using Xunit;
 
 namespace Scheduler.Host.Tests.Pool;
@@ -171,20 +173,19 @@ public sealed class PoolCompositionTests
         Assert.Equal([rig.B], pool.Projects.Select(p => p.Config.Project));
     }
 
-    // MP-C9: -Pool with an optional file; never with -Observe or -Compare; no repository argument.
+    // MP-C9: -Pool with an optional file; no repository argument.
     [Fact]
     public void MP_C9_PoolSwitch_Parsed()
     {
-        var bare = ObserveCommandLine.Parse(["-Pool", "-DryRun"]);
-        var named = ObserveCommandLine.Parse(["-pool", @"C:\p.json", "-Slots", "2"]);
+        var bare = LaunchArguments.Parse(["-Pool", "-DryRun"]);
+        var named = LaunchArguments.Parse(["-pool", @"C:\p.json", "-Slots", "2"]);
 
         Assert.True(bare.Pool);
         Assert.Equal("", bare.PoolFile);
         Assert.Equal(["-DryRun"], bare.Rest);
         Assert.Equal(@"C:\p.json", named.PoolFile);
         Assert.Equal(["-Slots", "2"], named.Rest);
-        Assert.False(ObserveCommandLine.Parse([@"C:\repo"]).Pool);
-        Assert.NotEqual("", ObserveCommandLine.Parse(["-Pool", "-Observe"]).Error);
+        Assert.False(LaunchArguments.Parse([@"C:\repo"]).Pool);
 
         var error = new StringWriter();
         Assert.Equal(2, PoolProgram.Run("", new CommandLineOptions { Repo = @"C:\repo" }, [], TextWriter.Null, error));
@@ -209,6 +210,39 @@ public sealed class PoolCompositionTests
 
         Assert.Equal([rig.A, rig.B], pool.Tick.Projects.Select(p => p.Name));
         Assert.Empty(pool.LeftOut);
+    }
+
+    // 1198-B: a project left out shows on the pool page's data with its reason, and as a row in the Projects window.
+    [Fact]
+    public void P1198B_LeftOutProject_InPageData_AndShownAsRow()
+    {
+        using var rig = new PoolRig();
+        using var held = new MutexHolder(rig.A);
+        using var pool = rig.Compose();
+        pool.Runner.Run();
+
+        var snapshot = pool.PageData.PoolSnapshot();
+
+        var left = Assert.Single(snapshot.LeftOut);
+        Assert.Equal(rig.A, left.Name);
+        Assert.Equal(PoolComposition.OwnSchedulerRunning, left.Why);
+        var html = new CombinedPageRenderer().Render(snapshot, remote: false, controlsAllowed: true, "workers");
+        Assert.Contains("data-leftout='1'", html, StringComparison.Ordinal);
+        Assert.Contains("not in the pool: " + PoolComposition.OwnSchedulerRunning, html, StringComparison.Ordinal);
+    }
+
+    // 1198-B: each project's repository folder reaches the pool page's data, for the chip's hover.
+    [Fact]
+    public void P1198B_ProjectRepo_ReachesPageData()
+    {
+        using var rig = new PoolRig();
+        using var pool = rig.Compose();
+        pool.Runner.Run();
+
+        var snapshot = pool.PageData.PoolSnapshot();
+
+        Assert.All(snapshot.Projects, p => Assert.NotEqual("", p.Repo));
+        Assert.True(rig.IsA(snapshot.Projects.Single(p => p.Name == rig.A).Repo));
     }
 
     // MP-H3, MP-22, MP-19: the two-repository dry run: each project's card is "started" with a line
@@ -387,7 +421,8 @@ public sealed class PoolCompositionTests
             var pool = PoolComposition.Create(new PoolStart
             {
                 File = file,
-                Options = new CommandLineOptions { DryRun = dryRun, Port = FreePort() },
+                Options = new CommandLineOptions { DryRun = dryRun },
+                AnyPort = true,   // 1307-B: the page binds a port the system gives it; PagePort reads it back
                 Clock = Clock,
                 Log = Log,
                 LocalAppData = _temp.Path,
@@ -406,12 +441,19 @@ public sealed class PoolCompositionTests
 
         public bool IsA(string repo) => Path.GetFullPath(repo) == Path.GetFullPath(_a.Repo);
 
-        // A free port, so a dry run's page server never meets another scheduler on 8765.
-        public static int FreePort()
+        // 1307-B: the port the pool's page was given, once it listens (a port chosen here and let go could be taken
+        // before the page bound it). A run that failed first fails here with its own error; the limit is a hang cap only.
+        public static int PagePort(PoolComposition pool, Func<Exception?> failed)
         {
-            using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-            listener.Start();
-            return ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            while (pool.PagePort == 0)
+            {
+                Assert.Null(failed());
+                Assert.True(watch.Elapsed < TimeSpan.FromMinutes(10), "hang: the pool's page never started listening in 10 minutes");
+                Thread.Sleep(20);
+            }
+
+            return pool.PagePort;
         }
 
         public void Dispose()

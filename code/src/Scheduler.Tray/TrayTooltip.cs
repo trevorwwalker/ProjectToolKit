@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Tray;
 
 /// <summary>The icon's tooltip: the project and the scheduler's state, cut to what Windows shows.</summary>
@@ -10,9 +12,11 @@ public static class TrayTooltip
     /// The text for <paramref name="project"/> in <paramref name="state"/>; <paramref name="workers"/>
     /// is from <c>/live.json</c>, null when the page did not answer, and then the last console line stands in.
     /// </summary>
-    public static string For(string project, SchedulerState state, int? workers, string lastLine)
+    public static string For(string project, SchedulerState state, int? workers, string lastLine) =>
+        Text($"{project} scheduler", state, workers, lastLine);
+
+    private static string Text(string head, SchedulerState state, int? workers, string lastLine)
     {
-        var head = $"{project} scheduler";
         var text = state switch
         {
             SchedulerState.Starting => $"{head}: starting",
@@ -32,15 +36,15 @@ public static class TrayTooltip
     }
 
     /// <summary>
-    /// MP-H9: the tooltip of a pool - it names "pool" and each project's state ("pool scheduler: AmigaX running,
-    /// ProjectToolkit paused-red; 2 workers"). Before the pool has written its status, or when it is not running,
-    /// it reads as <see cref="For"/> does for the project "pool".
+    /// MP-H9: the tooltip of a pool - the user-facing name is "Switchyard", then each project's state
+    /// ("Switchyard: AmigaX running, ProjectToolkit paused-red; 2 workers"). Before the pool has written
+    /// its status, or when it is not running, it reads the same way with just the worker count.
     /// </summary>
     public static string ForPool(SchedulerState state, int? workers, string lastLine, IReadOnlyList<(string Name, string State)> projects)
     {
         if (projects.Count == 0 || state is not (SchedulerState.Running or SchedulerState.Starting))
         {
-            return For("pool", state, workers, lastLine);
+            return Text("Switchyard", state, workers, lastLine);
         }
 
         var states = string.Join(", ", projects.Select(p => $"{p.Name} {p.State}"));
@@ -51,7 +55,7 @@ public static class TrayTooltip
             1 => "; 1 worker",
             { } n => $"; {n} workers",
         };
-        return Cut($"pool scheduler: {states}{busy}");
+        return Cut($"Switchyard: {states}{busy}");
     }
 
     private static string WithLine(string text, string lastLine)

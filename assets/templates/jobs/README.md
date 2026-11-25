@@ -8,9 +8,9 @@ Its master is ProjectToolkit's `assets/templates/jobs/README.md`. Fix that and r
 `<ProjectToolkit>\bin\projecttoolkit.ps1 -Action jobs -Repo <this repository> -Update`; never edit this copy, or the next
 project gets the old rules.
 
-Plans are made with the developer and written into `docs/ai/`, which holds only new plans. The
-planner (the frontier model, working with the developer) turns each one into **job cards** in
-`queue/` and moves the plan to `plans/`. Workers take cards, do the work, and move each card along:
+Plans are made with the developer and written into `plans/`, from `plan-template.md`; a new plan says
+`Status: draft` until it is carded. The planner (the frontier model, working with the developer) turns each step into
+**job cards** in `queue/`. Workers take cards, do the work, and move each card along:
 
 ```
 queue/  ->  active/  ->  done/          finished and verified
@@ -19,14 +19,13 @@ queue/  ->  active/  ->  done/          finished and verified
 
 | Folder | Holds |
 |---|---|
-| `docs/ai/` | New plans, not yet carded. Workers don't take work from here. |
 | `queue/`, `active/`, `review/`, `done/` | The cards. |
-| `plans/` | Every carded plan, finished or not, for good. A card's `Plan:` line points into here. |
+| `plans/` | Every plan, draft, carded or finished, for good. Plans nest: every plan but the project's root names its parent plan and step in a `Parent:` line. A card's `Plan:` line points into here, naming the plan and its step. |
 | `archive/` | Old cards swept from `done/`. Plans are never archived: nothing here is a plan. |
 | `requests/` | Requests to the planner, one file each (see its README). |
 | `project.md` | This project's gates, locations and standing briefs. |
 | `categories.json` | The categories: what each is for, the files it owns, its exceptions, and the shared files. |
-| `workers.json` | The scheduler's workers: how many, and each one's server, model and agent; a worker type takes a card of any category. |
+| `workers.json` | The workers of a scheduler run for this repository alone: how many, and each one's server, model and agent. In a pool, the normal way, it is not read: the worker types are in the pool file (`%LOCALAPPDATA%\ProjectToolkit\pool.json`). A worker type takes a card of any category. |
 | `scheduler.json` | The scheduler's settings: worker command, default model, health check, limits. |
 
 ## Categories
@@ -50,8 +49,8 @@ states your own category's.
   category that owns that behaviour, or locks every file it changes.
 - **Never** edit another category's cards in `queue/`, except to tick a dependency.
 - **Only `plans/` holds plans.** A design document (`docs/design/...`) is an input to a plan, not a plan: when a
-  design is carded, the planner writes its plan in `plans/`, linking the design. Every card names its plan and
-  section, or says `none (<who>, <date>)` for a one-off. Plans plus cards, which are never deleted, are the complete
+  design is carded, the planner writes its plan in `plans/`, linking the design. Every card names its plan and step,
+  or says `none (<who>, <date>)` for a one-off. Plans plus cards, which are never deleted, are the complete
   record of a project's development.
 - **Plans** in `plans/` are the planner's. A worker may update a plan's progress or status lines
   for its own card; anything more goes to a request.
@@ -59,8 +58,9 @@ states your own category's.
 ## A job card
 
 File name: `<n>-<L>-<slug>.md`. `<n>` is a positive integer of any width (no padding), the card's identity only,
-and `L` is the category's letter. The card's header says `Category: <L>`; the older `Lane: <L>` is still read as the same field, so old cards keep working. A new card takes the highest number in use (queue, active, review, done and archive)
-plus one: no gaps, no renumbering, numbers never restart. Order is `Priority`, then `Depends on`, then the number;
+and `L` is the category's letter. The card's header says `Category: <L>`; the older `Lane: <L>` is still read as the same field, so old cards keep working. Under the scheduler nobody chooses a number: a new card is a file named `new-<L>-<slug>.md` with the title
+`# new-<L>: <title>`, and the scheduler gives it the next number. With no scheduler, a new card takes the highest number in use
+(queue, active, review, done and archive) plus one. Either way: no gaps, no renumbering, numbers never restart. Order is `Priority`, then `Depends on`, then the number;
 to run a card earlier, give it a priority or make others depend on it, never renumber. Finished cards may be swept
 from `done/` to `archive/` to keep folders small; their numbers stay used. An optional `Priority: high` puts a card
 ahead of every normal one, and `Priority: low` behind them. `Time box: N min` is set by the planner; without one the session
@@ -105,8 +105,8 @@ Move-Item ($f + '.tmp') ($f + '.move')
    scheduler moved it into `active/` and gave it its `Claimed:` line before your session started, so
    go straight to step 4. Run by hand: first resume your category's unfinished card in `active/` (never
    one marked `needs-human`); otherwise take the lowest-numbered card in `queue/` that is in your
-   category, says `Status: ready`, has every `Depends on` card in `done/` or `review/`, and has `Locks`
-   that don't overlap an active card. Skipping a waiting or blocked card is intended.
+   category, says `Status: ready`, has every `Depends on` card in `done/` (a card in `review/` does not
+   release the cards that depend on it), and has `Locks` that don't overlap an active card. Skipping a waiting or blocked card is intended.
 3. **Claim it (by hand only).** Under the scheduler the claim is not yours to make: the scheduler
    writes it (CM-9) and a second claim of the same card is refused as "already claimed" (CM-15), so
    a worker leaves the card where it is. Run by hand, move it into `active/` yourself, add
@@ -134,7 +134,7 @@ Move-Item ($f + '.tmp') ($f + '.move')
      |---|---|---|
      | 0 | `granted` | edit the files. |
      | 2 | `waiting: held by <card>, gives up at <time>` | run the same command again (it keeps the open request and waits on). |
-     | 3 | `yield: <path> held by <card> (older)` | commit your work to `wip/<card>` (never main), write in Result where you stopped and what you were about to change, hand the card back with a move request `To: active` and `Status: ready`, and end with `LANE-RESULT: yielded`. |
+     | 3 | `yield: <path> held by <card> (older)` or `(wait limit)` | commit your work to `wip/<card>` (never main), write in Result where you stopped and what you were about to change, hand the card back with a move request `To: active` and `Status: ready`, and end with `LANE-RESULT: yielded`. |
      | 4 | `refused: <reason>` | narrow the request, or park and ask. |
 
      Never skip the command: a push to main that touches a file you do not hold is refused, naming the file and
@@ -224,7 +224,7 @@ ProjectToolkit's scheduler (`scheduler-next.exe`, run for this repository) runs 
 worktree slot; a card's scope keeps cards apart; it resumes orphaned cards, watches for hung workers, shares the
 CPU cores between workers, checks that the main branch stays green, pauses when the agent account
 is out of quota, and records every card in `accounting.csv`. Its settings are in `scheduler.json`;
-the workers (server, model, agent) are in `workers.json`. From its page the developer answers
+the workers (server, model, agent) are the pool file's worker types, or `workers.json` for a run for one repository alone. From its page the developer answers
 questions, resumes parked cards, sends review cards back, and messages a running worker.
 It is the only writer of card moves: a worker asks for one with a move request in its moves folder
 (see [Who moves the cards](#who-moves-the-cards), and CM-1 to CM-22 in the design).

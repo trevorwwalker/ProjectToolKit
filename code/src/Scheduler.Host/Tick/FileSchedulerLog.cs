@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Globalization;
 using System.Text;
 using Scheduler.Core.Contracts;
@@ -9,7 +11,7 @@ namespace Scheduler.Host.Tick;
 /// (the console, and so to the tray's View log and the page) and to two files:
 /// <list type="bullet">
 /// <item><c>scheduler.log</c> in <paramref name="logDir"/>, the state log folder, which
-/// <c>-Compare</c> reads (390-B) - unchanged from before 690-B.</item>
+/// was read by <c>-Compare</c> (390-B, retired by 1208-B) - unchanged from before 690-B.</item>
 /// <item><c>scheduler-YYYYMMDD.log</c> in <paramref name="rollingDir"/>, the repository's
 /// <c>jobs/.logs</c>: a new file at each local midnight, so the day a run died on is the day whose
 /// file is read. Each line is written and the file closed again, so a hang or a kill leaves

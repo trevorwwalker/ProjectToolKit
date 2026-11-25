@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Views;
 using Scheduler.Core.WebContract;
@@ -20,12 +22,12 @@ public sealed class PlansViewPageTests
         Stats = new PageStats { Cards = 0, Minutes = 0, Text = "Last 24 h: none" },
     };
 
-    private static ViewCard Card(string id, ViewFolder folder, string plan, string step = "", string status = "", string type = "feature") => new()
+    private static ViewCard Card(string id, ViewFolder folder, string plan, string step = "", string status = "", string type = "feature", string? title = null) => new()
     {
         Id = id,
         Number = long.Parse(id[..id.IndexOf('-')]),
         Category = id[(id.IndexOf('-') + 1)..],
-        Title = "Title of " + id,
+        Title = title ?? "Title of " + id,
         Folder = folder,
         PlanPath = plan,
         PlanStep = step,
@@ -33,18 +35,34 @@ public sealed class PlansViewPageTests
         CardType = type,
     };
 
-    private static ProjectViews Views(string project, IEnumerable<ViewCard> cards, IEnumerable<ViewPlan>? plans = null, params string[] running) => new()
+    // The plan documents every tree here is drawn from: a one-step plan, and a five-step plan with a sub-step.
+    private static readonly Dictionary<string, string> PlanTexts = new(StringComparer.Ordinal)
     {
-        Project = project,
-        Snapshot = ViewsSnapshot.Build(project, cards, plans ?? [], new Dictionary<string, string>
-        {
-            ["jobs/plans/old_plan.md"] = "# Old\n\n## Only\n",
-            ["jobs/plans/machines_plan.md"] = "# Machines\n\n## Build\n\n### Part\n\n## Two\n\n## Three\n\n## Four\n\n## Five\n",
-        }),
-        Running = new HashSet<string>(running, StringComparer.Ordinal),
-        OnMain = new HashSet<string>(["jobs/plans/machines_plan.md", "jobs/plans/old_plan.md"], StringComparer.Ordinal),
-        DoneLoaded = true,
+        ["jobs/plans/old_plan.md"] = "# Old\n\n## Only\n",
+        ["jobs/plans/machines_plan.md"] = "# Machines\n\n## Build\n\n### Part\n\n## Two\n\n## Three\n\n## Four\n\n## Five\n",
     };
+
+    private static ProjectViews Views(string project, IEnumerable<ViewCard> cards, IEnumerable<ViewPlan>? plans = null, params string[] running) =>
+        Views(project, cards, plans, new Dictionary<string, string>(StringComparer.Ordinal), running);
+
+    // 1289-C: the same, with plan documents of a test's own added (here a plan written with numbered headings).
+    private static ProjectViews Views(string project, IEnumerable<ViewCard> cards, IEnumerable<ViewPlan>? plans, IReadOnlyDictionary<string, string> extra, params string[] running)
+    {
+        var texts = new Dictionary<string, string>(PlanTexts, StringComparer.Ordinal);
+        foreach (var (path, text) in extra)
+        {
+            texts[path] = text;
+        }
+
+        return new ProjectViews
+        {
+            Project = project,
+            Snapshot = ViewsSnapshot.Build(project, cards, plans ?? [], texts),
+            Running = new HashSet<string>(running, StringComparer.Ordinal),
+            OnMain = new HashSet<string>(["jobs/plans/machines_plan.md", "jobs/plans/old_plan.md"], StringComparer.Ordinal),
+            DoneLoaded = true,
+        };
+    }
 
     private static PoolPageSnapshot Pool(params ProjectViews[] views) => new()
     {
@@ -91,11 +109,12 @@ public sealed class PlansViewPageTests
     // VW-2 (1129-C): the views dropdown sits in the title bar after the project dropdown and before the
     // theme menu, and lists every view with the current one selected.
     [Theory]
-    [InlineData(null, "workers")]
-    [InlineData("", "workers")]
-    [InlineData("nonsense", "workers")]
-    [InlineData("board", "workers")]
+    [InlineData(null, "plans")]
+    [InlineData("", "plans")]
+    [InlineData("nonsense", "plans")]
+    [InlineData("board", "plans")]
     [InlineData("plans", "plans")]
+    [InlineData("workers", "workers")]
     public void VW_2_Switch_SelectedIsTheCurrentView(string? view, string current)
     {
         var html = Render(Sample(), view);
@@ -127,28 +146,22 @@ public sealed class PlansViewPageTests
         Assert.Contains("name='views-version'", plans, StringComparison.Ordinal);
     }
 
-    // 1127-C: a complete plan renders only in Completed plans, an unfinished one and "No plan" only in Plans.
+    // 1256-C (VW-34), replacing the 1127-C test of the Completed plans window: every top-level plan is drawn in the one window, complete or not.
     [Fact]
-    public void CompletedPlans_CompletePlanOnlyOnTheRight_UnfinishedOnlyOnTheLeft()
+    public void CompletedPlans_WindowIsGone_EveryTopLevelPlanIsInThePlansWindow()
     {
         var html = Render(Sample(), "plans");
-        var split = html.IndexOf("id='w-plans-completed'", StringComparison.Ordinal);
 
-        Assert.True(split > html.IndexOf("id='w-plans'", StringComparison.Ordinal));
-        var left = html[..split];
-        var right = html[split..];
-        Assert.Contains("jobs/plans/machines_plan.md", left, StringComparison.Ordinal);
-        Assert.DoesNotContain("jobs/plans/machines_plan.md", right, StringComparison.Ordinal);
-        Assert.Contains("jobs/plans/old_plan.md", right, StringComparison.Ordinal);
-        Assert.DoesNotContain("jobs/plans/old_plan.md", left, StringComparison.Ordinal);
-        Assert.Contains("<b>Requests</b>", left, StringComparison.Ordinal);
-        Assert.DoesNotContain("<b>Requests</b>", right, StringComparison.Ordinal);
-        Assert.Contains("Completed plans", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("w-plans-completed", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Completed plans", html, StringComparison.Ordinal);
+        Assert.Contains("jobs/plans/machines_plan.md", html, StringComparison.Ordinal);
+        Assert.Contains("jobs/plans/old_plan.md", html, StringComparison.Ordinal);
+        Assert.Contains("<b>Requests</b>", html, StringComparison.Ordinal);
     }
 
-    // 1127-C: a plan checked by a click moves to the right window; both windows carry the same controls.
+    // 1256-C (VW-34), replacing the 1127-C test of a plan checked by a click: it stays in the tree, a top-level plan never has data-complete.
     [Fact]
-    public void CompletedPlans_APlanCheckedByAClick_Moves_AndBothWindowsCarryTheClickableMark()
+    public void CompletedPlans_APlanCheckedByAClick_StaysInTheTree_WithTheClickableMark()
     {
         const string plan = "jobs/plans/machines_plan.md";
         var marks = new Dictionary<string, IReadOnlyDictionary<string, ManualMark>> { [plan] = new Dictionary<string, ManualMark> { ["plan"] = ManualMark.Checked } };
@@ -161,24 +174,18 @@ public sealed class PlansViewPageTests
             DoneLoaded = true,
         };
         var html = RenderKeyed(Pool(views), "plans");
-        var split = html.IndexOf("id='w-plans-completed'", StringComparison.Ordinal);
 
-        Assert.DoesNotContain(plan, html[..split], StringComparison.Ordinal);
-        Assert.Contains(plan, html[split..], StringComparison.Ordinal);
-        Assert.Contains("class='pm-click'", html[split..], StringComparison.Ordinal);
-        Assert.Contains("data-key='p|P|" + plan + "'", html[split..], StringComparison.Ordinal);
-
-        var both = RenderKeyed(Sample(), "plans");
-        var at = both.IndexOf("id='w-plans-completed'", StringComparison.Ordinal);
-        Assert.Contains("class='pm-click'", both[..at], StringComparison.Ordinal);
-        Assert.Contains("class='pm-click'", both[at..], StringComparison.Ordinal);
+        Assert.Contains(plan, html, StringComparison.Ordinal);
+        Assert.Contains("class='pm-click'", html, StringComparison.Ordinal);
+        Assert.Contains("data-key='p|P|" + plan + "'", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("data-key='p|P|" + plan + "' data-complete", html, StringComparison.Ordinal);
     }
 
     // VW-23: the Plans HTML is built only when asked for.
     [Fact]
     public void VW_23_WorkersView_HasNoPlansHtml()
     {
-        var html = Render(Sample(), null);
+        var html = Render(Sample(), "workers");
 
         Assert.DoesNotContain("machines_plan.md", html, StringComparison.Ordinal);
         Assert.DoesNotContain("class='plan'", html, StringComparison.Ordinal);
@@ -213,13 +220,94 @@ public sealed class PlansViewPageTests
     {
         var html = Render(Sample(), "plans");
 
-        var step1 = html.IndexOf("<a href='/plan?project=AmigaX&path=jobs%2Fplans%2Fmachines_plan.md#build'>1. Build</a>", StringComparison.Ordinal);
-        var sub = html.IndexOf("#part'>1.1. Part</a>", StringComparison.Ordinal);
-        var step5 = html.IndexOf("#five'>5. Five</a>", StringComparison.Ordinal);
+        var step1 = html.IndexOf("<a href='/plan?project=AmigaX&path=jobs%2Fplans%2Fmachines_plan.md#build' title='step 1 of jobs/plans/machines_plan.md'>1. Build</a>", StringComparison.Ordinal);
+        var sub = html.IndexOf("#part' title='step 1.1 of jobs/plans/machines_plan.md'>1.1. Part</a>", StringComparison.Ordinal);
+        var step5 = html.IndexOf("#five' title='step 5 of jobs/plans/machines_plan.md'>5. Five</a>", StringComparison.Ordinal);
         Assert.True(step1 >= 0 && step1 < sub && sub < step5, "1, 1.1, 5");
-        Assert.Contains("<details class='plan-step' open><summary><span class='pm' title='not complete'>&#9744;</span> <a href='/plan?project=AmigaX&path=jobs%2Fplans%2Fmachines_plan.md#build'>", html, StringComparison.Ordinal);
-        Assert.Contains("<div class='plan-step'><span class='pm' title='not complete'>&#9744;</span> <a href='/plan?project=AmigaX&path=jobs%2Fplans%2Fmachines_plan.md#two'>2. Two</a></div>", html, StringComparison.Ordinal);
-        Assert.Contains("<details class='plan-step'><summary><span class='pm pm-ok' title='complete'>&#10003;</span> <a href='/plan?project=AmigaX&path=jobs%2Fplans%2Fold_plan.md#only'>", html, StringComparison.Ordinal);
+        Assert.Contains("<details class='plan-step' open><summary><span class='pm' title='not complete'>&#9744;</span> <a href='/plan?project=AmigaX&path=jobs%2Fplans%2Fmachines_plan.md#build'", html, StringComparison.Ordinal);
+        Assert.Contains("<div class='plan-step'><span class='pm' title='not complete'>&#9744;</span> <a href='/plan?project=AmigaX&path=jobs%2Fplans%2Fmachines_plan.md#two' title='step 2 of jobs/plans/machines_plan.md'>2. Two</a></div>", html, StringComparison.Ordinal);
+        Assert.Contains("<details class='plan-step' data-complete='1'><summary><span class='pm pm-ok' title='complete'>&#10003;</span> <a href='/plan?project=AmigaX&path=jobs%2Fplans%2Fold_plan.md#only'", html, StringComparison.Ordinal);
+    }
+
+    // 1289-C: a plan written with numbered headings ("## 2. Build the job system") already carries the number in its
+    // title, so the Plans view must not draw the step's label again: "2. Build ...", never "2. 2. Build ...".
+    [Fact]
+    public void Tree_ANumberedStepTitle_ShowsItsNumberOnce()
+    {
+        var html = RenderedNumberedPlan("# Numbered\n\n## 2. Build the job system: cards\n\n## 7. Bring the other projects in the pool up\n");
+
+        Assert.Contains(">2. Build the job system: cards</a>", html, StringComparison.Ordinal);
+        Assert.Contains(">7. Bring the other projects in the pool up</a>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("2. 2. Build", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("7. 7. Bring", html, StringComparison.Ordinal);
+    }
+
+    // A plan written the old way (headings with no number) is unchanged: the view's own number, then the title.
+    [Fact]
+    public void Tree_AnUnnumberedStepTitle_StillGetsTheViewsNumber()
+    {
+        var html = RenderedNumberedPlan("# Plain\n\n## One\n\n## Two\n\n## Trends\n");
+
+        Assert.Contains(">3. Trends</a>", html, StringComparison.Ordinal);
+    }
+
+    // A sub-step of a numbered plan is "n.m" once, too (VW-24 numbers it; the heading may repeat it).
+    [Fact]
+    public void Tree_ANumberedSubStepTitle_ShowsItsNumberOnce()
+    {
+        var html = RenderedNumberedPlan("# Numbered\n\n## 1. Main\n\n### 1.2 Sub thing\n");
+
+        Assert.Contains(">1.2. Sub thing</a>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("1.2. 1.2", html, StringComparison.Ordinal);
+    }
+
+    // A heading whose words merely begin with the label's digits keeps them: only the label itself is dropped.
+    [Fact]
+    public void Tree_AStepTitleThatOnlyLooksLikeANumber_IsLeftAlone()
+    {
+        Assert.Contains(">4. 404 pages</a>", RenderedNumberedPlan("# A\n\n## 4. 404 pages\n"), StringComparison.Ordinal);
+        Assert.Contains(">2. 2x Speed</a>", RenderedNumberedPlan("# B\n\n## One\n\n## 2x Speed\n"), StringComparison.Ordinal);
+    }
+
+    private static string RenderedNumberedPlan(string text)
+    {
+        const string path = "jobs/plans/numbered_plan.md";
+        var views = Views("AmigaX", [], [new ViewPlan { Path = path, Kind = PlanKind.Plans, Title = "Numbered" }], new Dictionary<string, string>(StringComparer.Ordinal) { [path] = text });
+        return Render(Pool(views), "plans");
+    }
+
+    // 1289-C: a card's title line is "# 1274-B: After a restart ...", so the id was drawn twice on its row.
+    [Fact]
+    public void Tree_ACardTitleBeginningWithItsId_ShowsTheIdOnce()
+    {
+        var html = RenderedCard("1274-B", "1274-B: After a restart");
+
+        Assert.Contains("<a href='/card?project=AmigaX&id=1274-B'>1274-B: After a restart</a>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("1274-B 1274-B", html, StringComparison.Ordinal);
+    }
+
+    // The card's id is shown as "id: title" when the title does not repeat it.
+    [Fact]
+    public void Tree_ACardTitleWithoutItsId_IsDrawnAfterAColon()
+    {
+        var html = RenderedCard("31-A", "Trends panel");
+
+        Assert.Contains(">31-A: Trends panel</a>", html, StringComparison.Ordinal);
+    }
+
+    // A card with no title at all is its id alone.
+    [Fact]
+    public void Tree_ACardWithNoTitle_IsItsIdAlone()
+    {
+        var html = RenderedCard("32-A", "");
+
+        Assert.Contains(">32-A</a>", html, StringComparison.Ordinal);
+    }
+
+    private static string RenderedCard(string id, string title)
+    {
+        var views = Views("AmigaX", [Card(id, ViewFolder.Queue, "jobs/plans/machines_plan.md", title: title)]);
+        return Render(Pool(views), "plans");
     }
 
     // 1121-C: a step whose children are all complete (here its sub-step) is a green check and collapsed; an open child keeps it open.
@@ -230,19 +318,19 @@ public sealed class PlansViewPageTests
         var done = Render(Pool(Views("AmigaX", [Card("1-A", ViewFolder.Done, plan, "step 1.1")], [])), "plans");
         var open = Render(Pool(Views("AmigaX", [Card("1-A", ViewFolder.Done, plan, "step 1.1"), Card("2-A", ViewFolder.Queue, plan, "step 1.1")], [])), "plans");
 
-        Assert.Contains("<details class='plan-step'><summary><span class='pm pm-ok' title='complete'>&#10003;</span> <a href='/plan?project=AmigaX&path=jobs%2Fplans%2Fmachines_plan.md#build'>", done, StringComparison.Ordinal);
-        Assert.Contains("<details class='plan-step'><summary><span class='pm pm-ok' title='complete'>&#10003;</span> <a href='/plan?project=AmigaX&path=jobs%2Fplans%2Fmachines_plan.md#part'>", done, StringComparison.Ordinal);
-        Assert.Contains("<details class='plan-step' open><summary><span class='pm' title='not complete'>&#9744;</span> <a href='/plan?project=AmigaX&path=jobs%2Fplans%2Fmachines_plan.md#build'>", open, StringComparison.Ordinal);
+        Assert.Contains("<details class='plan-step' data-complete='1'><summary><span class='pm pm-ok' title='complete'>&#10003;</span> <a href='/plan?project=AmigaX&path=jobs%2Fplans%2Fmachines_plan.md#build'", done, StringComparison.Ordinal);
+        Assert.Contains("<details class='plan-step' data-complete='1'><summary><span class='pm pm-ok' title='complete'>&#10003;</span> <a href='/plan?project=AmigaX&path=jobs%2Fplans%2Fmachines_plan.md#part'", done, StringComparison.Ordinal);
+        Assert.Contains("<details class='plan-step' open><summary><span class='pm' title='not complete'>&#9744;</span> <a href='/plan?project=AmigaX&path=jobs%2Fplans%2Fmachines_plan.md#build'", open, StringComparison.Ordinal);
     }
 
-    // A card line: mark, category chip, then number and title as one link (review to /review, others to /card, id=); no state tag.
+    // A card line: mark, category chip, then id and title once each as one link (review to /review, others to /card, id=); no state tag.
     [Fact]
     public void Tree_CardLine_MarkChipLink_NoStateTag()
     {
         var html = Render(Sample(), "plans");
 
-        Assert.Contains("<a href='/review?project=AmigaX&id=12-B'>12-B Title of 12-B</a></li>", html, StringComparison.Ordinal);
-        Assert.Contains("<a href='/card?project=AmigaX&id=11-A'>11-A Title of 11-A</a></li>", html, StringComparison.Ordinal);
+        Assert.Contains("<a href='/review?project=AmigaX&id=12-B'>12-B: Title of 12-B</a></li>", html, StringComparison.Ordinal);
+        Assert.Contains("<a href='/card?project=AmigaX&id=11-A'>11-A: Title of 11-A</a></li>", html, StringComparison.Ordinal);
         Assert.Contains("<li class='plan-card'><span class='pm pm-ok' title='complete'>&#10003;</span> ", html, StringComparison.Ordinal);
         Assert.DoesNotContain("<span class='mute'>queue</span>", html, StringComparison.Ordinal);
         Assert.DoesNotContain("running</span>", html, StringComparison.Ordinal);
@@ -262,7 +350,7 @@ public sealed class PlansViewPageTests
         var html = Render(Pool(views), "plans");
 
         Assert.Contains("<span class='pm pm-bad' title='cancelled or errored'>&#10007;</span> ", html, StringComparison.Ordinal);
-        Assert.Contains("#two'>2. Two</a> &nbsp;<span class='mute'>1/1</span>", html, StringComparison.Ordinal);
+        Assert.Contains("#two' title='step 2 of jobs/plans/machines_plan.md'>2. Two</a> &nbsp;<span class='mute'>1/1</span>", html, StringComparison.Ordinal);
     }
 
     // Cards that match no heading are under "Other cards" of their plan.
@@ -271,10 +359,10 @@ public sealed class PlansViewPageTests
     {
         var html = Render(Sample(), "plans");
 
-        var five = html.IndexOf("#five'>", StringComparison.Ordinal);
+        var five = html.IndexOf("#five'", StringComparison.Ordinal);
         var other = html.IndexOf("Other cards", StringComparison.Ordinal);
         Assert.True(five > 0 && five < other, "Other cards follow the steps");
-        Assert.Contains("14-A Title of 14-A", html[other..], StringComparison.Ordinal);
+        Assert.Contains("14-A: Title of 14-A", html[other..], StringComparison.Ordinal);
     }
 
     // VW-11: only jobs/plans/ files are plans; a card naming another path sits under No plan, last, with its path shown.
@@ -288,7 +376,7 @@ public sealed class PlansViewPageTests
         Assert.True(plan >= 0 && plan < noPlan, "the plan, then Plan not found");
         Assert.DoesNotContain("Archived plans", html, StringComparison.Ordinal);
         Assert.DoesNotContain("<b>docs/design/old.md</b>", html, StringComparison.Ordinal);
-        var card = html.IndexOf("17-A Title of 17-A</a> <span class='mute'>Plan: docs/design/old.md</span>", noPlan, StringComparison.Ordinal);
+        var card = html.IndexOf("17-A: Title of 17-A</a> <span class='mute'>Plan: docs/design/old.md</span>", noPlan, StringComparison.Ordinal);
         Assert.True(card > noPlan, "the card lists the path it names under No plan");
     }
 
@@ -315,12 +403,10 @@ public sealed class PlansViewPageTests
             DoneLoaded = true,
         };
         var html = RenderKeyed(Pool(views), "plans");
-        var split = html.IndexOf("id='w-plans-completed'", StringComparison.Ordinal);
-        var left = html[..split];
+        var left = html;
 
         Assert.Contains("<b>Bugs</b>", left, StringComparison.Ordinal);
         Assert.Contains("<b>Requests</b>", left, StringComparison.Ordinal);
-        Assert.DoesNotContain("<b>Bugs</b>", html[split..], StringComparison.Ordinal);
         Assert.True(left.IndexOf("<b>Bugs</b>", StringComparison.Ordinal) < left.IndexOf("<b>Requests</b>", StringComparison.Ordinal));
         Assert.True(left.IndexOf("<b>Requests</b>", StringComparison.Ordinal) < left.IndexOf("<b>Plan not found</b>", StringComparison.Ordinal));
         // Bugs: November (open, 0/1) before October (done, folded).
@@ -330,7 +416,7 @@ public sealed class PlansViewPageTests
         Assert.Contains("<details class='plan' data-project='P' data-key='g|P|Bugs' open>", left, StringComparison.Ordinal);
         // Requests: its only month is finished, so the whole group is folded.
         Assert.Contains("<details class='plan' data-project='P' data-key='g|P|Requests'>", left, StringComparison.Ordinal);
-        Assert.Contains("23-A Title of 23-A</a> <span class='mute'>Plan: docs/design/gone.md</span>", left, StringComparison.Ordinal);
+        Assert.Contains("23-A: Title of 23-A</a> <span class='mute'>Plan: docs/design/gone.md</span>", left, StringComparison.Ordinal);
         Assert.DoesNotContain("<b>No plan</b>", html, StringComparison.Ordinal);
     }
 
@@ -392,7 +478,8 @@ public sealed class PlansViewPageTests
         Assert.Contains("details[data-key] > summary", script, StringComparison.Ordinal);
         Assert.Contains("if (v === '1' && !d.open) d.open = true;", script, StringComparison.Ordinal);
         Assert.Contains("else if (v === '0' && d.open) d.open = false;", script, StringComparison.Ordinal);
-        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(script, @"?
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(script, @"
+?
 \s*applyPlans\(\);").Count);
         Assert.Contains("window.scrollTo(sx, sy);", script, StringComparison.Ordinal);
     }
@@ -414,18 +501,18 @@ public sealed class PlansViewPageTests
         Assert.DoesNotContain("gantt-desk", gantt, StringComparison.Ordinal);
     }
 
-    // 1162-C: both plan windows are inside the pair, the wider Plans first and Completed plans after it.
+    // 1162-C, 1256-C: the Plans window is inside the pair, alone (the Completed plans window is gone).
     [Fact]
-    public void WideDesk_PlansPair_HoldsBothWindowsInTheGanttOrder()
+    public void WideDesk_PlansPair_HoldsThePlansWindow()
     {
         var plans = Render(Sample(), "plans");
 
         var pair = plans.IndexOf("<div class='plans-pair'>", StringComparison.Ordinal);
         var wide = plans.IndexOf("id='w-plans'", StringComparison.Ordinal);
-        var completed = plans.IndexOf("id='w-plans-completed'", StringComparison.Ordinal);
         Assert.True(pair >= 0, "the pair div is drawn");
-        Assert.True(pair < wide && wide < completed, "Plans then Completed plans, both inside the pair");
-        Assert.True(completed < plans.IndexOf("</body>", StringComparison.Ordinal), "and the pair is closed after them");
+        Assert.True(pair < wide, "Plans is inside the pair");
+        Assert.DoesNotContain("w-plans-completed", plans, StringComparison.Ordinal);
+        Assert.True(wide < plans.IndexOf("</body>", StringComparison.Ordinal), "and the pair is closed after it");
     }
 
     // 1162-C: the pair rules are shared, not copied: one rule lays out both pairs, and the plans windows take
@@ -436,8 +523,7 @@ public sealed class PlansViewPageTests
         var plans = Render(Sample(), "plans");
 
         Assert.Contains(".plans-pair, .gantt-pair { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }", plans, StringComparison.Ordinal);
-        Assert.Contains("#w-gantt, #w-plans { flex: 3 1 640px; min-width: 0; }", plans, StringComparison.Ordinal);
-        Assert.Contains("#w-gantt-details, #w-plans-completed { flex: 1 1 300px; min-width: 0; }", plans, StringComparison.Ordinal);
+        Assert.Contains("#w-gantt { flex: 3 1 640px; min-width: 0; } #w-plans { flex: 1 1 100%; min-width: 0; } #w-gantt-details { flex: 1 1 300px; min-width: 0; }", plans, StringComparison.Ordinal);
         Assert.Contains(".desk.wide-desk { grid-template-columns: minmax(0, 1fr); grid-template-areas: \"top\" \"main\"; }", plans, StringComparison.Ordinal);
     }
 }

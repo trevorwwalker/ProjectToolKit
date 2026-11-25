@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core;
 using Scheduler.Core.Contracts;
 using Scheduler.Core.WebContract;
@@ -99,7 +101,6 @@ internal static class ViewsFixture
         ],
         Waiting =
         [
-            new PageWaitingItem { Kind = PageWaitingKind.HeldCategory, Name = "B", Note = "lane B's definition changed with 2 cards pending" },
             new PageWaitingItem { Kind = PageWaitingKind.Stuck, Name = "030-A", Note = "3 runs ended without a result" },
             new PageWaitingItem
             {

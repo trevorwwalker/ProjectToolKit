@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Accounting;
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Health;
@@ -61,7 +63,18 @@ public class PageSnapshotTests
 
         var snapshot = HostPageSnapshot.Build(harness.Config, harness.Clock, harness.Tick);
 
-        Assert.DoesNotContain(snapshot.Waiting, w => w.Kind == PageWaitingKind.HeldCategory);
+        Assert.DoesNotContain(snapshot.Waiting, w => w.Name == "A");
+    }
+
+    // 1180-C: the page carries the project's own limits.maxMinutes, which the Gantt's estimates fall back to.
+    [Fact]
+    public void Snapshot_CarriesTheProjectsMaxMinutes()
+    {
+        using var harness = new PageActionHarness(categoriesJson: CategoriesV1, project: "ptk-1180c-maxminutes");
+
+        var snapshot = HostPageSnapshot.Build(harness.Config with { MaxMinutes = 90 }, harness.Clock, harness.Tick);
+
+        Assert.Equal(90, snapshot.MaxMinutes);
     }
 
     // PAGE-5, PAGE-6: every queued card is a Queue row in dispatch order, each with why it waits.
@@ -140,17 +153,20 @@ public class PageSnapshotTests
         Assert.True(before.Health.Green);
         Assert.Equal("main not checked yet", before.Health.Text);
         Assert.Equal("", before.Health.Sha);
+        Assert.Equal("", before.Health.CheckingSha);
 
         health.CheckNow();
         Assert.True(health.StartIfWanted());
         var during = HostPageSnapshot.Build(config, harness.Clock, harness.Tick, sources);
         Assert.Contains("checking abc1234", during.Health.Text);
+        Assert.Equal("abc1234", during.Health.CheckingSha);
 
         harness.Tick.State = health.Reap(harness.Tick.State);
         var red = HostPageSnapshot.Build(config, harness.Clock, harness.Tick, sources);
         Assert.False(red.Health.Green);
         Assert.Equal("abc1234", red.Health.Sha);
         Assert.Contains("main abc1234 RED at", red.Health.Text);
+        Assert.Equal("", red.Health.CheckingSha);
         Assert.Equal(SchedulerState.PausedRed, red.State.State);
         var page = harness.Renderer.Render(red, remote: false, controlsAllowed: true);
         Assert.Contains("<div class='health-red'>", page);
@@ -569,7 +585,6 @@ public class PageSnapshotTests
         harness.Host.Cards.Add(Card(CardFolder.Queue, 10, "A"));
         harness.Host.CategoriesJson = CategoriesV2;
         harness.Tick_Once();
-        Assert.Empty(harness.Tick.Categories.Held);
         return harness;
     }
 

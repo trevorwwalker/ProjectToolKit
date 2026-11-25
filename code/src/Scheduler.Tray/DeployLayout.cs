@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Tray;
 
 /// <summary>
@@ -46,6 +48,21 @@ public sealed class DeployLayout(string outWindowsDir)
 
     /// <summary>The project <c>dotnet publish</c> is given to make the runnable folder (BUILD-2).</summary>
     public string HostProject => Path.Combine(KitRoot, "code", "src", "Scheduler.Host");
+
+    /// <summary>The project file whose presence marks a source checkout (INS-18).</summary>
+    public string HostProjectFile => Path.Combine(HostProject, "Scheduler.Host.csproj");
+
+    /// <summary>
+    /// Whether this is a source checkout: the Host project is above the running scheduler. An installed copy
+    /// has none, and its "Update and restart" cannot publish (INS-18).
+    /// </summary>
+    public bool IsSourceCheckout(ISwapFileSystem fs) => fs.FileExists(HostProjectFile);
+
+    /// <summary>The update menu item's text: "Check for update..." in an installed copy (INS-18).</summary>
+    public static string UpdateItemText(bool installed) => installed ? "Check for update..." : "Update and restart";
+
+    /// <summary>The page an installed copy's "Check for update..." opens (INS-18).</summary>
+    public const string LatestReleaseUrl = "https://github.com/trevorwwalker/ProjectToolkit/releases/latest";
 
     /// <summary>Whether the layout points at a real scheduler folder with something to deploy.</summary>
     public bool IsDeployable(ISwapFileSystem fs) =>

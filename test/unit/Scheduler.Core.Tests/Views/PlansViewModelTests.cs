@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Views;
 
 namespace Scheduler.Core.Tests.Views;
@@ -94,22 +96,6 @@ public class PlansViewModelTests
         Assert.Equal(200, PlanStatus.Of("Status: " + new string('x', 500)).Length);
         Assert.Equal("no status line", PlanStatus.Of("# Plan\nStatuses are not this."));
         Assert.Equal("no status line", PlanStatus.Of(null));
-    }
-
-    [Fact]
-    public void VW_13_RoadmapItemsArePlans_DocsNestUnderTheItemNamingThem()
-    {
-        const string roadmap = "# Roadmap\n\n## 1. Scheduler\n*Status 2026-11-01: done*\n\ntext\n\n## 2. Page views\ntext\n*Status: in progress*\n\n## 3. Last\n";
-
-        var items = PlanStatus.RoadmapItems(roadmap);
-
-        Assert.Equal(3, items.Count);
-        Assert.Equal("Roadmap item 1: Scheduler", items[0].Name);
-        Assert.Equal("*Status 2026-11-01: done*", items[0].Status);
-        Assert.Equal("*Status: in progress*", items[1].Status);
-        Assert.Equal("no status line", items[2].Status);
-        Assert.Equal(2, PlanStatus.RoadmapItemOf("# Views\nRoadmap: item 2\n"));
-        Assert.Null(PlanStatus.RoadmapItemOf("# Other doc\nno roadmap line"));
     }
 
     // VW-14

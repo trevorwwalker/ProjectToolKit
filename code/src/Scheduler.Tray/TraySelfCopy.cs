@@ -1,3 +1,8 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
+using System.Security.Cryptography;
+using System.Text;
+
 namespace Scheduler.Tray;
 
 /// <summary>
@@ -24,13 +29,48 @@ public static class TraySelfCopy
     public static bool IsCopyFile(string name) =>
         IsTrayFile(name) || name.EndsWith(".ico", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary><c>%LOCALAPPDATA%\ProjectToolkit\tray</c>, the folder the tray runs from.</summary>
-    public static string Folder(string? localAppData = null)
+    /// <summary>
+    /// 1265-B: the key of a kit folder, 16 hex characters worked out exactly as <c>TrayExitSignal.NameFor</c> does
+    /// (full path, trailing slashes trimmed, upper-cased, SHA-256 of its UTF-8, first 16 hex).
+    /// </summary>
+    public static string KitKey(string schedulerDir)
+    {
+        var full = Path.GetFullPath(schedulerDir).TrimEnd('\\', '/').ToUpperInvariant();
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(full)))[..16];
+    }
+
+    /// <summary>
+    /// 1265-B: <c>%LOCALAPPDATA%\ProjectToolkit\tray\&lt;key&gt;</c>, the folder the tray of one kit folder runs from.
+    /// Another kit folder's tray has its own, so neither overwrites or deletes the other's files.
+    /// </summary>
+    public static string Folder(string schedulerDir, string? localAppData = null)
     {
         var root = string.IsNullOrWhiteSpace(localAppData)
             ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
             : localAppData;
-        return Path.Combine(root, "ProjectToolkit", "tray");
+        return Path.Combine(root, "ProjectToolkit", "tray", KitKey(schedulerDir));
+    }
+
+    /// <summary>
+    /// 1265-B: <c>-RemoveTrayCopy</c>. Deletes this kit folder's copy folder and no other. Code 0 when it is gone or
+    /// was never there, 1 when a file in it is in use.
+    /// </summary>
+    public static (int Code, string Line) RemoveCopy(ISwapFileSystem fs, string folder)
+    {
+        try
+        {
+            if (!fs.DirectoryExists(folder))
+            {
+                return (0, $"The tray's copy folder {folder} is not there; nothing to remove.");
+            }
+
+            fs.Delete(folder);
+            return (0, $"Removed the tray's copy folder {folder}.");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return (1, $"Could not remove the tray's copy folder {folder}: a file in it is in use.");
+        }
     }
 
     /// <summary>The tray exe inside the copy's folder.</summary>
@@ -40,7 +80,7 @@ public static class TraySelfCopy
     /// Whether this tray is running somewhere other than the copy's folder and has not been relaunched
     /// already, so it should copy itself and run the copy.
     /// </summary>
-    public static bool NeedsCopy(string baseDir, string? target = null, string? fromVariable = null)
+    public static bool NeedsCopy(string baseDir, string schedulerDir, string? target = null, string? fromVariable = null)
     {
         var already = fromVariable ?? Environment.GetEnvironmentVariable(FromVariable);
         if (!string.IsNullOrEmpty(already))
@@ -48,7 +88,7 @@ public static class TraySelfCopy
             return false;
         }
 
-        return !SameDir(baseDir, target ?? Folder());
+        return !SameDir(baseDir, target ?? Folder(schedulerDir));
     }
 
     /// <summary>

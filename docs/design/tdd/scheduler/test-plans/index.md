@@ -100,7 +100,7 @@ the decision is "keep".
 | C7 no health check at start-up | `Health_NoStartupCheck_OthersPushesUnchecked` |
 | C8 retry count can go negative (closed, 940-A) | `Time_RetryCount_ClampedAtZero` |
 | C9 queue resume keeps retries | `Moves_ResumeQueueCard_RetriesNotCleared` |
-| C10 /slots-add, /slots-remove | `Page_SlotsAddRemove_ApiOnly` |
+| C10 /slots-add, /slots-remove | `Page_SlotsAddRemove_ApiOnly` (retired, 943-A) |
 | C12 category overlap with globs | `Lanes_Overlaps_GlobOwnsNotSeenAsFolder` |
 | C13 accounting.csv quoting | `Acct_Row_QuoteOrCommaInFields` |
 | C14 Card.Premium unused (resolved 2026-11-23: no premium, 1146-A) | `Dispatch_CardPremiumFlag_Unused` (retired) |
@@ -146,7 +146,7 @@ the claim; see claims-and-moves.md. C18 (solution already scaffolded) needs no t
 | CARD-7 | `Cards_Status_FirstLineAndContinuations` (cards.md), `Cards_MalformedCard_NoStatusLine_IsNotReady` (cards.md) |
 | CARD-8 | `Cards_Priority_Mapping_LastWins` (cards.md), `Cards_FieldLinesInSections_AreIgnored` (cards.md) |
 | CARD-9 | `Cards_FieldLinesInSections_AreIgnored` (cards.md), `Cards_TimeBox_ParsedLastWins` (cards.md) |
-| CARD-10 | `Cards_WorkerRequest_TextBeforeParenthesis` (cards.md), `Dispatch_CardPremiumFlag_Unused` (dispatch.md) |
+| CARD-10 | `Cards_WorkerRequest_TextBeforeParenthesis` (cards.md), `Dispatch_CardPremiumFlag_Unused` (dispatch.md; retired, 1146-A) |
 | CARD-11 | `Cards_FieldLinesInSections_AreIgnored` (cards.md), `Cards_DependsOn_AllIdsLastLineWins` (cards.md), `Cards_DependsOn_IdsOfAnyWidth` (cards.md) |
 | CARD-12 | `Cards_Questions_ParsedWithChoicesAndDestinations` (cards.md) |
 | CARD-13 | `Cards_Why_FromStatusOrResult` (cards.md) |
@@ -255,7 +255,7 @@ the claim; see claims-and-moves.md. C18 (solution already scaffolded) needs no t
 | MOVE-7 | `Moves_ResumeCard_EachSource` (claims-and-moves.md), `Moves_ResumeQueueCard_RetriesNotCleared` (claims-and-moves.md) |
 | MOVE-8 | `Moves_RetryAndResumeState_ClearRetries` (claims-and-moves.md), `Health_ResumeOverridesRed` (health.md) |
 | MOVE-9 | `Moves_OpenCard_RepositoryCopyElseAnswers` (claims-and-moves.md) |
-| MOVE-10 | `Moves_WorkerSettings_ValidatedAndCommitted` (claims-and-moves.md) |
+| MOVE-10 | `SaveWorkerTypes`' tests: `WorkerTypeActionTests`, `WorkerTypeRenameTests`, `WorkerTypesFromMainTests` (Host.Tests); `Moves_WorkerSettings_ValidatedAndCommitted` is retired (943-A) |
 | MOVE-11 | `Moves_DeveloperConflictingEdit_ErrorNothingCommitted` (claims-and-moves.md), `Moves_PageError_NoticeTenMinutesOrUntilSuccess` (claims-and-moves.md) |
 | PLAN-1 | `Planner_Enabled_OnlyWithFetchRepoAndOutbox_OffByDefault` (planner.md) |
 | PLAN-2 | `Planner_Step_AtMostOncePerMinute_FetchOnly` (planner.md), `Planner_Batches_CompleteOnlyInNameOrder` (planner.md) |
@@ -273,7 +273,7 @@ the claim; see claims-and-moves.md. C18 (solution already scaffolded) needs no t
 | PAGE-6 | `Page_QueueOrder_DepsAndCycle` (page.md), `Page_WaitingOnDevInActive_ShownTwice` (page.md) |
 | PAGE-7 | `Page_RemotePost_WithoutRemoteControl_403` (page.md) |
 | PAGE-8 | `Page_StateText` (page.md) |
-| PAGE-9 | `Page_Routes_GetAndPost` (page.md), `Page_ResumeInDraining` (page.md), `Page_SlotsAddRemove_ApiOnly` (page.md), `Page_LogFile_CardIdOfAnyWidth` (page.md) |
+| PAGE-9 | `Page_Routes_GetAndPost` (page.md), `Page_ResumeInDraining` (page.md), `Page_SlotsAddRemove_ApiOnly` (page.md; retired, 943-A), `Page_LogFile_CardIdOfAnyWidth` (page.md) |
 | PAGE-10 | `Page_RenderEvents_CopilotAndClaude` (page.md) |
 | PAGE-11 | `Page_Themes_OrderAndExtends` (page.md) |
 | PAGE-12 | `Page_Exit_DrainingWithNoWorkers` (page.md) |
@@ -336,7 +336,7 @@ Each test is implemented by exactly one card of the port (card 003-D, plan
 | 020-A Page contract: snapshot, actions and live events | `Page_SnapshotCadence`, `Page_ClickTick_Debounced` |
 | 030-A Card files: path and fields | `Cards_PathPattern_FieldsAndId`, `Cards_NonMatchingFiles_Ignored`, `Cards_DoneFolder_NotOpened`, `Cards_Title_FirstHashSpaceLine`, `Cards_Status_FirstLineAndContinuations`, `Cards_MalformedCard_NoStatusLine_IsNotReady`, `Cards_Priority_Mapping_LastWins`, `Cards_FieldLinesInSections_AreIgnored`, `Cards_TimeBox_ParsedLastWins`, `Cards_WorkerRequest_TextBeforeParenthesis`, `Cards_DependsOn_AllIdsLastLineWins`, `Cards_DependsOn_IdsOfAnyWidth` |
 | 040-B Git and reading cards from main | `Config_GitNeverPrompts`, `Cards_ReadFromRemoteMainOnly_NotWorkingTree`, `Cards_BlobCache_ReparsesOnlyChangedBlobs`, `Cards_LsTreeFails_KeepsPreviousList`, `Cards_DuplicateInQueue_RemovedFromMain`, `Cards_DuplicateOutsideQueue_LoggedOnceLeftAlone` |
-| 050-C Web server and routes | `Page_ServerThread_SnapshotsAndPostQueue`, `Page_RemotePost_WithoutRemoteControl_403`, `Page_LiveJson_RateAndShape`, `Page_Routes_GetAndPost`, `Page_SlotsAddRemove_ApiOnly`, `Page_LogFile_CardIdOfAnyWidth` |
+| 050-C Web server and routes | `Page_ServerThread_SnapshotsAndPostQueue`, `Page_RemotePost_WithoutRemoteControl_403`, `Page_LiveJson_RateAndShape`, `Page_Routes_GetAndPost`, `Page_SlotsAddRemove_ApiOnly` (retired), `Page_LogFile_CardIdOfAnyWidth` |
 | 060-A Card state: questions, why, journal, waits and requests | `Cards_Fetch_AtMostEvery15Seconds`, `Cards_Questions_ParsedWithChoicesAndDestinations`, `Cards_Why_FromStatusOrResult`, `Cards_LatestJournal_GreatestDateTimeWins`, `Cards_ShortText_StripsAndTruncates`, `Cards_WaitsOnDev_Patterns`, `Cards_WaitsOnPlanner_Patterns`, `Cards_DepsDone_DoneOrReviewOnly`, `Cards_DependencyCycle_BothWaitForever`, `Cards_Requests_ReadAndOpenFlag` |
 | 070-A Config model: defaults, overrides and agents | `Config_EmptyFile_AllDefaults`, `Config_JobsDirTrailingSlash_Trimmed`, `Config_SlotRootAlias_SameAsWorkspaceRoot`, `Config_CommandLineOverrides_OneRun`, `Config_SlotsZeroOrPortZero_DoNotOverride`, `Config_SlotsOnCommandLine_PinsCountOverWorkersJson`, `Config_DefaultAgentFormat_GuessedFromArgs`, `Config_NamedAgent_DefaultsAndFormatGuess`, `Config_AgentEndpoint_PresenceRecordedSeparatelyFromValue`, `Config_AgentOf_UnknownNameGivesDefault`, `Config_Expand_SubstitutesPlaceholders`, `Config_LaneNames_FromConfigUntilLanesJsonRead` |
 | 080-B Config loading and the repository | `Config_RepoArgument_ResolvesToGitTopLevel`, `Config_NoRepoNoConfig_UsesCurrentDirectoryTopLevel`, `Config_NoRepoAnywhere_FailsWithNameTheRepository`, `Config_NonGitRepoArgument_IsError`, `Config_DefaultConfigPath_IsRepoDocsJobsSchedulerJson`, `Config_MissingConfigFile_IsFatal`, `Config_WithoutConfigArg_RereadsFromRemoteMain`, `Config_RemoteConfigInvalid_FallsBackToCheckoutWithReason`, `Config_RemoteBranchJobsDirFromCheckoutCopy`, `Config_ExplicitConfigFile_UsedAsIsNoFetch`, `Config_CfgRepo_UsedOnlyWhenNoRepoOnCommandLine` |
@@ -359,7 +359,7 @@ Each test is implemented by exactly one card of the port (card 003-D, plan
 | 250-B Card moves in git | `Moves_AllCommits_ViaAnswersWorktree_RetryThreeTimes`, `Moves_DeveloperUncommittedEdit_Replayed3Way`, `Moves_DeveloperAppendOnlyEdit_AppendedWhen3WayFails`, `Moves_DeveloperConflictingEdit_ErrorNothingCommitted`, `Moves_OpenCard_RepositoryCopyElseAnswers` |
 | 260-B Planner outbox in git | `Planner_Step_AtMostOncePerMinute_FetchOnly`, `Planner_Commit_MessageTrailersThreeTries`, `Planner_BatchFolder_SentOrFailedWithClash` |
 | 270-B The program: start-up, single instance, listen, health runner, exit | `Config_SecondScheduler_SameProject_FailsAfterWait`, `Config_AbandonedMutex_CountsAsOwned`, `Config_StartupOrder_AdoptSeedListenLog`, `Config_ListenLan_FallsBackToLocalhostWithReason`, `Config_ListenLocalhostFails_IsFatal`, `Dispatch_DryRun_LogsAndExitsAfterFirstTick`, `Health_RunsInHealthWorktreeWithLog`, `Page_Exit_DrainingWithNoWorkers` |
-| 280-B Page actions wired to the host | `Config_Version_ShownOnPageAndLog`, `Lanes_AcceptFromPage_ReleasesLane`, `Workers_PageMessage_AppendedToFile`, `Time_PageStop_DisablesSlot_StopAllDrains`, `Time_PageKill_DisablesAndTicks`, `Moves_WorkerSettings_ValidatedAndCommitted` |
+| 280-B Page actions wired to the host | `Config_Version_ShownOnPageAndLog`, `Lanes_AcceptFromPage_ReleasesLane`, `Workers_PageMessage_AppendedToFile`, `Time_PageStop_DisablesSlot_StopAllDrains`, `Time_PageKill_DisablesAndTicks`, `Moves_WorkerSettings_ValidatedAndCommitted` (retired) |
 | 300-A Pool: weighted effort | `Pool_AnyWorkerTakesAnyProjectsCard`, `Pool_ThreadsBudget_CoresOverPoolSize`, `Pool_ProjectWeights_Parsed`, `Pool_OnlyProjectsWithRunnableCardTakePart`, `Pool_NoProjectHasRunnableCard_WorkerStaysIdle`, `Pool_FurthestBelowShare_GetsWorker`, `Pool_IdleProjectShare_GoesToOthers`, `Pool_ProjectWithNoMinutes_WinsOutright`, `Pool_WindowSlides`, `Pool_HighPriorityCard_VsWeights`, `Pool_OrphanResume_VsWeights`, `Pool_WithinProject_SelectionAsToday` |
 | 310-A Pool: per-project rules | `Pool_PlannerHealthGates_PerProject`, `Pool_RedMainInOneProject`, `Pool_QuotaPause_PerAgent`, `Pool_WorkerRequest_Kept`, `Pool_MaxRetriesAndLimits_Source` |
 | 320-A Scopes instead of categories | `Scope_CardNamesScope_Parsed`, `Scope_NoOverlap_RunsSideBySide`, `Scope_SameFile_RunsAfter`, `Scope_FolderContainsFile_Overlaps`, `Scope_GlobOverlap_Rules`, `Scope_AnyProject_Overlap`, `Scope_NoOwnScope_TakesAreaDefault`, `Scope_AreaBriefInPrompt`, `Scope_AllowedOverlap_AddOnlyFile`, `Scope_CheckedByScheduler_AtDispatch`, `Scope_HeldAreaWhenRedefined`, `Scope_EmptyScope_Rejected` |

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Tray;
 
 /// <summary>
@@ -50,7 +52,7 @@ public sealed class SchedulerUpdater(
 
         if (!usePublished)
         {
-            if (!fs.FileExists(layout.HostProject + ".csproj"))
+            if (!fs.FileExists(layout.HostProjectFile))
             {
                 return Fail($"update: there is no project to publish at {layout.HostProject}", oldVersion, "");
             }

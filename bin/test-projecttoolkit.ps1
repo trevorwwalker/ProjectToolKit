@@ -4,6 +4,10 @@
     and the pool join. Runs in a temp folder with a temp LOCALAPPDATA; touches nothing else.
     Exit code 0 when every check passes.
 #>
+
+# Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+# Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
+
 $ErrorActionPreference = 'Stop'
 $kit = Join-Path $PSScriptRoot 'projecttoolkit.ps1'
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("ptk-test-" + [guid]::NewGuid().ToString('N'))
@@ -34,6 +38,7 @@ try {
     $null = Run $local @('-Action', 'jobs', '-Repo', $repoA, '-Slots', '3')
     Check (Test-Path "$repoA\jobs\categories.json") 'categories.json written'
     Check (-not (Test-Path "$repoA\jobs\lanes.json")) 'no lanes.json written'
+    Check (-not (Test-Path "$repoA\docs\ai")) 'no docs/ai folder created (plans start in jobs/plans/)'
     Check (-not (Test-Path "$repoA\jobs\workers.json")) 'no workers.json written (-Slots accepted and ignored)'
     $cat = Get-Content -Raw "$repoA\jobs\categories.json" | ConvertFrom-Json
     Check ($null -ne $cat.categories.A) 'categories.json has a categories.A'
@@ -42,7 +47,7 @@ try {
     Check (Test-Path $pool) 'pool.json created'
     $p = Get-Content -Raw $pool | ConvertFrom-Json
     Check (@($p.projects | Where-Object name -eq 'Alpha').Count -eq 1 -and $p.projects[0].weight -eq 50 -and $p.projects[0].repo -eq (Resolve-Path $repoA).Path) 'Alpha is in the pool once, weight 50, repo as given'
-    Check ($null -ne $p.pool.types.Sonnet) 'created pool file has the pool defaults'
+    Check ($null -ne $p.pool.types.Claude) 'created pool file has the pool defaults'
 
     # 2. Twice: still once.
     $null = Run $local @('-Action', 'jobs', '-Repo', $repoA)
@@ -107,6 +112,27 @@ try {
     $out = Run $local @('-Action', 'jobs', '-Repo', $repoW)
     $p = Get-Content -Raw $pool | ConvertFrom-Json
     Check (@($p.projects | Where-Object name -eq 'Worker').Count -eq 1) 'a normal repo joins once (second run keeps one entry)'
+
+    # 9. The printed Next list: the plan line comes before the workers line, then carding; the help says no docs/ai.
+    $repoN = Join-Path $real 'NewOne'
+    $out = Run $local @('-Action', 'new-project', '-Repo', $repoN, '-NoPool')
+    $iPlan = $out.IndexOf('Have a planner write'); $iWork = $out.IndexOf('Set up the worker types'); $iCard = $out.IndexOf('Ask the planner to card')
+    Check ($iPlan -ge 0 -and $iWork -gt $iPlan -and $iCard -gt $iWork) 'the Next list has the plan line before the workers line, then the carding line'
+    $out = Run $local @('-Action', 'jobs', '-Repo', $repoA, '-Update', '-NoPool')
+    Check ($out -notmatch 'gitattributes') '-Update closing message does not claim .gitattributes'
+    $help = (Get-Help $kit -Full | Out-String)
+    Check ($help -notmatch 'docs/\{ai' -and $help -match 'docs/\{design,reference\}') 'the help names docs/{design,reference}/ and no docs/ai'
+    $gi = Get-Content -Raw "$repoN\.gitignore"
+    Check ($gi -match '(?m)^jobs/\.logs/\r?$' -and $gi -match '(?m)^jobs/\.planner-outbox/\r?$') 'the new project .gitignore ignores jobs/.logs/ and jobs/.planner-outbox/'
+    # out/: the platform folder's .gitkeep is committed, everything else under out/ is ignored.
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        $null = & git -C $repoN init -q 2>&1
+        New-Item -ItemType Directory -Force -Path "$repoN\out\windows\pkg" | Out-Null
+        Set-Content "$repoN\out\windows\pkg\x.bin" 'x'; Set-Content "$repoN\out\x.txt" 'x'
+        $null = & git -C $repoN add -A 2>&1
+        $staged = @(& git -C $repoN diff --cached --name-only)
+        Check (($staged -contains 'out/windows/.gitkeep') -and -not ($staged -like 'out/windows/pkg*') -and -not ($staged -contains 'out/x.txt')) 'a new project commits out/windows/.gitkeep and nothing else under out/'
+    }
 } finally {
     Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 }

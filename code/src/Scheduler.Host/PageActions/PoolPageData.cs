@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text;
 using Scheduler.Core;
 using Scheduler.Core.Contracts;
@@ -16,12 +18,12 @@ namespace Scheduler.Host.PageActions;
 /// <param name="logDir">The pool's log folder: the only place <c>/log</c> may read in a pool-wide request.</param>
 /// <param name="projects">The projects in the pool in the pool file's order, each with its own page data.</param>
 /// <param name="pool">Core's pool part (<c>PoolTick.Snapshot</c>), without the projects' pages.</param>
-public sealed class PoolPageData(IClock clock, string logDir, Func<IReadOnlyList<(string Name, IPageData Data)>> projects, Func<PoolPageSnapshot> pool) : IPoolPageData
+public sealed class PoolPageData(IClock clock, string logDir, Func<IReadOnlyList<(string Name, IPageData Data)>> projects, Func<PoolPageSnapshot> pool, Func<string, DateTimeOffset, PageLockCounts?>? lockCounts = null) : IPoolPageData
 {
-    private volatile PoolPageSnapshot _snapshot = Build(clock, projects, pool);
+    private volatile PoolPageSnapshot _snapshot = Build(clock, projects, pool, lockCounts);
 
     /// <summary>Rebuild the snapshot; called on the scheduler thread after a tick, once each project's own data has been refreshed.</summary>
-    public void Refresh() => _snapshot = Build(clock, projects, pool);
+    public void Refresh() => _snapshot = Build(clock, projects, pool, lockCounts);
 
     /// <inheritdoc />
     public PoolPageSnapshot PoolSnapshot() => _snapshot;
@@ -71,13 +73,15 @@ public sealed class PoolPageData(IClock clock, string logDir, Func<IReadOnlyList
     public IReadOnlyList<LiveWorker> RunningWorkers() =>
         [.. projects().SelectMany(p => p.Data.RunningWorkers().Select(w => w with { Project = p.Name }))];
 
-    private static PoolPageSnapshot Build(IClock clock, Func<IReadOnlyList<(string Name, IPageData Data)>> projects, Func<PoolPageSnapshot> pool)
+    private static PoolPageSnapshot Build(IClock clock, Func<IReadOnlyList<(string Name, IPageData Data)>> projects, Func<PoolPageSnapshot> pool, Func<string, DateTimeOffset, PageLockCounts?>? lockCounts)
     {
         var part = pool();
         var pages = projects().ToDictionary(p => p.Name, p => p.Data.Snapshot(), Text.Comparer);
         return part with
         {
             Built = clock.Now,
+            // DL-26: each project's lock events of today, null where its locks are off.
+            Projects = lockCounts is null ? part.Projects : [.. part.Projects.Select(v => v with { LockCounts = lockCounts(v.Name, clock.Now) })],
             Pages = [.. part.Projects.Where(v => pages.ContainsKey(v.Name)).Select(v => pages[v.Name])],
         };
     }

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Diagnostics;
 using Scheduler.Core.Contracts;
 using Scheduler.Host.Processes;
@@ -103,7 +105,8 @@ public class RunnerWakeTests
         exits.Wake(); // as the tray's shutdown event does
 
         Assert.True(thread.Join(TimeSpan.FromSeconds(5)));
-        Assert.True(clock.Elapsed < TimeSpan.FromMilliseconds(500), $"took {clock.Elapsed.TotalMilliseconds} ms");
+        // 3 s, not 500 ms: a busy PC took 588 ms (1275-B); a broken wake takes up to the 15 s poll.
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(3), $"took {clock.Elapsed.TotalMilliseconds} ms");
     }
 
     [Fact]

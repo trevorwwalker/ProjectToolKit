@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Tray.Tests.Fakes;
 
 namespace Scheduler.Tray.Tests;
@@ -71,22 +73,86 @@ public class TraySelfCopyTests
     // relaunched by its own copy, it must not start another one (967-B).
     [Theory]
     [InlineData(Published, null, "", true)]
-    [InlineData(Copy, null, "", false)]
+    [InlineData(Copy, Copy, "", false)]
     [InlineData(Published, null, "1", false)]
     [InlineData(Published + @"\", Copy, "", true)]
     public void Only_a_tray_outside_the_copy_needs_to_move_itself(string from, string? target, string already, bool expected) =>
-        Assert.Equal(expected, TraySelfCopy.NeedsCopy(from, target ?? Copy, already));
+        Assert.Equal(expected, TraySelfCopy.NeedsCopy(from, Published, target ?? Copy, already));
 
-    // Where the tray runs from, and what it is called there.
+    private const string LocalAppData = @"C:\Users\dev\AppData\Local";
+
+    // 1265-B: the copy folder is per kit folder, under the tray folder.
     [Fact]
-    public void The_copy_lives_under_the_users_local_app_data()
+    public void The_copy_lives_under_the_users_local_app_data_in_a_folder_of_its_kit()
     {
-        Assert.Equal(
-            Path.Combine(@"C:\Users\dev\AppData\Local", "ProjectToolkit", "tray"),
-            TraySelfCopy.Folder(@"C:\Users\dev\AppData\Local"));
-        Assert.Equal(
-            Path.Combine(@"C:\Users\dev\AppData\Local", "ProjectToolkit", "tray", "scheduler-tray.exe"),
-            TraySelfCopy.Exe(TraySelfCopy.Folder(@"C:\Users\dev\AppData\Local")));
+        var folder = TraySelfCopy.Folder(Published, LocalAppData);
+
+        Assert.Equal(Path.Combine(LocalAppData, "ProjectToolkit", "tray", TraySelfCopy.KitKey(Published)), folder);
+        Assert.Equal(Path.Combine(folder, "scheduler-tray.exe"), TraySelfCopy.Exe(folder));
+    }
+
+    [Fact]
+    public void Two_kit_folders_have_two_copy_folders()
+    {
+        Assert.NotEqual(
+            TraySelfCopy.Folder(Published, LocalAppData),
+            TraySelfCopy.Folder(@"C:\other\scheduler", LocalAppData));
+    }
+
+    [Theory]
+    [InlineData(@"C:\KIT\OUT\WINDOWS\SCHEDULER")]
+    [InlineData(Published + @"\")]
+    [InlineData(Published + "/")]
+    public void The_same_folder_spelled_another_way_has_the_same_copy_folder(string spelling) =>
+        Assert.Equal(TraySelfCopy.Folder(Published, LocalAppData), TraySelfCopy.Folder(spelling, LocalAppData));
+
+    // The key is the end of the tray's exit-signal name, so both name the kit folder the same way.
+    [Fact]
+    public void The_kit_key_is_the_end_of_the_exit_signal_name()
+    {
+        var key = TraySelfCopy.KitKey(Published);
+
+        Assert.Equal(16, key.Length);
+        Assert.EndsWith(key, TrayExitSignal.NameFor(Published), StringComparison.Ordinal);
+    }
+
+    // -RemoveTrayCopy deletes its own kit's folder and leaves another kit's.
+    [Fact]
+    public void Removing_the_copy_deletes_only_its_own_kits_folder()
+    {
+        var mine = TraySelfCopy.Folder(Published, LocalAppData);
+        var theirs = TraySelfCopy.Folder(@"C:\other\scheduler", LocalAppData);
+        var fs = new FakeSwapFileSystem()
+            .WithFile(Path.Combine(mine, "scheduler-tray.exe"), "mine")
+            .WithFile(Path.Combine(theirs, "scheduler-tray.exe"), "theirs");
+
+        var (code, line) = TraySelfCopy.RemoveCopy(fs, mine);
+
+        Assert.Equal(0, code);
+        Assert.Contains(mine, line, StringComparison.Ordinal);
+        Assert.False(fs.DirectoryExists(mine));
+        Assert.Equal("theirs", fs.Content(Path.Combine(theirs, "scheduler-tray.exe")));
+    }
+
+    [Fact]
+    public void Removing_a_copy_that_was_never_there_is_not_an_error()
+    {
+        var (code, _) = TraySelfCopy.RemoveCopy(new FakeSwapFileSystem(), TraySelfCopy.Folder(Published, LocalAppData));
+
+        Assert.Equal(0, code);
+    }
+
+    [Fact]
+    public void Removing_a_copy_with_a_file_in_use_says_so_and_exits_1()
+    {
+        var mine = TraySelfCopy.Folder(Published, LocalAppData);
+        var exe = Path.Combine(mine, "scheduler-tray.exe");
+        var fs = new FakeSwapFileSystem().WithFile(exe, "mine").Lock(mine);
+
+        var (code, line) = TraySelfCopy.RemoveCopy(fs, mine);
+
+        Assert.Equal(1, code);
+        Assert.Contains(mine, line, StringComparison.Ordinal);
     }
 
     private static FakeSwapFileSystem Build() =>

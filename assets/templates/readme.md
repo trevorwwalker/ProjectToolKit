@@ -77,7 +77,6 @@ the one place this file overrides it, because the module set is decided here.
           src/           the application: <the modules, listed>
           tools/         source for custom tools (output goes to bin/)
         docs/
-          ai/            new plans, not yet carded
           design/        gdd/ (intent) and tdd/ (architecture)
           reference/     technical reference material
         extern/bin/      prebuilt third-party binaries, SDKs, middleware

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Categories;
 
@@ -121,7 +123,6 @@ public class CategoriesTests
         var files = new FakeFiles();
         var registry = new CategoryRegistry(log, files, Rel);
         registry.Read(GoodCategories, []);
-        Assert.Empty(registry.Held);
 
         var cards = new List<Card>();
         for (var i = 1; i <= 8; i++)
@@ -137,7 +138,6 @@ public class CategoriesTests
         registry.Read(changed, cards);
         registry.Read(changed, cards);
 
-        Assert.Empty(registry.Held);
         Assert.Single(log.Lines, l => l.Contains("category A redefined"));
         Assert.DoesNotContain(log.Lines, l => l.Contains("held"));
         Assert.Contains("src/core2/", files.Read(StateFile.CategoriesAccepted));
@@ -155,7 +155,6 @@ public class CategoriesTests
         var cards = new[] { CardOf("010-A-card", CardFolder.Queue), CardOf("020-B-card", CardFolder.Active) };
         registry.Read(compact, cards);
 
-        Assert.Empty(registry.Held);
         Assert.Empty(log.Lines);
     }
 

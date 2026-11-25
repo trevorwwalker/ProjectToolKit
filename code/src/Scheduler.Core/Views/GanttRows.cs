@@ -1,23 +1,17 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Core.Views;
-
-/// <summary>How the Gantt groups a project's cards.</summary>
-public enum GanttGroupBy
-{
-    Category,
-    Plan,
-}
 
 public enum GanttRowKind
 {
     Project,
-    Category,
     Plan,
     Step,
     Group,
     Card,
 }
 
-/// <summary>One row of the Gantt: a project, a group (category, plan, step, Bugs, Requests, Other cards) or a card.</summary>
+/// <summary>One row of the Gantt: a project, a group (plan, step, Bugs, Requests, Other cards) or a card.</summary>
 public sealed record GanttRow
 {
     public required GanttRowKind Kind { get; init; }
@@ -45,7 +39,7 @@ public sealed record GanttRow
     public int Total { get; init; }
 }
 
-/// <summary>The Gantt's rows for one project (pure): grouped by category or by plan, cut to a time window.</summary>
+/// <summary>The Gantt's rows for one project (pure): grouped by plan, cut to a time window.</summary>
 public static class GanttRows
 {
     /// <summary>
@@ -53,7 +47,7 @@ public static class GanttRows
     /// [from, to], is in active/, or is in <paramref name="listed"/> (the cards with an estimate, VW-18: the
     /// unfinished ones); a group with no listed card is dropped.
     /// </summary>
-    public static GanttRow Of(ViewsSnapshot snapshot, GanttGroupBy groupBy, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now, IReadOnlySet<string>? listed = null)
+    public static GanttRow Of(ViewsSnapshot snapshot, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now, IReadOnlySet<string>? listed = null)
     {
         var rows = new Dictionary<string, GanttRow>(StringComparer.Ordinal);
         foreach (var card in snapshot.Cards)
@@ -76,24 +70,15 @@ public static class GanttRows
             };
         }
 
-        var children = groupBy == GanttGroupBy.Category ? ByCategory(snapshot, rows) : ByPlan(snapshot, rows);
+        var children = ByPlan(snapshot, rows);
         return Group(GanttRowKind.Project, "project:" + snapshot.Project, snapshot.Project, children);
     }
 
-    private static List<GanttRow> ByCategory(ViewsSnapshot snapshot, Dictionary<string, GanttRow> rows) =>
-        snapshot.Cards
-            .Where(c => rows.ContainsKey(c.Id))
-            .GroupBy(c => c.Category, StringComparer.OrdinalIgnoreCase)
-            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(g => Group(GanttRowKind.Category, "category:" + g.Key, g.Key, g.Select(c => rows[c.Id]).ToList()))
-            .ToList();
-
     private static List<GanttRow> ByPlan(ViewsSnapshot snapshot, Dictionary<string, GanttRow> rows)
     {
-        var onMain = new HashSet<string>(snapshot.Plans.Select(p => p.Path), StringComparer.Ordinal);
         var titles = snapshot.Plans.GroupBy(p => p.Path, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Title, StringComparer.Ordinal);
         var result = new List<GanttRow>();
-        foreach (var plan in PlanTree.Of(snapshot.Cards, onMain, snapshot.PlanTexts))
+        foreach (var plan in PlanTree.Of(snapshot).Top)
         {
             if (plan.Plan.Kind == PlanKind.NoPlan)
             {
@@ -104,26 +89,46 @@ public static class GanttRows
                 continue;
             }
 
-            var key = "plan:" + plan.Plan.Path;
-            var kids = plan.Steps.Select(s => StepRow(key, s, rows)).OfType<GanttRow>().ToList();
-            if (plan.Other is { } other)
+            if (PlanRow(plan, rows, titles) is { } row)
             {
-                AddIfAny(kids, Group(GanttRowKind.Group, key + "/other", "Other cards", Listed(other.Cards, rows)));
+                result.Add(row);
             }
-
-            var label = titles.GetValueOrDefault(plan.Plan.Path) is { Length: > 0 } t ? t : plan.Plan.Path;
-            AddIfAny(result, Group(GanttRowKind.Plan, key, label, kids));
         }
 
         return result;
     }
 
-    private static GanttRow? StepRow(string parentKey, PlanStepNode node, Dictionary<string, GanttRow> rows)
+    // One plan's row (VW-32): its steps (each with its cards, child plans, sub-steps) and its Other cards; null when nothing under it is listed.
+    private static GanttRow? PlanRow(PlanNode plan, Dictionary<string, GanttRow> rows, IReadOnlyDictionary<string, string> titles)
+    {
+        var key = "plan:" + plan.Plan.Path;
+        var kids = plan.Steps.Select(s => StepRow(key, s, rows, titles)).OfType<GanttRow>().ToList();
+        if (plan.Other is { } other)
+        {
+            AddIfAny(kids, Group(GanttRowKind.Group, key + "/other", "Other cards", Listed(other.Cards, rows)));
+        }
+
+        if (kids.Count == 0)
+        {
+            return null;
+        }
+
+        var label = titles.GetValueOrDefault(plan.Plan.Path) is { Length: > 0 } t ? t : plan.Plan.Path;
+        if (plan.FlagText.Length > 0)
+        {
+            label += " (" + plan.FlagText + ")";
+        }
+
+        return Group(GanttRowKind.Plan, key, label, kids);
+    }
+
+    private static GanttRow? StepRow(string parentKey, PlanStepNode node, Dictionary<string, GanttRow> rows, IReadOnlyDictionary<string, string> titles)
     {
         var step = node.Step!;
         var key = parentKey + "/" + step.Label;
         var kids = Listed(node.Cards, rows);
-        kids.AddRange(node.SubSteps.Select(s => StepRow(key, s, rows)).OfType<GanttRow>());
+        kids.AddRange(node.Plans.Select(p => PlanRow(p, rows, titles)).OfType<GanttRow>());
+        kids.AddRange(node.SubSteps.Select(s => StepRow(key, s, rows, titles)).OfType<GanttRow>());
         return kids.Count == 0 ? null : Group(GanttRowKind.Step, key, step.Label + " " + step.Title, kids);
     }
 

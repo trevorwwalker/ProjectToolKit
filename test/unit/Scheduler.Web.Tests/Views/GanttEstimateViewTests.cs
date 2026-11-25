@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Views;
 using Scheduler.Core.WebContract;
@@ -91,7 +93,7 @@ public sealed class GanttEstimateViewTests
     // The HTML of one card row of the Gantt.
     private static string Row(string html, string id)
     {
-        var at = html.IndexOf("data-gd='AmigaX|category|card:" + id + "'", StringComparison.Ordinal);
+        var at = html.IndexOf("data-gd='AmigaX|plan|card:" + id + "'", StringComparison.Ordinal);
         Assert.True(at >= 0, "a row for " + id);
         var end = html.IndexOf("class='grow", at, StringComparison.Ordinal);
         return end < 0 ? html[at..] : html[at..end];
@@ -159,12 +161,11 @@ public sealed class GanttEstimateViewTests
     [Fact]
     public void Details_GiveACardsEstimate_AndWhatItWaitsFor_AndAGroupsEstimatedFinish()
     {
-        var card = Details("AmigaX|category|card:3-A");
+        var card = Details("AmigaX|plan|card:3-A");
         Assert.Contains("<tr><th>Estimate</th><td>estimated start Sun 13:00 end Sun 17:00 <span class='mute'>(time box)</span></td></tr>", card, StringComparison.Ordinal);
         Assert.Contains("<tr><th>Waits for</th><td><a href='/card?project=AmigaX&id=2-A'>2-A</a></td></tr>", card, StringComparison.Ordinal);
 
-        Assert.Contains("<tr><th>Estimate</th><td><span class='mute'>waiting on 4-B</span></td></tr>", Details("AmigaX|category|card:5-B"), StringComparison.Ordinal);
-        Assert.Contains("<div class='gdest'>estimated finish Sun 17:00</div>", Details("AmigaX|category|category:A"), StringComparison.Ordinal);
-        Assert.DoesNotContain("gdest", Details("AmigaX|category|category:C"), StringComparison.Ordinal);
+        Assert.Contains("<tr><th>Estimate</th><td><span class='mute'>waiting on 4-B</span></td></tr>", Details("AmigaX|plan|card:5-B"), StringComparison.Ordinal);
+        Assert.Contains("<div class='gdest'>estimated finish Sun 17:00</div>", Details("AmigaX|plan|requests"), StringComparison.Ordinal);
     }
 }

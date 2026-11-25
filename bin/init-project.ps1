@@ -13,6 +13,10 @@
     a project's jobs/README.md, or a habit - still works. It only forwards. New work should call
     projecttoolkit.ps1 directly.
 #>
+
+# Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+# Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
+
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Repo,

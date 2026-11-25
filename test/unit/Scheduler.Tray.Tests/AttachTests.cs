@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text;
 using Scheduler.Tray;
 using Xunit;
@@ -25,7 +27,9 @@ public sealed class AttachTests : IDisposable
         // What a running scheduler holds for its repository (Scheduler.Host's RepoShutdown, the same name).
         using var running = new EventWaitHandle(false, EventResetMode.ManualReset, RepoShutdown.Name(_dir));
         var log = new LogBuffer();
-        using var attached = AttachedScheduler.TryAttach(_dir + "\\", Path.Combine(_dir, "scheduler-next.exe"), log);
+        // 1264-B: a scheduler-next.exe of the tray's own folder is running (its path only; no such process exists).
+        var exe = Path.Combine(_dir, "scheduler-next.exe");
+        using var attached = AttachedScheduler.TryAttach(_dir + "\\", exe, log, _ => [exe]);
 
         Assert.NotNull(attached);
         Assert.Null(attached!.Pid); // no such process: not known, and nothing was started

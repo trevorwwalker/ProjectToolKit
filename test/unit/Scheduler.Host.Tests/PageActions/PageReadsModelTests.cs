@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Categories;
 using Scheduler.Core.Config;
 using Scheduler.Core.Contracts;
@@ -73,11 +75,6 @@ public sealed class PageReadsModelTests
         Assert.Equal(Seed()[Reviewed], data.Card("953-B-look"));
         Assert.Equal(Seed()[RequestPath], data.Request(request.Name));
         Assert.Null(data.Card("999-A-none"));
-
-        // A refused click that names the categories file finds it on main through the model too.
-        var refused = harness.Actions.AcceptCategory("Z");
-        Assert.False(refused.Ok);
-        Assert.Contains($"no category Z in {CategoriesRel}", refused.Error, StringComparison.Ordinal);
 
         Assert.Empty(git.Calls);       // no show, ls-tree, cat-file or rev-parse
         Assert.Equal(0, feed.Fetches);  // and a click never fetches (MM-9)

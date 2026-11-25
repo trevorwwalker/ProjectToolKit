@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text.Json.Nodes;
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Config;
@@ -206,9 +208,6 @@ public sealed class PoolPageActions(PoolPageActionParts parts) : IPoolPageAction
 
     /// <inheritdoc />
     public ActionResult OpenWorkers() => Failed();
-
-    /// <inheritdoc />
-    public ActionResult AcceptCategory(string category) => Failed();
 
     /// <inheritdoc />
     public ActionResult Open(string card) => Failed();

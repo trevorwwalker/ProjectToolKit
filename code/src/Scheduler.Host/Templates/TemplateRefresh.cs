@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Core.MainModel;
 using Scheduler.Host.Git;
@@ -42,6 +44,7 @@ public sealed class TemplateRefresh
     private readonly Lock _lock = new();
     private string? _checked;
     private bool _toldNoSha;
+    private readonly bool _noGit;
     // 1118-B: the last refresh that failed, so a failure is logged once and not tried again every tick.
     private string? _failedError;
     private DateTimeOffset _failedAt;
@@ -69,6 +72,8 @@ public sealed class TemplateRefresh
         _remote = remote;
         _branch = branch;
         _objects = new Lazy<MainObjects?>(() => InProcessHistory.Open(toolkitDir));
+        // INS-17: a kit folder with no .git (an installed copy) is read from disk and never given to git.
+        _noGit = !Directory.Exists(Path.Combine(toolkitDir, ".git")) && !File.Exists(Path.Combine(toolkitDir, ".git"));
         _project = project;
         _committer = committer;
         _stateFile = stateFile;
@@ -111,13 +116,19 @@ public sealed class TemplateRefresh
             return false;
         }
 
-        FetchToolkit(ask);
+        if (!_noGit)
+        {
+            FetchToolkit(ask);
+        }
+
         var sha = ToolkitHead();
         if (sha is null)
         {
             if (!_toldNoSha)
             {
-                _log?.Write($"templates: no {_toolkitRef} in the toolkit at {_toolkitDir}; the generic files are not kept in step");
+                _log?.Write(_noGit
+                    ? $"templates: no readable {TemplateHistory.RelativePath} in the toolkit at {_toolkitDir}; the generic files are not kept in step"
+                    : $"templates: no {_toolkitRef} in the toolkit at {_toolkitDir}; the generic files are not kept in step");
                 _toldNoSha = true;
             }
 
@@ -199,7 +210,7 @@ public sealed class TemplateRefresh
                     s.Taken = current;
                     s.Kept = "";
                 }
-                else if (hash is null || hash == s.Taken || PastVersions(f.Template).Contains(hash))
+                else if (hash is null || hash == s.Taken || IsPastVersion(f.Template, copy!))
                 {
                     writes[f.Target] = TemplateState.Normalize(template);
                 }
@@ -314,6 +325,11 @@ public sealed class TemplateRefresh
     /// </summary>
     public string? ToolkitHead()
     {
+        if (_noGit)
+        {
+            return TemplateHistory.Load(_toolkitDir)?.Version; // INS-17: the manifest's version stands for the kit's main
+        }
+
         if (_objects.Value is { } objects)
         {
             try
@@ -332,6 +348,19 @@ public sealed class TemplateRefresh
     /// <summary>A file at the toolkit's main read in process (decoded as git's output is), else <c>git show</c>.</summary>
     public string? ToolkitFile(string path)
     {
+        if (_noGit)
+        {
+            try
+            {
+                var file = Path.Combine(_toolkitDir, path.Replace('/', Path.DirectorySeparatorChar));
+                return File.Exists(file) ? Text(File.ReadAllBytes(file)) : null;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
+
         if (_objects.Value is { } objects)
         {
             try
@@ -352,6 +381,12 @@ public sealed class TemplateRefresh
 
         return _toolkit.ReadFile(path);
     }
+
+    // INS-17: in a kit with no .git the past versions are the manifest's blob ids, matched against the copy's own blob id.
+    private bool IsPastVersion(string template, string copy) =>
+        _noGit
+            ? TemplateHistory.Load(_toolkitDir)?.IsPastVersion(template, copy) == true
+            : PastVersions(template).Contains(TemplateState.Hash(copy));
 
     /// <summary>The hashes of every version of the template on the toolkit's main, from its history.</summary>
     private HashSet<string> PastVersions(string template) => PastVersionsInProcess(template) ?? PastVersionsByGit(template);

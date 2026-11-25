@@ -1,4 +1,5 @@
-using Scheduler.Host.Observe;
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Host.Program;
 using Scheduler.Host.Tests.Git;
 using Scheduler.Host.Tests.Slots;
@@ -27,7 +28,7 @@ public sealed class RepoShutdownTests
         using (var left = new EventWaitHandle(true, EventResetMode.ManualReset, name))
         {
             // A request left set for the scheduler before is cleared by the next one.
-            var composition = Compose(temp.Path, observe: false);
+            var composition = Compose(temp.Path);
             Assert.True(EventWaitHandle.TryOpenExisting(name, out var found));
             using (found)
             {
@@ -40,15 +41,7 @@ public sealed class RepoShutdownTests
         Assert.False(EventWaitHandle.TryOpenExisting(name, out _));
     }
 
-    [Fact]
-    public void AnObservingRun_IsNotTheRepositorysScheduler()
-    {
-        using var temp = new TempDir();
-        using var composition = Compose(temp.Path, observe: true);
-        Assert.False(EventWaitHandle.TryOpenExisting(RepoShutdown.Name(temp.Path), out _));
-    }
-
-    private static HostComposition Compose(string repo, bool observe)
+    private static HostComposition Compose(string repo)
     {
         var config = new SchedulerConfigBuilder
         {
@@ -59,7 +52,6 @@ public sealed class RepoShutdownTests
             WorkerCli = Path.Combine(repo, "no-agent.cmd"),
             Port = TickRig.FreePort(),
         }.Build();
-        var (observed, settings) = observe ? ObserveSettings.Apply(config, portGiven: true) : (config, (ObserveSettings?)null);
-        return HostComposition.Create(observed, "{}", new SkewClock(), new ListLog(), _ => { }, TimeSpan.FromSeconds(5), settings);
+        return HostComposition.Create(config, "{}", new SkewClock(), new ListLog(), _ => { }, TimeSpan.FromSeconds(5));
     }
 }

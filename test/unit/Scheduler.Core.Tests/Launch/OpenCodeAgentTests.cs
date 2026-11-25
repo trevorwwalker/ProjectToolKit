@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text.Json.Nodes;
 using Scheduler.Core.Categories;
 using Scheduler.Core.Config;
@@ -137,6 +139,24 @@ public class OpenCodeAgentTests
             var made = JsonNode.Parse(OpenCodePermissions.WithoutWeb(none))!;
             Assert.Equal("deny", (string?)made["permission"]!["webfetch"]);
         }
+    }
+
+    // AG-11: the recorded web-off run: the config's `bash` deny stopped `curl` in the `shell` tool.
+    [Fact]
+    public void OpenCode_WebOffRun_CurlDeniedUnderShellTool()
+    {
+        var events = Events(Fixture("webdeny.jsonl"));
+
+        var tools = events.Where(e => e.Mark == LiveMark.ToolCall).ToList();
+        Assert.Equal(2, tools.Count);
+        Assert.Equal("shell: curl -s http://127.0.0.1:9/", tools[0].Text);
+        Assert.Equal("shell: git status", tools[1].Text);
+        var denied = Assert.Single(events, e => e.Mark == LiveMark.FailedTool);
+        Assert.Contains("Permission denied", denied.Text);
+
+        // The config that run used denies the command under the key that works.
+        var made = JsonNode.Parse(OpenCodePermissions.WithoutWeb(null))!;
+        Assert.Equal("deny", (string?)made["permission"]!["bash"]!["curl *"]);
     }
 
     // AG-3, AG-4, AG-5, AG-6, AG-7: the recorded good run.

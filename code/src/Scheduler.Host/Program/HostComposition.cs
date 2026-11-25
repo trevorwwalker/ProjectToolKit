@@ -1,8 +1,9 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Tick;
 using Scheduler.Host.Git;
 using Scheduler.Host.Moves;
-using Scheduler.Host.Observe;
 using Scheduler.Host.PageActions;
 using Scheduler.Host.Processes;
 using Scheduler.Host.Slots;
@@ -29,20 +30,17 @@ public sealed class HostComposition : IDisposable
     private readonly EventWaitHandle? _repoShutdown;
     private readonly RegisteredWaitHandle? _repoShutdownWake;
 
-    private HostComposition(SchedulerConfig config, string configText, IClock clock, ISchedulerLog log, Action<string> openBrowser, bool noBrowser, TimeSpan? mutexWait, ObserveSettings? observe, string? exeDir, string? shutdownEvent)
+    private HostComposition(SchedulerConfig config, string configText, IClock clock, ISchedulerLog log, Action<string> openBrowser, bool noBrowser, TimeSpan? mutexWait, string? exeDir, string? shutdownEvent)
     {
         Config = config;
         // 670-B: the tray's way to ask this scheduler to end by itself, which - unlike a console Ctrl+C -
         // reaches no other process, so the workers carry on and the next scheduler adopts them.
         _shutdown = string.IsNullOrWhiteSpace(shutdownEvent) ? null : new EventWaitHandle(false, EventResetMode.ManualReset, shutdownEvent.Trim());
         // 975-B: and the repository's own, which a tray that did not start this scheduler finds and sets
-        // (it attaches instead of starting a second). An observing run is not the repository's scheduler.
+        // (it attaches instead of starting a second).
         // It starts clear: a request left set was for the scheduler before this one.
-        if (observe is null)
-        {
-            _repoShutdown = new EventWaitHandle(false, EventResetMode.ManualReset, RepoShutdown.Name(config.Repo));
-            _repoShutdown.Reset();
-        }
+        _repoShutdown = new EventWaitHandle(false, EventResetMode.ManualReset, RepoShutdown.Name(config.Repo));
+        _repoShutdown.Reset();
 
         var shared = new SharedParts
         {
@@ -51,12 +49,11 @@ public sealed class HostComposition : IDisposable
             Processes = new WorkerProcesses(new JobObjects()),
             Load = new HostLoad(),
         };
-        _parts = new ProjectParts(config, configText, clock, log, shared, () => Runner?.RequestTick(), observe, exeDir);
+        _parts = new ProjectParts(config, configText, clock, log, shared, new ClickTickGate(clock, () => Runner?.RequestTick()).Ask, exeDir);  // PAGE-4 (1194-B)
         Host = _parts.Host;
         Tick = _parts.Tick;
         Data = _parts.Data;
         PageLauncher = _parts.PageLauncher;
-        Observer = _parts.Observer;
         var actions = _parts.Actions;
 
         // PAGE-11 (420-B): the themes come from the files beside the exe, not the built-in ones.
@@ -80,7 +77,7 @@ public sealed class HostComposition : IDisposable
                     BindAddress = bind,
                     RemoteControl = config.RemoteControl,
                     Data = Data,
-                    Actions = observe is null ? actions : new ObservePageActions(actions),
+                    Actions = actions,
                     Renderer = renderer,
                     Feed = feed,
                 }),
@@ -92,15 +89,8 @@ public sealed class HostComposition : IDisposable
                 : () => (_shutdown?.WaitOne(0) ?? false) || (_repoShutdown?.WaitOne(0) ?? false),
             Tick = wake =>
             {
-                if (Observer is { } observer)
-                {
-                    observer.Run();
-                }
-                else
-                {
-                    Host.Woke(wake); // 1002-B, request 011: the wake decides whether this read pays a fetch
-                    Tick.Run(wake); // 982-B: a light wake skips the card read when main has not moved
-                }
+                Host.Woke(wake); // 1002-B, request 011: the wake decides whether this read pays a fetch
+                Tick.Run(wake); // 982-B: a light wake skips the card read when main has not moved
 
                 // 1063-B: the page's data is a step of its own, not part of the tick's last (WriteStatus).
                 Runner?.StepStarting("PageRefresh");
@@ -158,16 +148,12 @@ public sealed class HostComposition : IDisposable
     public HostPageData Data { get; }
 
     /// <summary>
-    /// The launcher the page's Open buttons use (MOVE-9); null when this composition opens no file,
-    /// which is the observe run, whose page refuses Open (PAGE-7 keeps opening local).
+    /// The launcher the page's Open buttons use (MOVE-9); PAGE-7 keeps opening local.
     /// </summary>
     public IFileLauncher? PageLauncher { get; }
 
     /// <summary>The program's loop.</summary>
     public SchedulerRunner Runner { get; }
-
-    /// <summary>The observe run's tick (roadmap item 1, card 390-B); null when this is not an observe run.</summary>
-    public ObserveTicker? Observer { get; }
 
     /// <summary>
     /// Compose the program for <paramref name="config"/>; <paramref name="configText"/> is its JSON,
@@ -183,10 +169,9 @@ public sealed class HostComposition : IDisposable
         ISchedulerLog log,
         Action<string> openBrowser,
         TimeSpan? mutexWait = null,
-        ObserveSettings? observe = null,
         string? exeDir = null,
         bool noBrowser = false,
-        string? shutdownEvent = null) => new(config, configText, clock, log, openBrowser, noBrowser, mutexWait, observe, exeDir, shutdownEvent);
+        string? shutdownEvent = null) => new(config, configText, clock, log, openBrowser, noBrowser, mutexWait, exeDir, shutdownEvent);
 
     /// <inheritdoc />
     public void Dispose()

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Core.WebContract;
 using Scheduler.Web.Server;
@@ -179,16 +181,6 @@ public sealed class PoolRoutesTests : IDisposable
         Assert.Equal(400, refused.Status);
         Assert.NotEqual(400, set.Status);
         Assert.Equal(["workspaces:AmigaX=3"], _actions.Log);
-    }
-
-    // MP-P8: /accept-lane is dead in a pool (AREA-2) and is not carried over.
-    [Fact]
-    public void MP_P8_AcceptLane_NotCarriedOver()
-    {
-        var response = _router.Handle(Request("POST", "/accept-lane", "project=AmigaX&lane=A"));
-
-        Assert.Equal(404, response.Status);
-        Assert.All(_actions.Projects.Values, a => Assert.Empty(a.Calls));
     }
 
     // MP-C9: one project, no pool part, ignores project= and answers as today.

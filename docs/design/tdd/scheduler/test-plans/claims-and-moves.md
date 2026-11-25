@@ -101,16 +101,14 @@ side of a claim is covered by `Dispatch_Orphan_*` and `Cards_ReadFromRemoteMainO
 - Expected: the launcher gets the repository path, else the answers path. (Bringing the editor to the front is not tested: see index.md, untestable.)
 
 ### Moves_WorkerSettings_ValidatedAndCommitted
-- Checks: MOVE-10 · Project: Host, Web
-- Setup: workers.json on main with CRLF line endings; categories A-D.
-- Cases: endpoint `ftp://x` -> rejected; categories `AZ` -> `A`; model change -> workers.json rewritten keeping CRLF, commit "scheduler: workers - <what>"; same values -> no commit.
+- **Retired** (943-A): the per-worker routes this test drove (`/worker-settings` and the others) are gone, and the test with them. MOVE-10 is covered by the tests of `SaveWorkerTypes` (`WorkerTypeActionTests`, `WorkerTypeRenameTests`, `WorkerTypesFromMainTests` in Host.Tests, and `WorkerTypeContractTests` in Core.Tests).
 
 ### Moves_PageError_NoticeTenMinutesOrUntilSuccess
 - Checks: MOVE-11 · Project: Web
 - Setup: fake clock; failing action at t0.
 - Expected: notice shown at t0+9:59, gone at t0+10:00; a successful action at t0+1 removes it at once; the failure is logged.
 
-## Moves by request (card 660-B; design in ../card-moves.md, rules CM-1 to CM-22)
+## Moves by request (card 660-B; design in ../card-moves.md, rules CM-1 to CM-24)
 
 Tests: `Scheduler.Host.Tests/Moves/CardRequestsTests.cs` and Core's `Moves/CardRequest*`. Core parses and orders; Host commits.
 
@@ -151,3 +149,13 @@ Tests: `Scheduler.Host.Tests/Moves/CardRequestsTests.cs` and Core's `Moves/CardR
 - Checks: CM-19, CM-20 · Project: Host
 - Setup: a worker `git mv`s the card and also writes a request; separately a claim whose worker fails to start.
 - Expected: the request finds the card already in To and applies its text; the `queue/` copy is removed by CARD-19; the unstarted claimed card is resumed as an orphan on a later tick.
+
+### Moves_Finish_WorkNotOnMain_WaitsOnPlanner
+- Checks: CM-23 (cards 1237-B, 1300-B) · Project: Host (`CardRequestStepSettleTests`: `FinishWithCommitsOnWipNotOnMain_WaitsOnPlannerInQueue_CM23`, `ReviewWithLocalCommitOnly_WaitsOnPlannerInQueue_CM23`, `FinishWithEverythingOnMain_SettledAsBefore_CM23`, `OldWipBranchAndParkRequest_Untouched_CM23`)
+- Cases: a worker's To: done whose run's commit is only on `wip/<card>`; a To: review whose commits are only in the slot worktree; a finish whose commits are on main; a wip branch from before the run and a park request.
+- Expected: the first two go to queue/ with `Status: waiting: planner (finished, but its work is not on main: <where>)` and a `scheduler:` Result line naming what was asked for, logged in one line; the others are settled or left as asked.
+
+### Moves_ToDone_WorkNotOnMain_WaitsOnPlanner
+- Checks: CM-24 (card 1300-B) · Project: Host (`AnswersCommitterUnlandedTests`: `AnswerToDone_WithWipNotOnMain_WaitsOnPlannerInQueue_CM24`, `DoneButtonOnReview_WithWipNotOnMain_WaitsOnPlannerInQueue_CM24`, `EverythingOnMain_AnswerAndDoneSettledDone_CM24`, `AnswerNotToDone_Untouched_CM24`, `PlannerBatchToDone_AppliedAndLogged_CM24`; `CardRequestStepSettleTests.RequestToDoneWithEarlierWipNotOnMain_WaitsOnPlannerInQueue_CM24`; `WipBranchCleanupTests.BranchWithWorkNotOnMain_IsKeptAndCardWaitsOnPlanner`)
+- Cases: an answer whose choice ends `-> done` on a card whose fix is only on `wip/<card>`; the Done button on a review card with work on `wip/<card>-*`; the same with no wip branch and with a wip branch whose work reached main rebased; an answer that does not move the card; a planner batch to done/; a move request to done/ whose wip branch is from an earlier session.
+- Expected: the held moves land in queue/ as `waiting: planner (...)` with the answer still recorded, a Result line naming who asked (an answer from the page, the Done button, a move request), a `jobs: wait` commit and one log line, and the page is handed the edit as committed; everything on main is settled done as before; the answer that does not move is untouched; the planner batch is applied to done/ and logged as `planner: <card> moved to done with work not on main: <branch>`.

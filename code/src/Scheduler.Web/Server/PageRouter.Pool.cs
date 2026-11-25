@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.WebContract;
 
 namespace Scheduler.Web.Server;
@@ -9,7 +11,7 @@ public sealed partial class PageRouter
     public const string WhichProject = "which project? This route needs project= in a pool.";
 
     // MP-P8: every route that names a card or a slot, which in a pool goes to one project. /categories
-    // and /open-workers write one project's files, so they are its too; /accept-lane is dead (AREA-2).
+    // and /open-workers write one project's files, so they are its too.
     private static readonly HashSet<string> PerProject = new(StringComparer.Ordinal)
     {
         "/answer", "/plan-mark", "/card", "/done", "/health", "/health-now", "/kill", "/log", "/open", "/open-lanes",
@@ -73,7 +75,6 @@ public sealed partial class PageRouter
             (false, "/workspaces") => name is null
                 ? PageResponse.Text(400, WhichProject)
                 : Queued(request, "workspaces", null, () => pool.Actions.SetWorkspaces(name, request.Form("workspaces") ?? "")),
-            (false, "/accept-lane") => PageResponse.NotFound("not found"),
             _ => null,
         };
     }

@@ -1,13 +1,15 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Tray;
 
 /// <summary>
 /// The tray's command line: <c>scheduler-tray &lt;repository&gt; [the scheduler's own arguments]</c>.
 /// Every argument goes to <c>scheduler-next.exe</c> unchanged; the tray only needs the repository to be there.
 /// </summary>
-public sealed record TrayArguments(string Repository, IReadOnlyList<string> SchedulerArgs, string Error, string SchedulerDir = "", bool Pool = false, string PoolFile = "", bool Quiet = false)
+public sealed record TrayArguments(string Repository, IReadOnlyList<string> SchedulerArgs, string Error, string SchedulerDir = "", bool Pool = false, string PoolFile = "", bool Quiet = false, bool StopForUpdate = false, bool RemoveTrayCopy = false)
 {
     /// <summary>The usage line shown when the arguments are wrong.</summary>
-    public const string Usage = "usage: scheduler-tray <repository> [the scheduler's own arguments, as scheduler-next takes them]\nor:    scheduler-tray -Pool [<pool file>] [the scheduler's own arguments]";
+    public const string Usage = "usage: scheduler-tray <repository> [the scheduler's own arguments, as scheduler-next takes them]\nor:    scheduler-tray -Pool [<pool file>] [the scheduler's own arguments]\nor:    scheduler-tray -StopForUpdate [<pool file>]\nor:    scheduler-tray -RemoveTrayCopy";
 
     /// <summary>Whether the arguments can start the scheduler.</summary>
     public bool Ok => Error.Length == 0;
@@ -23,6 +25,17 @@ public sealed record TrayArguments(string Repository, IReadOnlyList<string> Sche
         if (IsSwitch(args[0], PoolSwitch))
         {
             return ParsePool(args);
+        }
+
+        if (IsSwitch(args[0], StopForUpdateSwitch))
+        {
+            var pool = args.Count > 1 && args[1].Length > 0 && !args[1].StartsWith('-') ? args[1] : "";
+            return new TrayArguments("", [], "", ValueOf(args, SchedulerDirSwitch), PoolFile: pool, StopForUpdate: true);
+        }
+
+        if (IsSwitch(args[0], RemoveTrayCopySwitch))
+        {
+            return new TrayArguments("", [], "", ValueOf(args, SchedulerDirSwitch), RemoveTrayCopy: true);
         }
 
         if (args[0].StartsWith('-'))
@@ -66,6 +79,18 @@ public sealed record TrayArguments(string Repository, IReadOnlyList<string> Sche
 
         return "";
     }
+
+    /// <summary>
+    /// INS-19 (1245-B): <c>-StopForUpdate [&lt;pool file&gt;]</c> ends the running trays and the pool's scheduler, leaving
+    /// the workers running, so an installer can replace the kit's files; it prints one line and exits 0 or 1.
+    /// </summary>
+    public const string StopForUpdateSwitch = "-StopForUpdate";
+
+    /// <summary>
+    /// 1265-B: <c>-RemoveTrayCopy</c> deletes the tray's copy folder of this kit folder only, prints one line and exits
+    /// 0 (gone or never there) or 1 (a file in it is in use). An uninstall runs it.
+    /// </summary>
+    public const string RemoveTrayCopySwitch = "-RemoveTrayCopy";
 
     /// <summary>MP-H9: <c>-Pool [&lt;file&gt;]</c> starts the pool of the pool file instead of a repository.</summary>
     public const string PoolSwitch = "-Pool";

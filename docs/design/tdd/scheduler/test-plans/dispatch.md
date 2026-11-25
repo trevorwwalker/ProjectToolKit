@@ -161,10 +161,11 @@ servers up, state `running`.
 - Cases: no Worker line -> slot 1 only; `Worker: premium` -> slot 2 only; `Worker: 2`, `Worker: opus`, `Worker: OPUS`, `Worker: claude-opus-5-5` -> slot 2; `Worker: qwen3-32b` -> slot 1; `Worker: gpt` -> none.
 
 ### Dispatch_CardPremiumFlag_Unused
-- **Retired (card 960-D).** The slot dispatcher is gone (939-A); replaced by the WT-3 tests (TypeDispatchTests.cs). Kept for the history.
-- Checks: CARD-10, DISP-18 · Project: Core · **blocked on C14**
+- **Retired (card 960-D), superseded 2026-11-22 (1146-A).** The slot dispatcher is gone (939-A) and `Card.Premium`
+  went with the premium flag, so there is no field left to drop or define. Replaced by the WT-3 tests (TypeDispatchTests.cs). Kept for the history.
+- Checks: CARD-10, DISP-18 · Project: Core · C14 is resolved: no premium anywhere (1146-A)
 - Setup: card `Worker: qwen3-32b (any)`; only a qwen worker.
-- Expected today: it fits (Card.Premium is set by any Worker line, L625, but never read). After C14: drop the field, or define what it means.
+- Expected then (as of 960-D, when the field existed): it fits (Card.Premium was set by any Worker line, L625, but never read).
 
 ### Dispatch_NotStartedNotes_AllVariants
 - **Superseded by the WT rules** (worker-types.md); removed with the slot dispatcher (939-A).

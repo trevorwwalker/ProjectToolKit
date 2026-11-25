@@ -7,7 +7,7 @@ stay as spec B1 has them, `MP-C*` are config, `MP-10` onward dispatch, `MP-H*` h
 Once the cards land, `spec.md` takes these rules over (card 1 of section 7).
 
 Sources: roadmap item 1's multi-project section and the order of the remaining work
-(`docs/design/gdd/scheduler-roadmap.md`); spec B1, B3 and the worker-type rules (WT-*, A13); the
+(`jobs/plans/scheduler-roadmap_plan.md`); spec B1, B3 and the worker-type rules (WT-*, A13); the
 developer's answers on cards 300-A, 310-A, 320-A, 330-B, 340-C, 560-A and 530-D/850-D; the code in
 `Scheduler.Core/Pool/`, `Scheduler.Core/Tick/SchedulerTick.cs`, `Scheduler.Host/Pool/`,
 `Scheduler.Host/Program/HostComposition.cs`, `Scheduler.Web/Views/CombinedPageRenderer.cs`; AmigaX's
@@ -224,7 +224,7 @@ fix what the pool adds around them.
   no project, on all of them: the page sends the project picked in its project dropdown, and no
   project when it says All projects. *Decided (955-D Q4, 2026-11-19).*
 - **MP-H9 Tray.** `scheduler-tray -Pool [<file>]` starts the pool instead of a repository. The
-  tooltip names "pool" and each project's state ("AmigaX running, ProjectToolkit paused-red");
+  tooltip leads with "Switchyard" and names each project's state ("Switchyard: AmigaX running, ProjectToolkit paused-red");
   double-click opens the pool's page; Exit and View log are unchanged.
 
 ## 4. Page

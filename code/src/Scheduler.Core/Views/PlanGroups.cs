@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Core.Views;
 
 /// <summary>The cards of one category in one month (1128-C). <see cref="Month"/> is "yyyy-MM", or empty for cards that have not run.</summary>

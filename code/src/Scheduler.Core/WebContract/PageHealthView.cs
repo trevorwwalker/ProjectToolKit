@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Core.WebContract;
 
 /// <summary>Health and the red banner (PAGE-5, A7).</summary>
@@ -14,6 +16,9 @@ public sealed record PageHealthView
 
     /// <summary>The short sha the last health check finished on; "" until one has (HLTH-6).</summary>
     public string Sha { get; init; } = "";
+
+    /// <summary>The sha of the health check running now; "" when none runs (known gap 930-C).</summary>
+    public string CheckingSha { get; init; } = "";
 
     /// <summary>Whether the model server is down.</summary>
     public bool ServerDown { get; init; }

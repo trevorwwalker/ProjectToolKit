@@ -1,10 +1,11 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Diagnostics;
 using Scheduler.Core;
 using Scheduler.Core.Config;
 using Scheduler.Core.Launch;
 using Scheduler.Host.Config;
 using Scheduler.Host.Git;
-using Scheduler.Host.Observe;
 using Scheduler.Host.Program;
 using Scheduler.Host.Tick;
 
@@ -15,6 +16,13 @@ ConsoleOutput.TrySetUtf8();
 if (args.Length == 1 && args[0] == "--version")
 {
     Console.WriteLine(CoreInfo.Version);
+    return 0;
+}
+
+// 1302-B: --help, -h, -? or /? prints the usage and exits, before anything else is read or written.
+if (LaunchArguments.IsHelp(args))
+{
+    Console.WriteLine(LaunchArguments.HelpText(CoreInfo.Version));
     return 0;
 }
 
@@ -42,28 +50,15 @@ if (args.Length >= 1 && args[0] == CheckPushCommand.Switch)
     return CheckPushCommand.Run(args[1..], Environment.GetEnvironmentVariable, Console.In, Console.Out, Environment.CurrentDirectory);
 }
 
-const string Usage ="usage: scheduler-next <repository> [-Config <file>] [-Slots n] [-Port n] [-Model m] [-NoHealthCheck] [-NoBrowser] [-Paused] [-DryRun | -Observe]\n"
-    + "       scheduler-next -Pool [<pool file>] [-Slots n] [-Port n] [-NoHealthCheck] [-NoBrowser] [-Paused] [-DryRun]\n"
-    + "       scheduler-next -Compare <old scheduler.log> <observe scheduler.log>";
-var observeArgs = ObserveCommandLine.Parse(args);
-if (observeArgs.Error.Length > 0)
-{
-    Console.Error.WriteLine(observeArgs.Error);
-    Console.Error.WriteLine(Usage);
-    return 2;
-}
-
-if (observeArgs.Compare)
-{
-    return CompareCommand.Run(observeArgs.CompareOld, observeArgs.CompareNew, Console.Out, Console.Error);
-}
-
-var options = CommandLine.Parse(observeArgs.Rest);
+const string Usage ="usage: scheduler-next <repository> [-Config <file>] [-Slots n] [-Port n] [-Model m] [-NoHealthCheck] [-NoBrowser] [-Paused] [-DryRun]\n"
+    + "       scheduler-next -Pool [<pool file>] [-Slots n] [-Port n] [-NoHealthCheck] [-NoBrowser] [-Paused] [-DryRun]";
+var launch = LaunchArguments.Parse(args);
+var options = CommandLine.Parse(launch.Rest);
 
 // MP-C9: -Pool runs every project of the pool file in this one process; without it, one project as always.
-if (observeArgs.Pool)
+if (launch.Pool)
 {
-    return Scheduler.Host.Pool.PoolProgram.Run(observeArgs.PoolFile, options, args, Console.Out, Console.Error);
+    return Scheduler.Host.Pool.PoolProgram.Run(launch.PoolFile, options, args, Console.Out, Console.Error);
 }
 
 var loaded = new ConfigLoader().Load(options);
@@ -73,21 +68,11 @@ if (!loaded.Ok || loaded.Config is not { } config)
     return 2;
 }
 
-ObserveSettings? observe = null;
-if (observeArgs.Observe)
-{
-    (config, observe) = ObserveSettings.Apply(config, options.Port != 0);
-}
-
 var clock = new SystemClock();
 
 // 690-B: besides the state log folder's scheduler.log, every line goes to a dated file in the
-// repository's jobs/.logs, so the day a run stopped can be read back. An observe run writes beside
-// the main scheduler's own files, not among them.
-var rollingDir = observe is null
-    ? FileSchedulerLog.RollingFolder(config)
-    : Path.Combine(FileSchedulerLog.RollingFolder(config), ObserveSettings.Folder);
-var log = new FileSchedulerLog(config.LogDir, rollingDir, clock, Console.WriteLine);
+// repository's jobs/.logs, so the day a run stopped can be read back.
+var log = new FileSchedulerLog(config.LogDir, FileSchedulerLog.RollingFolder(config), clock, Console.WriteLine);
 foreach (var line in loaded.LogLines)
 {
     log.Write(line);
@@ -118,7 +103,6 @@ using var composition = HostComposition.Create(
     clock,
     log,
     url => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }),
-    observe: observe,
     exeDir: AppContext.BaseDirectory,
     shutdownEvent: ShutdownSwitch.EventName(args));
 try

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Globalization;
 using System.Runtime.InteropServices;
 using Scheduler.Core.Contracts;
@@ -7,8 +9,10 @@ namespace Scheduler.Host.State;
 
 /// <summary>
 /// The host's CPU and memory, sampled at the top of every tick (ACCT-9, <c>Sample-Host</c> L963).
-/// The percent is the work between two samples, so, as the script did, the sampler is primed once
-/// when it is built and each tick's <see cref="Sample"/> is what that tick shows.
+/// The CPU percent is "% Processor Time" (what Task Manager shows since 2025): busy time over the
+/// elapsed time across all logical processors, from <c>GetSystemTimes</c>. The percent is the work
+/// between two samples, so, as the script did, the sampler is primed once when it is built and each
+/// tick's <see cref="Sample"/> is what that tick shows.
 /// </summary>
 public sealed class HostLoad : IHostLoad
 {
@@ -16,26 +20,12 @@ public sealed class HostLoad : IHostLoad
 
     private ulong _idle;
     private ulong _busy;
-    private readonly Func<double?> _utility;
-    private readonly IDisposable? _utilityOwner;
 
     /// <summary>
-    /// Builds the sampler and primes the CPU counters, as <c>Sample-Host</c> does at start-up. The CPU
-    /// is Windows' "% Processor Utility" (what Task Manager shows), with the system-times value as the fallback.
+    /// Builds the sampler and primes the CPU counters, as <c>Sample-Host</c> does at start-up.
     /// </summary>
     public HostLoad()
-        : this(OpenUtility(out var owner))
     {
-        _utilityOwner = owner;
-    }
-
-    /// <summary>
-    /// Builds a sampler whose CPU comes from <paramref name="utilityReader"/> (percent, may exceed 100,
-    /// or null when unavailable, in which case the system-times value is used). For tests and the PDH path.
-    /// </summary>
-    public HostLoad(Func<double?>? utilityReader)
-    {
-        _utility = utilityReader ?? (() => null);
         if (NativeMethods.GetSystemTimes(out var idle, out var kernel, out var user))
         {
             (_idle, _busy) = Busy(idle, kernel, user);
@@ -53,8 +43,6 @@ public sealed class HostLoad : IHostLoad
             cpu = total == 0 ? 0 : ((double)(nowBusy - _busy) / total) * 100;
             (_idle, _busy) = (nowIdle, nowBusy);
         }
-
-        cpu = ChooseCpu(_utility(), cpu);
 
         var memory = new NativeMethods.MemoryStatusEx();
         var free = 0L;
@@ -95,112 +83,12 @@ public sealed class HostLoad : IHostLoad
     public static int ShownCpuPercent(HostLoadSample sample) =>
         (int)Math.Clamp(Math.Round(sample.CpuPercent, MidpointRounding.AwayFromZero), 0d, 100d);
 
-    /// <summary>
-    /// The CPU percent to show: the processor-utility reading capped at 100 when there is one (finite and
-    /// not negative), otherwise the system-times <paramref name="fallback"/>.
-    /// </summary>
-    public static double ChooseCpu(double? utility, double fallback) =>
-        utility is { } u && double.IsFinite(u) && u >= 0 ? Math.Min(u, 100d) : fallback;
-
-    /// <summary>Opens the PDH counter and primes it; null reader when the counter is not available.</summary>
-    private static Func<double?>? OpenUtility(out IDisposable? owner)
-    {
-        owner = null;
-        try
-        {
-            var counter = PdhUtility.TryOpen();
-            if (counter is null)
-            {
-                return null;
-            }
-
-            owner = counter;
-            return counter.Read;
-        }
-        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
-        {
-            return null;
-        }
-    }
-
     /// <summary>Idle and busy ticks, the kernel time counting idle once.</summary>
     private static (ulong Idle, ulong Busy) Busy(long idle, long kernel, long user) =>
         ((ulong)Math.Max(0, idle), (ulong)Math.Max(0, (kernel - idle) + user));
 
-    /// <summary>The <c>\Processor Information(_Total)\% Processor Utility</c> counter through PDH.</summary>
-    private sealed class PdhUtility : IDisposable
-    {
-        private const string Path = @"\Processor Information(_Total)\% Processor Utility";
-        private const uint FormatDouble = 0x00000200;
-        private readonly nint _query;
-        private readonly nint _counter;
-
-        private PdhUtility(nint query, nint counter)
-        {
-            _query = query;
-            _counter = counter;
-        }
-
-        public static PdhUtility? TryOpen()
-        {
-            if (NativeMethods.PdhOpenQuery(null, 0, out var query) != 0)
-            {
-                return null;
-            }
-
-            if (NativeMethods.PdhAddEnglishCounterW(query, Path, 0, out var counter) != 0
-                || NativeMethods.PdhCollectQueryData(query) != 0)
-            {
-                NativeMethods.PdhCloseQuery(query);
-                return null;
-            }
-
-            return new PdhUtility(query, counter);
-        }
-
-        /// <summary>The value since the last read, or null when PDH has none.</summary>
-        public double? Read()
-        {
-            if (NativeMethods.PdhCollectQueryData(_query) != 0
-                || NativeMethods.PdhGetFormattedCounterValue(_counter, FormatDouble, out _, out var value) != 0
-                || value.Status != 0)
-            {
-                return null;
-            }
-
-            return value.Value;
-        }
-
-        public void Dispose() => NativeMethods.PdhCloseQuery(_query);
-    }
-
     private static class NativeMethods
     {
-        [StructLayout(LayoutKind.Explicit)]
-        public struct PdhFmtCounterValue
-        {
-            [FieldOffset(0)]
-            public uint Status;
-
-            [FieldOffset(8)]
-            public double Value;
-        }
-
-        [DllImport("pdh.dll")]
-        public static extern uint PdhOpenQuery(string? source, nint userData, out nint query);
-
-        [DllImport("pdh.dll", CharSet = CharSet.Unicode)]
-        public static extern uint PdhAddEnglishCounterW(nint query, string path, nint userData, out nint counter);
-
-        [DllImport("pdh.dll")]
-        public static extern uint PdhCollectQueryData(nint query);
-
-        [DllImport("pdh.dll")]
-        public static extern uint PdhGetFormattedCounterValue(nint counter, uint format, out uint type, out PdhFmtCounterValue value);
-
-        [DllImport("pdh.dll")]
-        public static extern uint PdhCloseQuery(nint query);
-
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
 

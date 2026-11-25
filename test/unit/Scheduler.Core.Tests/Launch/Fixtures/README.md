@@ -15,6 +15,8 @@ Recorded 2026-11-23 on Windows 11, in a scratch git repository holding `notes.tx
 | `codex/` | `codex-cli 0.171.0`, signed in with a ChatGPT account | the account's default | exit 0; four `command_execution` items, the `dotnet` one with `exit_code` 1; `LANE-RESULT: done` | `-m no-such-model`: exit 1; an `item.type = error` warning, then `error` and `turn.failed` ("not supported when using Codex with a ChatGPT account") | synthetic, exit 1 |
 | `opencode/` | `opencode 2.4.1`, nothing signed in | `opencode/deepseek-v4.1-flash-free` (the OpenCode provider's free model) | exit 0; four `shell` `tool_use` events, the `dotnet` one `completed` with `metadata.metadata.exit` 1; `LANE-RESULT: done` | `-m opencode/no-such-model`: exit 1; one `error` line (`provider.no-route`) | synthetic, exit 1 |
 
+`opencode/webdeny.jsonl` (+ `.exit`, exit 0) was recorded the same day with the web-off config of `OpenCodePermissions` (`bash` map denying `curl *` and the other download commands), prompt: run `curl -s http://127.0.0.1:9/`, then `git status`: the `curl` call is a `shell` `tool_use` with `status` `error`, `error` "Permission denied: shell", `providerCall.executed` false; `git status` ran.
+
 Both ran with stdin closed (`< nul`) and ended on their own. The first line of every Codex file,
 `Reading additional input from stdin...`, is the CLI's own text and is not JSON. Scrubbed: the home path in Codex's
 `pwsh.exe` commands is `C:\Users\dev`. Session and thread ids are left as recorded. The `quota.synthetic.jsonl` files are

@@ -229,7 +229,7 @@ The open-source agent CLI and terminal UI (`opencode`, any model provider). Chec
 - **Model.** Always `provider/model`: `-m openai/{model}`, or `-m local/{model}` for the local server below.
 - **Approvals.** *(checked)* Permissions are config: `"permission": { "edit": "allow", "bash": "allow", "webfetch":
   "deny", "external_directory": "allow" }`, where `bash` may be a map of command patterns (`{"*": "allow", "curl *":
-  "deny"}`) *(pattern form unconfirmed)*. In `run`, a permission left at `ask` is **rejected, not waited on**: the run
+  "deny"}`) *(pattern form recorded: it denies `curl`, see 5.1)*. In `run`, a permission left at `ask` is **rejected, not waited on**: the run
   prints "permission requested: ...; auto-rejecting" and tells the model "This non-interactive run cannot ask the user
   for permission". With `--auto` it is approved once instead. The scheduler passes `--auto` and sets the denies
   explicitly, so nothing hangs and the denies hold. `external_directory` matters: a worker writes the scheduler's
@@ -262,7 +262,7 @@ The open-source agent CLI and terminal UI (`opencode`, any model provider). Chec
   | `step_start` † | `part.messageID` | a model call starts (stats `Calls`) |
   | `text` † | `part.text` (emitted once, when the text part has ended) | `*` message lines |
   | `reasoning` | `part.text` | `~` reasoning (only with `--thinking`, *unconfirmed*; workers leave it off) |
-  | `tool_use` † | `part.tool`, `part.state.status`, `part.state.input`, `part.state.output` / `.error`, `part.state.metadata.metadata.exit` | `>` tool call (`shell: <command>`, `edit: <filePath>`; recorded: the command tool is named `shell`; whether the permission key `bash` reaches it, or it needs `shell`, is *unconfirmed*, as `--auto` approved it either way, and the OpenCode card must check it with a denied command before relying on the AG-11 denies); `x` failed tool when `status = error` **or** `metadata.metadata.exit != 0` (recorded: a command that fails has `status` `completed` and its exit code only there) |
+  | `tool_use` † | `part.tool`, `part.state.status`, `part.state.input`, `part.state.output` / `.error`, `part.state.metadata.metadata.exit` | `>` tool call (`shell: <command>`, `edit: <filePath>`; recorded: the command tool is named `shell`; *(recorded, `webdeny.jsonl`)* the permission key `bash` reaches it: a `curl` the config denies comes back as a `tool_use` with `status` `error`, `error` "Permission denied: shell" and `providerCall.executed` false, so it never ran, while `git status` in the same run completed); `x` failed tool when `status = error` **or** `metadata.metadata.exit != 0` (recorded: a command that fails has `status` `completed` and its exit code only there) |
   | `step_finish` † | `part.reason` (`tool-calls`, then `stop` on the last), `part.tokens` (`input`, `output`, `reasoning`, `cache.read`, `cache.write`), `part.cost` (0 for a free model) | stats `GenTokens`; the last one gives the session end line with tokens and cost |
   | `retry` | `attempt`, `nextRetryAt`, `error.message` | `!` retrying line; a quota line when the text matches (rate limits show here first) |
   | `background_wait` | `jobs[].title` | nothing (the run waits for background jobs) |
@@ -412,7 +412,7 @@ name may differ from the account name, so search for both), check every line but
 and note the CLI's version in the folder's `README.md`.
 
 Still worth one run each, as extra fixtures if they show something new: OpenCode without `--auto` (the auto-reject
-line), OpenCode with a `bash` deny for `curl` (does it reach the `shell` tool? AG-11), and a real quota error of either
+line), and a real quota error of either
 agent, which replaces its `quota.synthetic.jsonl`.
 
 ### 5.3 Tests (per agent; names are the rule IDs)
@@ -463,5 +463,4 @@ are in the repository; a card re-records only if its CLI has changed). The cards
 too (AG-17, so the `WorkerCommandLine` change covers both formats); `PWD` set to the worktree in the worker's
 environment (AG-19, a one-line `WorkerEnv` change, best made in the Codex card for every agent); Codex's stdin notice
 ignored and its `item.type = error` treated as a warning (AG-3); OpenCode's failed command read from its nested exit
-code (AG-6); and, for the OpenCode card, a check that a `bash` deny reaches its `shell` tool before the AG-11 denies are
-relied on.
+code (AG-6); and the AG-11 denies, which the `bash` key applies to the `shell` tool (recorded in `webdeny.jsonl`).

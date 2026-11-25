@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Tray.Tests;
 
 public class TrayArgumentsTests
@@ -60,5 +62,20 @@ public class TrayArgumentsTests
 
         Assert.Equal(quiet, args.Quiet);
         Assert.DoesNotContain(args.SchedulerArgs, a => a.Equals("-Quiet", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // 1265-B: -RemoveTrayCopy is the tray's own switch, taken before any repository.
+    [Fact]
+    public void Remove_tray_copy_parses_with_the_kit_folder_when_given()
+    {
+        var plain = TrayArguments.Parse(["-RemoveTrayCopy"]);
+        var kit = TrayArguments.Parse(["-RemoveTrayCopy", @"-SchedulerDir:C:\kit\scheduler"]);
+
+        Assert.True(plain.Ok);
+        Assert.True(plain.RemoveTrayCopy);
+        Assert.Equal("", plain.SchedulerDir);
+        Assert.True(kit.RemoveTrayCopy);
+        Assert.Equal(@"C:\kit\scheduler", kit.SchedulerDir);
+        Assert.False(TrayArguments.Parse([@"C:\Projects\Game"]).RemoveTrayCopy);
     }
 }

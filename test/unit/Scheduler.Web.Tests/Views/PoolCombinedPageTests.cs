@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text.RegularExpressions;
 using Scheduler.Core.Accounting;
 using Scheduler.Core.Contracts;
@@ -318,6 +320,24 @@ public sealed class PoolCombinedPageTests
         Assert.Contains("<input type='hidden' name='project' value='Other'><input type='hidden' name='card' value='080-B-config.md'>", html, StringComparison.Ordinal);
     }
 
+    // 1199-C (request #027 item 3, review-row-link0): VW-5 on the pool page - a Waiting on you review
+    // row's card links to the review panel with the project, as Plans and Gantt do; other rows still
+    // link to the card text.
+    [Fact]
+    public void Card1199_WaitingReviewRows_LinkToReviewPanel_OtherRowsStillCard()
+    {
+        var html = new CombinedPageRenderer().Render([AmigaX(), Other()], Theme, remote: false, controlsAllowed: true);
+        var waiting = Regex.Match(html, "id='w-waiting'.*?</section>", RegexOptions.Singleline).Value;
+
+        // Both projects' review cards open the panel; the route takes the project and the card name.
+        Assert.Contains("<td class='card'><a href='/review?project=AmigaX&card=090-C-page-views.md' title='Open the review panel: commits, files, Result.'>090-C-page-views.md</a></td>", waiting, StringComparison.Ordinal);
+        Assert.Contains("<td class='card'><a href='/review?project=Other&card=080-B-config.md' title='Open the review panel: commits, files, Result.'>080-B-config.md</a></td>", waiting, StringComparison.Ordinal);
+
+        // A question row still opens the card itself.
+        Assert.Contains("<a href='/card?project=AmigaX&name=120-A-dispatch.md'>120-A-dispatch.md</a>", waiting, StringComparison.Ordinal);
+        Assert.DoesNotContain("/review?project=AmigaX&card=120-A-dispatch.md", waiting, StringComparison.Ordinal);
+    }
+
     // 1010-C: Open on Waiting rows and Recent events rows carries the project; question rows have the
     // answer note box; the worker windows have the message box posting to /send.
     [Fact]
@@ -368,7 +388,7 @@ public sealed class PoolCombinedPageTests
             ],
             Pages = [AmigaX() with { PlannerPush = true }, Other()],
         };
-        var html = new CombinedPageRenderer(theme: Theme).Render(pool, remote: false, controlsAllowed: true);
+        var html = new CombinedPageRenderer(theme: Theme).Render(pool, remote: false, controlsAllowed: true, "workers");
 
         Assert.Contains("<body data-pool-theme='slate'>", html, StringComparison.Ordinal);
         Assert.Contains("<table class='projects'><tr><th>Project</th><th>Health</th><th colspan='6'></th></tr>", html, StringComparison.Ordinal);
@@ -556,7 +576,7 @@ public sealed class PoolCombinedPageTests
             ],
             Pages = [AmigaX(), Other()],
         };
-        var html = new CombinedPageRenderer(theme: Theme).Render(pool, remote: false, controlsAllowed: true);
+        var html = new CombinedPageRenderer(theme: Theme).Render(pool, remote: false, controlsAllowed: true, "workers");
 
         Assert.Contains("<tr><th>Project</th><th>Health</th><th>Workspaces</th><th colspan='6'></th></tr>", html, StringComparison.Ordinal);
         Assert.Matches("<td class='nw'><form[^>]*><input type='hidden' name='project' value='AmigaX'><input type='number' name='workspaces'[^>]*value='4'[^>]*></form> <span class='mute'[^>]*>3 busy</span></td>", Row(html, "AmigaX"));
@@ -574,7 +594,7 @@ public sealed class PoolCombinedPageTests
             Projects = [new PoolProjectView { Name = "AmigaX", Weight = 70, Running = 3, Workspaces = 4 }, new PoolProjectView { Name = "Other", Weight = 30, Workspaces = 2 }],
             Pages = [AmigaX(), Other()],
         };
-        var html = new CombinedPageRenderer(theme: Theme).Render(pool, remote: true, controlsAllowed: false);
+        var html = new CombinedPageRenderer(theme: Theme).Render(pool, remote: true, controlsAllowed: false, "workers");
 
         var row = Row(html, "AmigaX");
         Assert.DoesNotContain("name='workspaces'", row, StringComparison.Ordinal);
@@ -592,7 +612,7 @@ public sealed class PoolCombinedPageTests
             Projects = [new PoolProjectView { Name = "AmigaX", Weight = 70, Running = 3, Workspaces = 4 }, new PoolProjectView { Name = "Other", Weight = 30, Workspaces = 2 }],
             Pages = [AmigaX(), Other()],
         };
-        var html = new CombinedPageRenderer(theme: Theme).Render(pool, remote: false, controlsAllowed: true);
+        var html = new CombinedPageRenderer(theme: Theme).Render(pool, remote: false, controlsAllowed: true, "workers");
 
         var row = Row(html, "Other");
         Assert.Contains("action='/workspaces'", row, StringComparison.Ordinal);
@@ -636,7 +656,7 @@ public sealed class PoolCombinedPageTests
             Pages = [amiga, other],
         };
 
-        var html = new CombinedPageRenderer(theme: Theme).Render(pool, remote: false, controlsAllowed: true);
+        var html = new CombinedPageRenderer(theme: Theme).Render(pool, remote: false, controlsAllowed: true, "workers");
 
         var queue = Regex.Match(html, "<table class='queue'>.*?</table>", RegexOptions.Singleline).Value;
         var cards = Regex.Matches(queue, "data-card='([^']*)'").Select(m => m.Groups[1].Value);
@@ -673,7 +693,7 @@ public sealed class PoolCombinedPageTests
             ],
             Pages = [AmigaX(), Other()],
         };
-        var html = new CombinedPageRenderer(theme: Theme).Render(pool, remote: false, controlsAllowed: true);
+        var html = new CombinedPageRenderer(theme: Theme).Render(pool, remote: false, controlsAllowed: true, "workers");
 
         Assert.Contains("title='AmigaX - C:\\repos\\Amiga &amp; X'", html, StringComparison.Ordinal);
         Assert.Contains("title='Other'", html, StringComparison.Ordinal);
@@ -755,7 +775,7 @@ public sealed class PoolCombinedPageTests
                 Other() with { WorkerTypes = [types[0], types[1] with { Running = 1 }] },
             ],
         };
-        var html = new CombinedPageRenderer().Render(pool, remote: false, controlsAllowed: true);
+        var html = new CombinedPageRenderer().Render(pool, remote: false, controlsAllowed: true, "workers");
 
         Assert.Equal(1, Occurrences(html, "class='wttoggle'"));
         Assert.Contains("<form method='post' action='/worker-types' class='wtypes wthidden'><div class='wtypesbar'>", html, StringComparison.Ordinal);
@@ -787,7 +807,7 @@ public sealed class PoolCombinedPageTests
             ],
             Pages = [AmigaX() with { WorkerTypes = [] }, Other() with { WorkerTypes = [] }],
         };
-        var html = new CombinedPageRenderer().Render(pool, remote: false, controlsAllowed: true);
+        var html = new CombinedPageRenderer().Render(pool, remote: false, controlsAllowed: true, "workers");
 
         Assert.Contains("name='wmodel' value='claude-sonnet-5-5' size='14'", html, StringComparison.Ordinal);
         Assert.Contains("name='wendpoint' value='http://claude.local:8080/v1'", html, StringComparison.Ordinal);

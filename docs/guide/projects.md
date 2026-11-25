@@ -15,8 +15,8 @@ safe:
   needs nothing else, so a fresh session can pick it up with no memory of the last one.
 - **Each card lives in a folder that says where it is**: `queue/` (waiting to run), `active/` (a worker has it),
   `review/` (finished, but you must look), `done/` (finished and checked).
-- **Only the scheduler moves cards.** Workers ask for a move; the scheduler makes it and commits it. This is why two
-  workers never fight over the same file. See [the scheduler guide](switchyard.md) for how it runs.
+- **Only Switchyard moves cards.** Workers ask for a move; Switchyard makes it and commits it. This is why two
+  workers never fight over the same file. See [the Switchyard guide](switchyard.md) for how it runs.
 
 You rarely write cards by hand. You talk to a **planner** (an LLM session) that turns your wishes into a plan and cards;
 see [Working with a planner](planner.md).
@@ -26,12 +26,14 @@ see [Working with a planner](planner.md).
 `bin\projecttoolkit.ps1` is the setup tool. It has two actions: `new-project` and `jobs`.
 
 `new-project` lays down the standard folder layout (code, tests, docs, design documents) and then adds the queue.
-Run it from the toolkit folder:
+In an installed kit the script lives in the kit's `bin` folder, so give its full path:
 
 ```powershell
-.\bin\projecttoolkit.ps1 -Action new-project -Repo C:\Projects\MyProject `
+& "$env:LOCALAPPDATA\Programs\ProjectToolkit\bin\projecttoolkit.ps1" -Action new-project -Repo C:\Projects\MyProject `
     -Categories "A=app:code/src/,test/;D=docs:docs/"
 ```
+
+From a clone: `C:\Projects\ProjectToolkit\bin\projecttoolkit.ps1`.
 
 Real output (shortened):
 
@@ -39,11 +41,14 @@ Real output (shortened):
 git repository created in C:\Projects\MyProject
 == canonical layout in C:\Projects\MyProject
 created  .gitignore
+created  .gitattributes
 created  README.md
 created  docs/conventions.md
+created  docs/planner-brief.md
 created  docs/design/gdd/MyProject.md
 created  docs/design/tdd/MyProject-technical.md
 == job queue in C:\Projects\MyProject
+created  docs/known_gaps.md
 created  jobs/README.md
 created  jobs/card-template.md
 created  jobs/categories.json
@@ -54,14 +59,15 @@ MyProject is set up in C:\Projects\MyProject with the canonical layout and a job
   1. Fill in README.md ...
 ```
 
-The project name is the last part of the folder name. The command prints a numbered "Next" list; the steps are
-below. Useful switches:
+The project name is the last part of the folder name. The command prints a numbered "Next" list; follow the order
+below (the printed list has the planner write the plan before the workers are set up, then cards its first step). Useful switches:
 
 | Switch | Meaning |
 |---|---|
 | `-Categories "A=name:path,path;B=name:path"` | The categories (see below). One is fine to start with. |
 | `-Modules "app,platform"` | Create `code/src/<module>/` folders. Leave it out until your design names the modules. |
 | `-NoPool` | Do not add the project to the scheduler's pool (`%LOCALAPPDATA%\ProjectToolkit\pool.json`). Use it for experiments. |
+| `-Endpoint <url>`, `-Model <name>` | Optional: point the Copilot worker at a local OpenAI-compatible model server (its `/v1` address and model name). Left out, workers use GitHub's own models and a new project needs no server. |
 | `-Force` | Overwrite files that already exist. Without it nothing is overwritten. |
 
 Nothing already in the folder is overwritten, so it is safe to run it on a folder that has a few files.
@@ -71,17 +77,17 @@ Nothing already in the folder is overwritten, so it is safe to run it on a folde
 If the repository exists, add only the queue:
 
 ```powershell
-.\bin\projecttoolkit.ps1 -Action jobs -Repo C:\Projects\MyProject
+& "$env:LOCALAPPDATA\Programs\ProjectToolkit\bin\projecttoolkit.ps1" -Action jobs -Repo C:\Projects\MyProject
 ```
 
-This creates `jobs/`, `docs/ai/` and `docs/known_gaps.md`, then joins the project to the scheduler pool (unless `-NoPool`).
+This creates `jobs/` and `docs/known_gaps.md`, then joins the project to the scheduler pool (unless `-NoPool`).
 
 ### Bring in improvements later: `-Update`
 
 The toolkit improves over time. To pull its newer text into a project that already has a queue:
 
 ```powershell
-.\bin\projecttoolkit.ps1 -Action jobs -Repo C:\Projects\MyProject -Update
+& "$env:LOCALAPPDATA\Programs\ProjectToolkit\bin\projecttoolkit.ps1" -Action jobs -Repo C:\Projects\MyProject -Update
 ```
 
 ```
@@ -92,18 +98,24 @@ Left alone, because they are the project's own now: README.md, .gitignore, docs/
 docs/design/, jobs/{project,categories,lanes,workers,scheduler}.json.
 ```
 
-`-Update` refreshes only what the toolkit owns (the jobs `README.md`, the card, plan and request templates,
-`docs/ai/README.md`) and fills in anything missing. Your own files are never touched. Never edit
+`-Update` refreshes only what the toolkit owns (the jobs `README.md`; the card, plan, request and attachments
+templates; `.gitattributes` only with `-Action new-project -Update`) and puts back missing queue folders,
+`docs/known_gaps.md` and `categories.json`. Your own files are never touched. Never edit
 `jobs/README.md` in a project: the next `-Update` would replace your edit.
 
-### After setup: five things to fill in
+### After setup: six things to fill in
 
 1. `README.md` and `docs/conventions.md`: what the project is and its rules.
-2. The design: `docs/design/gdd/<name>.md` (what it must do) and then the technical design (how). Ask a planner to
-   draft these with you.
-3. `jobs/categories.json` (below).
-4. `jobs/project.md` (below), and in `jobs/scheduler.json` the `project` name and the health command.
-5. Commit and push to `main`. The scheduler's pool picks the project up at its next tick; there is nothing to start.
+2. The design: `docs/design/gdd/<name>.md`, the master design document (what the project is and must do), and then
+   the technical design (how). This is yours to decide; a planner can help you draft it.
+3. **The project's plan**: have a planner write the root plan, `jobs/plans/<name>_plan.md`, from the design. This is
+   one of the most important first steps: every card the workers run later hangs from a step of this plan. See
+   [the walkthrough, section 4](getting-started.md#4-the-design-and-the-projects-plan) and [plans.md](plans.md).
+4. `jobs/categories.json` (below).
+5. `jobs/project.md` (below), and in `jobs/scheduler.json` the `project` name and the health command.
+6. Commit and push to `main`. Then set up the workers and start Switchyard
+   ([walkthrough, section 5](getting-started.md#5-set-up-the-workers-and-start-switchyard)); a Switchyard that is
+   already running picks the project up at its next tick. Then ask the planner to card the plan's first step.
 
 ## What is in `jobs/`
 
@@ -113,10 +125,11 @@ docs/design/, jobs/{project,categories,lanes,workers,scheduler}.json.
 | `active/` | The card a worker has now, or a card parked and waiting for you. |
 | `review/` | Finished cards that need your hands: something to try, or a decision. |
 | `done/` | Finished and verified cards. Kept for good. |
-| `plans/` | Plans that have been turned into cards. Kept for good. |
+| `archive/` | Old cards swept from `done/`. Never plans. |
+| `plans/` | Every plan, from draft to done. Kept for good; never archived. |
 | `requests/` | Questions workers put to the planner, one file each. |
 | `attachments/` | Screenshots and logs for a card, in `attachments/<number>/`. |
-| `.logs/` | The scheduler's and workers' logs. Not in git; ignore it. |
+| `.logs/` | Switchyard's dated log, one file a day for a week. Keep it out of git (`jobs/.logs/` in `.gitignore`). |
 | `project.md` | This project's gates, file locations and standing rules. |
 | `categories.json` | Who may change which files. |
 | `scheduler.json`, `models.json` | Scheduler settings; the model list. |
@@ -136,14 +149,14 @@ A card is Markdown with a short header, then sections. Here is a card for Recipe
 # 12-A: Add `recipebox search <word>`
 
 Category: A
-Type: feature
-Plan: jobs/plans/search_plan.md, step 1
 Status: ready
-Priority: normal
 Depends on: none
+Locks: none
 Scope: code/src/RecipeBox/Search.cs, test/unit/SearchTests.cs
-Worker: Sonnet
 Time box: 45 min
+Worker: Claude
+Plan: jobs/plans/search_plan.md, step 1
+Type: feature
 
 ## Task
 
@@ -155,6 +168,8 @@ Add a `search` command that prints the titles of recipes whose title or ingredie
 - `recipebox search tomato` lists "Tomato soup" and "Shakshuka" for the sample data.
 - A test covers a match, no match, and mixed case.
 - The build and tests pass.
+
+## Stop and ask if
 
 ## Questions
 
@@ -175,8 +190,8 @@ The header fields:
 | `Scope` / `Locks` | The files it may change; and files of another category it needs. |
 | `Worker`, `Time box` | Which kind of model, and how many minutes it gets. Usually set by the planner. |
 
-Sections: **Task** (what to do), **Done when** (checkable facts), **Questions** (for you), **Result** (the worker's
-journal and what it verified).
+Sections: **Task** (what to do), **Done when** (checkable facts), **Stop and ask if** (job-specific stop conditions),
+**Questions** (for you), **Result** (the worker's journal and what it verified).
 
 ### Statuses
 
@@ -189,11 +204,11 @@ journal and what it verified).
 ### The journey
 
 ```
-queue/   --scheduler starts a worker-->   active/   -->   done/
+queue/   --Switchyard starts a worker-->   active/   -->   done/
                                                      -->   review/   (you check it, then accept or send back)
 ```
 
-1. The scheduler picks the first `ready` card whose dependencies are done and whose files no running card is using, moves
+1. Switchyard picks the first `ready` card whose dependencies are done and whose files no running card is using, moves
    it to `active/` and starts a worker on it.
 2. The worker does the work, runs the gates (see `project.md` below) and pushes each green commit to `main`. It writes a
    dated line in **Result** at least every 45 minutes, so a later session can resume.
@@ -211,16 +226,16 @@ A worker's question is written as one line with choices, in plain words:
   [yes, list both -> done | no, merge them first -> queue | ask me later]
 ```
 
-The choice after `->` says where the card goes when you pick it. You answer from the scheduler's page (next section); the
+The choice after `->` says where the card goes when you pick it. You answer from Switchyard's page (next section); the
 answer is written under the question and the card continues. You can also write a reply by hand in a section headed
 `## Dev`; where it conflicts with the card, your reply wins, and the worker answers it in **Result**.
 
 ### Waiting on you
 
-The scheduler's page has a **Waiting on you** list: every card that cannot move without a person. A card is there when it is
+Switchyard's page has a **Waiting on you** list: every card that cannot move without a person. A card is there when it is
 `needs-human`, when it is in `review/`, when it is waiting for you, or when it is *stuck* (it ran out of tries; use **Retry**
 once you have looked). Each row shows the reason in a line, taken from the card's Status or its latest Result line.
-Make that list empty and the work flows. See [the scheduler guide](switchyard.md) for the page.
+Make that list empty and the work flows. See [the Switchyard guide](switchyard.md) for the page.
 
 ### Review
 
@@ -229,17 +244,17 @@ page: choose the `-> done` answer to accept, or `-> queue` to send it back with 
 
 ### Done
 
-`done/` is the record. Cards are never deleted. Nobody archives them away either: with plans, they are the complete history
-of how the project was built.
+`done/` is the record. Cards are never deleted; old ones may be swept to `archive/`, numbers kept. Plans are never
+archived: with the cards, they are the complete history of how the project was built.
 
 ### Card numbers: do not choose one
 
-Numbers are handed out by the scheduler so two writers never take the same one. To ask for a card, name the file
+Numbers are handed out by Switchyard so two writers never take the same one. To ask for a card, name the file
 `new-<L>-<slug>.md` in `jobs/queue/`, with the title `# new-<L>: <title>`. Example: `new-A-search-command.md` starting with
-`# new-A: Add recipebox search`. At its next step the scheduler renames it `<n>-A-search-command.md` (for example
-`12-A-search-command.md`), fixes the title and any `Depends on: new-A-search-command` lines in the same commit, and logs
-`card numbered: new-A-search-command -> 12-A-search-command`. Numbers are never reused or renumbered. To run a card earlier,
-give it a `Priority` or make others depend on it.
+`# new-A: Add recipebox search`. At its next step Switchyard renames it `<n>-A-search-command.md` (for example
+`12-A-search-command.md`), fixes the title and any `Depends on: new-A-search-command` lines in the same commit, and
+logs `card numbered: RecipeBox/new-A-search-command -> 12-A-search-command`. Numbers are never reused or renumbered. To
+run a card earlier, give it a `Priority` or make others depend on it.
 
 A `new-` file is not a card until it has a number, so it is never started early.
 
@@ -247,15 +262,17 @@ A `new-` file is not a card until it has a number, so it is never started early.
 
 A plan is the written-down answer to "how do we build this?", split into steps that become cards.
 
-- Plans live **only** in `jobs/plans/`, named `<name>_plan.md`, one `##` section per step with its cards. Once a plan has been
+- Plans live **only** in `jobs/plans/`, named `<name>_plan.md`, one numbered `## N.` section per step with Delivers,
+  Done when, Depends on and Tasks. Once a plan has been
   carded it stays there for good, finished or not; nothing is archived.
-- `docs/ai/` holds only brand-new plans that have no cards yet.
+- A new plan is written in `jobs/plans/` and says `Status: draft` until it is carded ([plans.md](plans.md)).
 - **Design documents** (`docs/design/...`) are inputs to a plan, not plans. When a design is carded, the planner writes the plan
   in `jobs/plans/` linking to it. The guide explains use; the design document stays the source of truth for design.
 - A card's `Plan:` line names the plan file and the step.
 
-A good plan says what the code does today, what it should do, the steps, and how the whole thing is known to be finished
-(`jobs/plan-template.md` has the headings). You do not have to write it: ask the planner ([guide](planner.md)).
+A good plan states its Goal (the end state and how it is checked), why, its scope and inputs, and numbered steps that
+say what each delivers and when it is done (`jobs/plan-template.md` has the lines). You do not have to write it: ask the
+planner ([guide](planner.md)).
 
 ## Requests
 
@@ -295,19 +312,19 @@ Run before every push, all of them, from the repository root:
 
 "Green" means the gates passed on that commit. Code that does not pass is pushed to a `wip/<card>` branch instead, never to
 `main`. The same file lists where things live and any standing briefs (rules such as "never weaken a test"). Put the same
-gates, joined with `&&`, in `scheduler.json` as the health command so the scheduler can check that `main` stays green.
+gates, joined with `&&`, in `scheduler.json` as the health command so Switchyard can check that `main` stays green.
 
 ## How a planner session works with the queue
 
 The planner is an LLM session you talk to. It may run in a sandbox that can read and write files in the project folder but
 cannot reach the git server. So it does not push. Instead it leaves a **batch** in the **outbox**,
-`jobs/.planner-outbox/` (ignored by git): a folder holding the new files and a `batch.json` with a commit message and the list
-of writes, moves and removes, written last so a half-finished batch is never taken.
+`jobs/.planner-outbox/` (keep it in `.gitignore`): a folder holding the new files and a `batch.json` with a commit
+message and the list of writes, moves and removes, written last so a half-finished batch is never taken.
 
-If **Planner push** is on in the scheduler's page, the scheduler fetches, applies each complete batch to `main` (only paths
+If **Planner push** is on in Switchyard's page, Switchyard fetches, applies each complete batch to `main` (only paths
 under `jobs/`, merging if a file changed in the meantime), commits and pushes it, then moves the batch to `sent/` (or
 `failed/` with a reason). With the switch off, batches wait. Every card the planner creates uses a `new-<L>-<slug>` name, so
-the scheduler numbers it. A card the planner sets back to `ready` runs again even if it ran out of tries before.
+Switchyard numbers it. A card the planner sets back to `ready` runs again even if it ran out of tries before.
 
 For you the effect is simple: tell the planner what you want, read its plan, and watch cards appear in `queue/`.
 The details of working with it are in [Working with a planner](planner.md); the outbox design is
@@ -316,14 +333,17 @@ The details of working with it are in [Working with a planner](planner.md); the 
 ## An example from start to finish
 
 1. `new-project` for Recipe Box (above). Fill in the README and design with the planner.
-2. Ask the planner: "Add a search command." It writes `jobs/plans/search_plan.md` and leaves `new-A-search-command.md`.
-3. The scheduler numbers it `12-A-search-command` and puts it in `queue/`.
-4. A worker takes it (`active/`), writes `Search.cs` and a test, runs the two gates, pushes, and asks for `review` because
+2. Ask the planner for the root plan, `jobs/plans/RecipeBox_plan.md` (`Status: draft`), from the design; read it and
+   settle its questions.
+3. Set up the workers and start Switchyard.
+4. Ask the planner to card step 1 (search): it leaves `new-A-search-command.md`, which Switchyard numbers
+   `12-A-search-command` and puts in `queue/`.
+5. A worker takes it (`active/`), writes `Search.cs` and a test, runs the two gates, pushes, and asks for `review` because
    you must try the command by hand.
-5. It appears under **Waiting on you**. You run `recipebox search tomato`, pick `-> done`, and the card moves to `done/`.
+6. It appears under **Waiting on you**. You run `recipebox search tomato`, pick `-> done`, and the card moves to `done/`.
 
 ## Where to go next
 
 - [Working with a planner](planner.md): what to say, and what to check in what it writes.
-- [The scheduler (Switchyard)](switchyard.md): the page, the tray and the controls.
+- [Switchyard](switchyard.md): the page, the tray and the controls.
 - [Guide index](README.md)

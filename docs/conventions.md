@@ -21,12 +21,11 @@ project/
 │   ├── src/         # The application, one folder per module (see Application code)
 │   └── tools/       # Source for custom tools (output goes to bin/)
 ├── docs/
-│   ├── ai/          # New plans, not yet turned into job cards
 │   ├── design/      # gdd/ (intent) and tdd/ (architecture and technical specs)
-│   ├── jobs/        # The job queue: queue/ active/ review/ done/ plans/ archive/ requests/
 │   └── reference/   # Technical reference material
 ├── extern/
 │   └── bin/         # Prebuilt third-party binaries, SDKs, middleware
+├── jobs/            # The job queue: queue/ active/ review/ done/ plans/ archive/ requests/ attachments/
 ├── out/             # Built packages and final results, one folder per platform; git-ignored
 └── test/
     ├── unit/        # Unit tests, one file per module under test, mirroring the code/ paths
@@ -76,8 +75,8 @@ are git-ignored.
 
 ### Application code
 
-- `code/src/` holds one folder per module. **Fill in:** the module set, one line each on what the
-  module is for and which modules it may depend on. Adding a module is a design decision, not a
+- `code/src/` holds one folder per module: `Scheduler.Core` (logic), `Scheduler.Host` (scheduler-next.exe),
+  `Scheduler.Tray` (scheduler-tray.exe), `Scheduler.Web`, `Installer` (ProjectToolkit.iss). Adding a module is a design decision, not a
   folder decision.
 - A module folder holds that module's interfaces (pure virtual / protocol only) and its
   platform-independent implementation. No OS call, window handle, socket, clock read, file handle,
@@ -125,6 +124,9 @@ them should be checkable by a tool where a tool can check it.
 - **Memory and ownership.** **Fill in:** who owns what, and how that is shown in the types.
 - **Headers and includes.** **Fill in:** include order, forward declarations, what may include
   what.
+- **License header.** New `.cs` files under `code/src/` and `test/unit/`, and `.ps1` files under `bin/`, carry these two lines first (in a `.ps1`, right after its comment-based help, with `#` for `//`); a guard test fails without them:
+  `// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.`
+  `// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)`
 - **Comments.** **Fill in:** what a header block must say (purpose, what it does not do, its
   dependencies) and what earns an inline comment.
 - **Invariants.** **Fill in:** the numbered rules the core must never break, and the test that

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Globalization;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
@@ -45,29 +47,19 @@ public class HostLoadTests
         Assert.EndsWith(", 1 threads per worker", HostLoad.TextOf(sample, slots: sample.Cores * 4), StringComparison.Ordinal);
     }
 
-    // ACCT-9 (1094-B): the processor-utility reading is capped at 100 and used when present;
-    // when the counter has no value (null, NaN, negative) the system-times value stands.
-    [Theory]
-    [InlineData(42.5, 7.0, 42.5)]
-    [InlineData(110.2, 7.0, 100.0)]
-    [InlineData(0.0, 7.0, 0.0)]
-    [InlineData(null, 7.0, 7.0)]
-    [InlineData(double.NaN, 7.0, 7.0)]
-    [InlineData(-1.0, 7.0, 7.0)]
-    public void Acct_HostLoad_UtilityChosenOrFallback(double? utility, double fallback, double expected)
-    {
-        Assert.Equal(expected, HostLoad.ChooseCpu(utility, fallback));
-    }
-
-    // ACCT-9 (1094-B): Sample shows the reader's value capped at 100, and falls back to system times without one.
+    // ACCT-9 (1261-B): the CPU percent is the % Processor Time from GetSystemTimes - busy over
+    // elapsed across all logical processors - never the PDH % Processor Utility, so it can read low
+    // on a turbo machine but is the same number Task Manager shows. Always 0-100, and it rises above
+    // zero when a thread is spinning.
     [Fact]
-    public void Acct_HostLoad_SampleUsesUtilityCappedAndFallsBack()
+    public void Acct_HostLoad_CpuIsProcessorTimeInRange()
     {
-        Assert.Equal(100d, new HostLoad(() => 130d).Sample().CpuPercent);
-        Assert.Equal(55.5, new HostLoad(() => 55.5).Sample().CpuPercent);
-        var fallback = new HostLoad(() => null);
-        Spin(TimeSpan.FromMilliseconds(100));
-        Assert.InRange(fallback.Sample().CpuPercent, 0d, 100d);
+        var host = new HostLoad();
+        Spin(TimeSpan.FromMilliseconds(200));
+        var sample = host.Sample();
+
+        Assert.InRange(sample.CpuPercent, 0d, 100d);
+        Assert.True(sample.CpuPercent > 0d, $"cpu {sample.CpuPercent}");
     }
 
     // ACCT-9 (710-B): the CPU number the line shows is HostLoad.ShownCpuPercent's own rounding, so a

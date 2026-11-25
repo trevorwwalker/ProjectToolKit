@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Globalization;
 using Scheduler.Core.Contracts;
 
@@ -10,7 +12,7 @@ namespace Scheduler.Core.Health;
 /// scheduler's state. Running the command is Host's, through <see cref="IHealthRunner"/> (270-B);
 /// Core starts and kills nothing itself, and never runs a card's gates (HLTH-7).
 /// </summary>
-public sealed class HealthCheck(SchedulerConfig config, IClock clock, ISchedulerLog log, IHealthRunner runner)
+public sealed class HealthCheck(SchedulerConfig config, IClock clock, ISchedulerLog log, IHealthRunner runner, Func<HealthLoadReading?>? loadNow = null)
 {
     /// <summary>
     /// A check of main is wanted, so the next tick starts one (HLTH-1, L2918). Nothing wants one at
@@ -48,6 +50,29 @@ public sealed class HealthCheck(SchedulerConfig config, IClock clock, IScheduler
 
     /// <summary>1100-B: whether this check's time-box warning has been logged (once per check).</summary>
     private bool _warned;
+
+    /// <summary>1308-B: the load seen while the running check runs.</summary>
+    private HealthLoadTrack _load = new();
+
+    /// <summary>1308-B: takes one reading of the load; no source = no load text (older callers), a failing one reads as not known.</summary>
+    private void Observe()
+    {
+        if (loadNow is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _load.Add(loadNow());
+        }
+        catch (Exception)
+        {
+            // a health check never fails or waits because of the load
+        }
+    }
+
+    private string LoadText => loadNow is null ? "" : _load.Text;
 
     /// <summary>HLTH-1 (L2843): every finished run wants a check of main, whatever it ended as.</summary>
     public void RunFinished() => Wanted = true;
@@ -100,7 +125,9 @@ public sealed class HealthCheck(SchedulerConfig config, IClock clock, IScheduler
         Warning = null; // 1100-B: a new check starts with nothing to warn about
         _warned = false;
         Wanted = false;
-        log.Write($"health check of main {sha} started, log {path}");
+        _load = new HealthLoadTrack();
+        Observe();
+        log.Write($"health check of main {sha} started, log {path}{LoadText}");
         return true;
     }
 
@@ -121,6 +148,7 @@ public sealed class HealthCheck(SchedulerConfig config, IClock clock, IScheduler
 
         if (runner.IsRunning())
         {
+            Observe();
             var ran = clock.Now - Started!.Value;
             WarnIfLate(ran);
 
@@ -167,6 +195,7 @@ public sealed class HealthCheck(SchedulerConfig config, IClock clock, IScheduler
         var took = Started is { } start
             ? string.Format(CultureInfo.InvariantCulture, " in {0:0} s", (clock.Now - start).TotalSeconds)
             : "";
+        Observe();
         LastSha = Sha;
         LastResult = ok ? HealthResult.Green : HealthResult.Red;
         LastWhen = clock.Now;
@@ -175,7 +204,7 @@ public sealed class HealthCheck(SchedulerConfig config, IClock clock, IScheduler
 
         if (ok)
         {
-            log.Write($"health check of main {Sha}: green{took}");
+            log.Write($"health check of main {Sha}: green{took}{LoadText}");
             if (state == SchedulerState.PausedRed)
             {
                 log.Write("main is green again: dispatching resumed");
@@ -185,7 +214,7 @@ public sealed class HealthCheck(SchedulerConfig config, IClock clock, IScheduler
             return state;
         }
 
-        log.Write($"health check of main {Sha}: RED{took}, see {LogPath}; dispatching paused");
+        log.Write($"health check of main {Sha}: RED{took}, see {LogPath}; dispatching paused{LoadText}");
         return state == SchedulerState.Running ? SchedulerState.PausedRed : state;
     }
 
@@ -207,6 +236,6 @@ public sealed class HealthCheck(SchedulerConfig config, IClock clock, IScheduler
             "still running after {0:0} min (warn at {1:0} min)",
             (int)ran.TotalMinutes,
             config.HealthWarnMinutes);
-        log.Write($"health check of main {Sha}: {Warning}");
+        log.Write($"health check of main {Sha}: {Warning}{LoadText}");
     }
 }

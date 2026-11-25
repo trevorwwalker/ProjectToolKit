@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Cards;
 using Scheduler.Core.Contracts;
 using Scheduler.Core.WebContract;
@@ -54,7 +56,6 @@ public static class PageWaiting
     public static IReadOnlyList<PageWaitingItem> Window(
         IReadOnlyList<Card> cards,
         IReadOnlyCollection<Card>? stuck = null,
-        IReadOnlyDictionary<string, string>? heldCategories = null,
         IReadOnlyCollection<RunningWorker>? running = null,
         int maxRetries = 2,
         IReadOnlyCollection<FinishedCardFlag>? finishedWithoutUpdate = null,
@@ -62,17 +63,6 @@ public static class PageWaiting
         IReadOnlyCollection<PageStuckRun>? stuckRuns = null)
     {
         var items = new List<PageWaitingItem>();
-
-        foreach (var category in (heldCategories ?? new Dictionary<string, string>(Text.Comparer)).Keys
-                 .OrderBy(k => k, Text.SortComparer))
-        {
-            items.Add(new PageWaitingItem
-            {
-                Kind = PageWaitingKind.HeldCategory,
-                Name = category,
-                Note = heldCategories![category],
-            });
-        }
 
         // Roadmap item 1: a copy that was edited in the project is never overwritten silently. It
         // waits here until the developer takes the toolkit's template (Overwrite) or keeps the

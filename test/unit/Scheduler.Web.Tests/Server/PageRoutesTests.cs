@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Net;
 using System.Text;
 using Scheduler.Core.Contracts;
@@ -80,7 +82,7 @@ public class PageRouteTests
         {
             "/pause", "/resume", "/health-now", "/drain", "/planner-toggle", "/stopall", "/tick",
             "/send?slot=1", "/answer?card=050-C.md", "/open-lanes",
-            "/open-workers", "/accept-lane?lane=C", "/open?card=050-C.md", "/resume-card?card=050-C.md",
+            "/open-workers", "/open?card=050-C.md", "/resume-card?card=050-C.md",
             "/done?card=050-C.md", "/retry?card=050-C.md",
             "/stop?slot=2", "/kill?slot=2", "/worker-types", "/agent-resume?agent=claude",
         };
@@ -114,9 +116,6 @@ public class PageRouteTests
         // sent question= and no choice, so every answer was refused as "no open question Q-1").
         await web.PostFormAsync("/answer?card=440-A&q=2&a=1");
         Assert.Equal("440-A|2|1|", web.Actions.LastAnswer);
-
-        await web.PostFormAsync("/accept-lane?lane=C");
-        Assert.Equal("C", web.Actions.LastCategory);
 
         await web.PostFormAsync("/done?card=050-C.md");
         Assert.Equal("050-C.md", web.Actions.LastCard);

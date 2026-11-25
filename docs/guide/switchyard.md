@@ -11,7 +11,7 @@ It has three pieces:
 |---|---|---|
 | The scheduler | `scheduler-next.exe` | Reads the cards from `main`, starts workers, checks that `main` still builds, moves cards, serves the page. |
 | The tray | `scheduler-tray.exe` | The Switchyard icon by the clock. Starts the scheduler, keeps it running, restarts it after a deploy. |
-| The page | `http://localhost:8766/` | Your control panel: workers, questions waiting on you, the queue, plans, health of `main`. |
+| The page | `http://localhost:8766/` | Your control panel: the plans, the workers, questions waiting on you, the queue, the health of `main`. |
 
 Back to the [guide index](README.md). For writing plans and cards with an LLM, see the
 [planner guide](planner.md). The design documents in [`docs/design/tdd/scheduler/`](../design/tdd/scheduler/) are the
@@ -33,17 +33,18 @@ source of truth for exact behaviour; this page explains how to use it. Every com
 11. [Logs and state files](#11-logs-and-state-files)
 12. [Troubleshooting](#12-troubleshooting)
 
-The examples follow a small made-up project, `MyProject` in `C:\Projects\MyProject`, with the toolkit itself in
-`C:\Projects\ProjectToolkit`.
+The examples follow a small made-up project, `MyProject` in `C:\Projects\MyProject`, with the toolkit installed in
+`%LOCALAPPDATA%\Programs\ProjectToolkit` (commands give the kit's full path, as if **Add bin to PATH** was left
+unticked). Working from a clone instead, put your clone's folder, such as `C:\Projects\ProjectToolkit`, in its place.
 
 ## 1. What you need
 
 | Need | Why |
 |---|---|
 | Windows 10 or 11 | The tray is a Windows app, and workers are started and stopped through `cmd.exe` and `taskkill`. |
-| [.NET 10 SDK](https://dotnet.microsoft.com/download) (the SDK, not just the runtime) | Deploying *builds* the scheduler with `dotnet publish`. |
+| The .NET 10 Desktop Runtime (x64); the [.NET 10 SDK](https://dotnet.microsoft.com/download) only when you build Switchyard from a clone | Switchyard runs on .NET 10; a clone's deploy *builds* it with `dotnet publish`. |
 | Git for Windows | The scheduler reads cards from `main` with git and gives every worker its own git worktree. |
-| An agent CLI | The program a worker runs. The default worker types use Claude Code (`claude`, signed in); a type can instead run another CLI against a local model server (see [section 7](#7-worker-types-and-models)). |
+| An agent CLI | The program a worker runs. A new pool's default type runs the Copilot CLI and its second type runs Claude Code (`claude`, signed in); Codex and OpenCode can be added (see [section 7](#7-worker-types-and-models)). |
 | Windows PowerShell 5.1 or PowerShell 7 | For the scripts in `bin\`. |
 
 Check them from a PowerShell prompt:
@@ -56,15 +57,19 @@ claude --version        # only if you use the Claude worker types
 
 ## 2. Building and deploying
 
-Switchyard runs from `C:\Projects\ProjectToolkit\out\windows\scheduler\`. The first time, build it there by hand:
+Installed with `ProjectToolkit-Setup.exe` (see [getting-started, Install](getting-started.md#install-with-the-installer)),
+Switchyard is already built in `%LOCALAPPDATA%\Programs\ProjectToolkit\out\windows\scheduler\`, and you update it with a
+newer installer (the tray's **Check for update...**). The rest of this section is for the second way, a clone:
+Switchyard runs from `C:\Projects\ProjectToolkit\out\windows\scheduler\`, and the first time you build it there by hand:
 
 ```powershell
 cd C:\Projects\ProjectToolkit
 dotnet publish code\src\Scheduler.Host -c Release -o out\windows\scheduler
 ```
 
-After that, update it with one script. It brings your copy of `main` up to date, builds the new version beside the
-running one, swaps it in and makes sure the tray is running:
+After that, update a clone with one script. It pulls `main` (in a clone of the published repository, `main` is the
+released code), builds the new version beside the running one, swaps it in and makes sure the tray is running; `-NoPull`
+deploys what is checked out instead:
 
 ```powershell
 cd C:\Projects\ProjectToolkit
@@ -95,31 +100,45 @@ the pull and without starting a tray (see the [scripts guide](scripts.md) for it
 Start Switchyard with the tray, for every project in the pool:
 
 ```powershell
-C:\Projects\ProjectToolkit\out\windows\scheduler\scheduler-tray.exe -Pool
+& "$env:LOCALAPPDATA\Programs\ProjectToolkit\out\windows\scheduler\scheduler-tray.exe" -Pool   # or Start menu > Switchyard; from a clone: C:\Projects\ProjectToolkit\out\windows\scheduler\scheduler-tray.exe -Pool
 ```
 
-The tray copies itself to `%LOCALAPPDATA%\ProjectToolkit\tray` and runs from there (so a deploy can replace the
-files in `out\`), starts `scheduler-next.exe`, and opens the page once it answers. If a scheduler for the same pool is
-already running, the tray attaches to it instead of starting a second one. Add `-Quiet` to start without opening the
-page.
+The tray copies itself to its own folder for this kit, `%LOCALAPPDATA%\ProjectToolkit\tray\<key>` (the key is 16 hex characters worked out from the scheduler folder, so a second kit folder has its own copy), and runs from there (so a deploy can replace the
+files in `out\`), starts `scheduler-next.exe`, and opens the page once it answers. If this kit folder's scheduler already runs the pool, the tray attaches to it instead of starting a second one. If the
+pool is run by the Switchyard of another kit folder, the tray says "This pool is run by the Switchyard in <folder>." and
+exits: use that Switchyard's icon, or exit it first. With no pool file yet it says "Switchyard has no pool to run" and
+exits. Add `-Quiet` to start without opening the page.
 
-To have it start when you log in, nothing is set up for you: make a shortcut in your Startup folder
-(`Win+R`, `shell:startup`) whose target is
+**Installed copy.** If you installed with `ProjectToolkit-Setup.exe`, the installer adds a Start menu entry,
+**Switchyard**, which starts the tray with `-Pool` in the installed folder
+(`%LOCALAPPDATA%\Programs\ProjectToolkit`). Its task page offers **Start Switchyard when I sign in**, unticked by
+default; ticking it writes a `Switchyard` entry under your user's `Run` key, and uninstalling removes that entry.
+Nothing else is started at sign-in.
+
+**From source.** Nothing is set up for you: to have the tray start when you log in, make a shortcut in your Startup
+folder (`Win+R`, `shell:startup`) whose target is
 `C:\Projects\ProjectToolkit\out\windows\scheduler\scheduler-tray.exe -Pool -Quiet`.
 
 Hover over the icon for a one-line status, for example
-`pool scheduler: MyProject running, OtherProject paused-red; 2 workers`. Right-click it for the menu:
+`Switchyard: MyProject running, OtherProject paused-red; 2 workers`. Right-click it for the menu:
 
 | Menu item | What it does |
 |---|---|
 | **Open page** (or double-click the icon) | Opens the page in your browser. |
 | **View log** | A window with the scheduler's log as it is written. Look here first when something is wrong. |
 | **Restart Switchyard** | Stops the scheduler (Ctrl+C, killed after 20 s) and starts it again. Workers keep running and are adopted. |
-| **Update and restart** | The same as `build-and-deploy.ps1` without the pull: build `main`, swap it in, roll back if it does not start. |
+| **Update and restart** | From source: the same as `build-and-deploy.ps1` without the pull: build `main`, swap it in, roll back if it does not start. In an installed copy this item reads **Check for update...** and opens the latest release's page in your browser; run the new installer there, which replaces the files and restarts Switchyard. |
 | **Exit, leave workers running** | Ends the scheduler and the tray. Running workers carry on; the next scheduler you start adopts them. |
 | **Exit (stop all)** | Asks every worker to stop cleanly (the page's **Stop all and exit**), then closes the scheduler and the tray. |
 
 If the scheduler crashes, a balloon says so; click it (or **Restart Switchyard**) to start it again.
+
+**Uninstalling** (Windows' Installed apps, or the uninstaller in the installed folder) stops the Switchyard of that
+folder, then removes the program files, the Start menu entry, the sign-in entry and the PATH entry the installer
+added, and the tray's own copy in `%LOCALAPPDATA%\ProjectToolkit\tray\<key>`. It **keeps** everything else: your pool
+file, the logs and state under `%LOCALAPPDATA%\ProjectToolkit`, and each project's own `%LOCALAPPDATA%\<project>`
+folder. It never touches a project's repository, so a reinstall finds the pool as it was. A Switchyard run from another
+folder is left running.
 
 You can also stop from the page: **Drain and exit** lets running cards finish and starts nothing new, then exits;
 **Stop all and exit** asks every worker to stop at its next safe point and exits.
@@ -188,8 +207,7 @@ There is no "paused" setting in the file: pausing is done on the page, and a res
 project to the pool file (creating the file if it is the first):
 
 ```powershell
-cd C:\Projects\ProjectToolkit
-.\bin\projecttoolkit.ps1 -Action jobs -Repo C:\Projects\MyProject -Project MyProject
+& "$env:LOCALAPPDATA\Programs\ProjectToolkit\bin\projecttoolkit.ps1" -Action jobs -Repo C:\Projects\MyProject -Project MyProject   # an existing repository; a new project: -Action new-project (getting-started 3.1)
 ```
 
 ```text
@@ -203,16 +221,21 @@ created  jobs/scheduler.json
 == scheduler pool
 created  C:\Users\you\AppData\Local\ProjectToolkit\pool.json (with the pool defaults) and added MyProject
 
+The job queue is set up in C:\Projects\MyProject (jobs/). It does not touch anything else
+in the repository; a project with no layout yet can be given one with -Action new-project.
 Next:
   1. Fill in jobs/categories.json with the planner: ...
   2. Fill in jobs/project.md (gates, locations, briefs). In jobs/scheduler.json set project (it must equal the name
      in the pool file) and health.command ...
-  3. Write the first plan in docs/ai/ and card it into jobs/queue/.
-  4. Commit and push to main. The pool joins the project at its next tick; there is no scheduler to start for it.
+  3. Have a planner write the project's plan in jobs/plans/ (from jobs/plan-template.md) from the design; the brief is docs/planner-brief.md.
+  4. Commit and push to main. Set up the worker types in the pool file and start Switchyard; the pool joins the project at its next tick.
+  5. Ask the planner to card the plan's first step into jobs/queue/.
 ```
 
-Do the four steps it lists; the [projects and job queue guide](projects.md) explains each file. Two settings in
-`jobs/scheduler.json` matter to Switchyard:
+Do the steps it lists in this order, as [getting-started](getting-started.md) does: write the design
+(`docs/design/gdd/<name>.md`), have a planner write the project's root plan in `jobs/plans/` ([planner guide](planner.md)),
+commit and push, and only then card the plan's first step. The [projects and job queue guide](projects.md) explains each
+file. Two settings in `jobs/scheduler.json` matter to Switchyard:
 
 - `project` must match the name in the pool file.
 - `health.command` is how Switchyard checks that `main` still builds. Left empty, there is no health check at all.
@@ -246,7 +269,7 @@ At the top is the **Projects** window, titled `Switchyard v<version>`. Its title
 | **Drain and exit** | Starts nothing new, lets running cards finish, then the scheduler exits. Use it before a reboot. |
 | **Stop all and exit** | Asks every worker to stop cleanly, then exits. |
 | Project list (**All projects**, then each name) | Shows only one project's rows. Appears with two or more projects. Only changes this browser's view. |
-| View list (**Workers**, **Plans**) | Switches view. The view is in the address too (`/?view=plans`), so you can bookmark it or open it on your phone. |
+| View list (**Plans**, **Workers**, **Gantt**) | Switches view. The view is in the address too (`/?view=plans`), so you can bookmark it or open it on your phone. The page opens on the view you left it at, and on Plans when there is none. |
 | Theme list | The page's look. Kept in this browser only. |
 | `last update HH:mm:ss` | When the page last heard from the scheduler. `scheduler not responding` means it has stopped answering. |
 
@@ -256,9 +279,19 @@ red, out of quota), and the reason when a click of yours failed.
 Every button shows `Working...` until its effect appears on the page. Buttons that change things work only on the
 PC the scheduler runs on, unless `remoteControl` is on in the pool file; from elsewhere the page is read-only.
 
+### Plans view
+
+`/?view=plans` shows every project's plans in `jobs/plans/` as a tree you can fold: each root plan with its steps, a
+step's child plans under it (from their `Parent:` line), and the cards under each step, each marked ✓ (done), ☐ (not
+yet) or ✗ (cancelled), with `done/total` counts. A plan links to its text and a step to its heading; a card in review
+links to its review panel, other cards to their text. Cards that match no step are under **Other cards**, and cards
+that name no plan under **No plan**. The window's **Expand all**, **Collapse all** and **Show completed** / **Hide
+completed** buttons act on the whole tree (finished items are hidden by default). Use it to answer "how far along is
+this plan?".
+
 ### Workers view
 
-The view you will use most (`/?view=workers`, the default). From top to bottom:
+The view where the action is (`/?view=workers`). From top to bottom:
 
 **The projects table.** One row per project: its colour chip and name, **Health** (`main not checked yet`,
 `checking <sha> (n min)`, or green or red with a **log** link), **Workspaces** (how many worktree slots the project may
@@ -306,6 +339,9 @@ A question looks like this on the card and is shown as one line with its buttons
   export change to the importer's format? [yes, change the export -> queue | no, leave it -> done]
 ```
 
+**Requests to the planner.** Only there when a request is open or a card waits on the planner: one row per open request
+(project, title linking to it, its For line), then the cards waiting on the planner.
+
 **Worker windows.** One window per running worker, titled with the project chip, the worker type and model, and the
 card. The bar shows how much of the card's time box is used and how fast the model is writing. Inside: what the worker
 is doing (its log as it runs), the files it holds locks on, and:
@@ -326,26 +362,22 @@ After a Stop or Kill the card stays in `active/` as `waiting: you (stopped from 
 
 **Trends.** A chart of cards finished over the chosen range, once there is history from before today.
 
-### Plans view
+### Gantt view
 
-`/?view=plans` shows every project's plans as a tree you can fold: each plan with `done/total` cards, its sections,
-and the cards under each section, marked ✓ (done), ☐ (not yet) or ✗ (cancelled). A plan links to its text; a card in
-review links to its review panel, other cards to their text. **Archived plans** are folded at the bottom, and
-**No plan** collects cards that name no plan. Use it to answer "how far along is this plan?".
-
-### Gantt view (coming)
-
-A timeline of runs per card, grouped by category or plan, is designed
-([views.md, Gantt](../design/tdd/scheduler/views.md#gantt)) and carded (1132-C), but not on the page yet. Until it
-lands, the view list shows only Workers and Plans.
+`/?view=gantt` draws a timeline of runs per card ([views.md, Gantt](../design/tdd/scheduler/views.md#gantt)). On the
+left the calendar runs across the top, zoomed by the **time range** drop-down in the title bar, with a line for now;
+below it come the rows, one block per project, always grouped by plan (project, plan, step, card; cards with no plan under Bugs and Requests), and
+folding like the Plans tree. A run is a bar; what a card is still expected to take, or is waiting on, is drawn
+hatched with a dashed outline. Click a card or a group and its details appear on the right. The range is part
+of the address, so a chart can be bookmarked (an old `group=` in an address is ignored). A project with no runs in the range says so.
 
 ### The review panel
 
 Clicking a review card's link (in the Plans view, for example) opens `/review?project=<name>&id=<card>`: the card's status with **Done**, **Send back** and a note
 box, its **Questions** with answer buttons, the **Commits** it made (with files and lines changed), the **Health of
 main**, its **Result**, and links to the files the Result names. This is where you check a worker's claim before you
-accept it. In a pool its own buttons do not work yet (see [Troubleshooting](#12-troubleshooting)); use the card's row
-under Waiting on you to act on it.
+accept it. In a pool its own buttons work too: the note form carries the project, so Done and Send back reach the
+right one.
 
 ### Following one card
 
@@ -358,8 +390,9 @@ What you see on the page is cards moving between folders on `main`. Say the plan
 Category: A
 Status: ready
 Depends on: none
+Locks: none
 Time box: 60 min
-Plan: jobs/plans/export_plan.md, section 2
+Plan: jobs/plans/export_plan.md, step 2
 
 ## Task
 
@@ -368,6 +401,10 @@ Make the CSV export write dates as 2026-11-22 instead of 11/22/2026, with a test
 ## Done when
 
 The export test passes and the gates are green.
+
+## Stop and ask if
+
+The importer's format turns out to be wrong.
 
 ## Questions
 
@@ -508,9 +545,8 @@ its scope parks the card and asks you. Design: [dynamic-locks.md](../design/tdd/
 
 ## 10. The planner outbox
 
-The planner (an LLM you plan with) writes plans and cards. If it can push to your repository's `main` itself, you do
-not need the outbox. If it cannot (for example it runs in a sandbox that can write files on your PC but not reach your
-git server), it leaves its changes in an **outbox** folder and Switchyard commits them for it.
+The planner (an LLM you plan with) writes plans and cards. The planner never pushes: it leaves its card and plan
+changes in an **outbox** folder and Switchyard commits them for it.
 
 Set it up in the project's `jobs/scheduler.json`:
 
@@ -596,10 +632,6 @@ while Switchyard runs; their cards look abandoned to it.
 
 **A worker is stuck.** Its window shows `quiet q min` when it has printed nothing for a while. Send it a message; if
 it does not answer, **Stop** it (it saves its work and the card waits for your **Resume**), and only if that fails, **Kill**.
-
-**The review panel's buttons fail with "which project?"** In a pool, the review panel's own **Done** and **Send back**
-do not yet say which project they are for (a known gap). Use the same buttons on the card's row under
-**Waiting on you**.
 
 **A deploy rolled back.** `the new scheduler <version> did not stay up for 30 s; putting the old build back`: the
 new build fails at start. The old one is running again. **View log** shows why; fix and deploy again.

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Tray.Tests.Fakes;
 
 namespace Scheduler.Tray.Tests;
@@ -24,7 +26,7 @@ public class SchedulerUpdaterTests
         _fs.WithFile(At(_layout.Current, "scheduler-next.exe"), "old exe")
             .WithFile(At(_layout.Current, "Scheduler.Host.dll"), "old host")
             .WithFile(At(_layout.Current, "scheduler-tray.exe"), "old tray")
-            .WithFile(At(_layout.KitRoot, @"code\src\Scheduler.Host.csproj"), "<Project/>");
+            .WithFile(_layout.HostProjectFile, "<Project/>");
         _versions.ByFolder["scheduler"] = "3.0.7";
         _versions.ByFolder["scheduler.next"] = "3.0.8";
         _publish = new FakePublishTool(_fs);
@@ -151,11 +153,27 @@ public class SchedulerUpdaterTests
     [Fact]
     public async Task Without_a_project_to_publish_the_scheduler_is_left_alone()
     {
-        _fs.Delete(At(_layout.KitRoot, @"code\src\Scheduler.Host.csproj"));
+        _fs.Delete(_layout.HostProjectFile);
 
         var outcome = await _updater.UpdateAsync(_layout, _control, [], usePublished: false, CancellationToken.None);
 
         Assert.Equal(UpdateResult.Failed, outcome.Result);
+        Assert.Equal(0, _publish.Runs);
+        Assert.Equal(0, _control.StopCount);
+    }
+
+    // 1263-B: a project file at the old wrong path (<kit>\code\src\Scheduler.Host.csproj) is not a project
+    // to publish; the deploy still says so rather than publishing a folder with no project in it.
+    [Fact]
+    public async Task Update_ProjectFileOnlyAtTheOldWrongPath_Fails()
+    {
+        _fs.Delete(_layout.HostProjectFile);
+        _fs.WithFile(At(_layout.KitRoot, @"code\src\Scheduler.Host.csproj"), "<Project/>");
+
+        var outcome = await _updater.UpdateAsync(_layout, _control, [], usePublished: false, CancellationToken.None);
+
+        Assert.Equal(UpdateResult.Failed, outcome.Result);
+        Assert.Contains("there is no project to publish", outcome.Message, StringComparison.Ordinal);
         Assert.Equal(0, _publish.Runs);
         Assert.Equal(0, _control.StopCount);
     }

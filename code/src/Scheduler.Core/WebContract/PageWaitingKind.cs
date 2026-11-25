@@ -1,11 +1,10 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Core.WebContract;
 
 /// <summary>What a Waiting on you entry is (PAGE-5).</summary>
 public enum PageWaitingKind
 {
-    /// <summary>A category held until the developer accepts a change.</summary>
-    HeldCategory,
-
     /// <summary>A card that is stuck.</summary>
     Stuck,
 

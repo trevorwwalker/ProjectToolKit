@@ -1,6 +1,6 @@
 # scheduler-next: behaviour spec
 
-Step 1 of the C# (.NET 10) rewrite in `docs/design/gdd/scheduler-roadmap.md` item 1: the current rules written down as test cases
+Step 1 of the C# (.NET 10) rewrite in `jobs/plans/scheduler-roadmap_plan.md` item 1: the current rules written down as test cases
 before porting. Source: `C:\Projects\ProjectToolkit\scheduler\schedule.ps1` v2.3.16 (4,318 lines,
 last changed 2026-11-17), `planner-outbox.md`, `theme.default.json`, `themes/`, `start-scheduler.cmd`.
 Citations are `Function` (Lnnn) in schedule.ps1.
@@ -78,6 +78,10 @@ Order of a tick (`Tick` L2795): sample host, sample model servers, reap health c
 - **DISP-6** A low-priority orphan waits behind a queued card whose scope overlaps its own (560-A; was: of the same category) with a lower Prio number, Status `^ready` and all dependencies finished; note "orphan; waits behind higher-priority <id>". (L2885-2888)
 - **DISP-7** An orphan with retries >= maxRetries is **stuck**: not resumed, does not hold its category, listed under Waiting on you with Retry; note "stuck: <n> runs ended without a result: needs you", n being the card's real run count (`DispatchPlanner.StuckNote`, one wording for DISP-7 and DISP-11; card 940-A, was maxRetries+1). The card is shown under Waiting on you with its last result and its log. (L2889-2896)
 - **DISP-8** Otherwise the orphan is a candidate (Resume) and takes its category for this tick. (L2897-2898)
+  An orphan is never a card whose run this scheduler has just ended (1309-B): after a run ends, the tick does not plan
+  until a card read succeeds that is no older than the end (a fetch that started after it has completed). The read waits
+  for that fetch at most one fetch interval, never for one from before the end, and a click's read never fetches; a read
+  that times out or fails keeps the cards and skips the plan, and the late fetch wakes a tick.
 - **DISP-9** Queued candidates: cards in queue/ sorted by Prio, Num, Category; stale duplicates skipped. (L2901-2902)
 - **DISP-10** Status not starting `ready` -> not a candidate; note is the Status. (L2903)
 - **DISP-11** Queued card with retries >= maxRetries -> stuck, with the DISP-7 note "stuck: <n> runs ended without a result: needs you" (was "<n> runs failed to start"). Every run that ends without a result counts against a queued card (TIME-17), so a card that crashes, ends early, hits its time limit or stalls is dispatched maxRetries times and then stuck, not retried without limit (closes Part C flag 2). (L2904-2908)
@@ -103,7 +107,7 @@ Order of a tick (`Tick` L2795): sample host, sample model servers, reap health c
 
 ## A5. Workers, slots and starting a card
 
-- **WRK-1** *Replaced by card 850-D.* workers.json on main holds the `pool` section: WT-C1 to WT-C9; re-applied only when its text changes; invalid JSON logged and previous kept (WT-C6). Without `pool`, the old form (`slots`, `workers.<n>.{name, agent, endpoint, model, metricsUrl, categories, premium}`, categories upper-cased) is read and migrated in memory by WT-C10. (`Apply-Workers` L2557)
+- **WRK-1** *Replaced by card 850-D.* workers.json on main holds the `pool` section: WT-C1 to WT-C9; re-applied only when its text changes; invalid JSON logged and previous kept (WT-C6). Without `pool`, the old form (`slots`, `workers.<n>.{name, agent, endpoint, model, metricsUrl, categories, premium}`, categories upper-cased) is read and migrated in memory by WT-C10; the old `premium` key is read only to choose the migrated `defaultWorker` (WT-C3a) - it is no longer a setting (1146-A). (`Apply-Workers` L2557)
 - **WRK-2** *Replaced by card 850-D.* `maxWorkers` (WT-C1, with `-Slots` pinning it, CFG-8) is the total; WT-1 and WT-2 stop new starts above it or a cap, and nothing running is stopped when it is lowered. (Was `slots`, never below the highest running slot, L2567-2574.)
 - **WRK-3** *Replaced by card 850-D.* A type's cap `max` (0 = off) in workers.json is what Disable was; workers-state.json is read only for the migration (WT-C10) and not at all after the first Save (WT-C11). (Was local enabled/disabled per slot, L2675-2692, L3971.)
 - **WRK-4** `Effective-Worker`: an agent with format `claude`, or an endpoint key set to "", uses its own service (no endpoint, no metrics). Endpoint: worker's, else none for own-service, else the agent's, else config's. Model: worker's, else agent's, else config's. Metrics: worker's, else derived from worker endpoint (`scheme://authority/metrics`), else none for own service, else derived from agent endpoint, else config metricsUrl, else derived from config endpoint. (L2695)
@@ -155,7 +159,7 @@ Order of a tick (`Tick` L2795): sample host, sample model servers, reap health c
 - **HLTH-8** A new check ends the one before it: `Start` ends the whole process tree of the check this scheduler started, waits for it to go, and only then builds, so two checks never run in the health workspace. The running check's pid, job name, start, sha and log are kept in `<logDir>\health-running.json` and removed when the check is killed or superseded. health.cmd sets `MSBUILDDISABLENODEREUSE=1` and `DOTNET_CLI_DISABLE_BUILD_SERVERS=1` so no build node outlives it. (920-B)
 - **HLTH-9** On start the scheduler ends the tree of a check left running by the previous scheduler (the pid in `health-running.json`) and never adopts it. This includes the tray's Restart: the new scheduler ends the old check rather than waiting for it (developer's choice, 920-B Q2, 2026-11-19). (920-B)
 - **HLTH-10** A check that exits non-zero and whose log's only errors are MSB3026/MSB3027 (file locks) is retried once, after ending the locking process tree, into the same log. If it fails the same way again the log says `health check of main <sha> could not run (files locked by <name>); not reported as red` and the result is "could not run": not green, not red, state unchanged, dispatching not paused. A log with any other error keeps its real verdict and is not retried. A scheduler already `paused-red` keeps that state. (920-B)
-- **HLTH-11** A check still running `limits.healthWarnMinutes` (default 5; 0 = never) after its start is warned about once: the log says `health check of main <sha>: still running after <n> min (warn at <m> min)` and the page's health line carries `still running after <n> min (warn at <m> min)` while that check runs. It never stops or fails the check — only HLTH-4 does that. Every finished check's result line carries the seconds it ran, `in <n> s` (1100-B, from 1079-B: how long a check takes depends on the machine's load, so the duration, not a rate, is what the developer sees).
+- **HLTH-11** A check still running `limits.healthWarnMinutes` (default 5; 0 = never) after its start is warned about once: the log says `health check of main <sha>: still running after <n> min (warn at <m> min)` and the page's health line carries `still running after <n> min (warn at <m> min)` while that check runs. It never stops or fails the check — only HLTH-4 does that. Every finished check's result line carries the seconds it ran, `in <n> s` (1100-B, from 1079-B: how long a check takes depends on the machine's load, so the duration, not a rate, is what the developer sees). Every health line that reports a check of main (started, still running, green, RED) also ends with the load while it ran, `; load: CPU <n> %, <x> GB free, <k> workers` - the highest CPU, the lowest free memory and the most workers at once, sampled at the start, at every tick and at the end - or `; load: not known` when it cannot be read (1308-B).
 
 ## A8. Accounting and statistics
 
@@ -258,18 +262,20 @@ that built it, it says so: that is current behaviour, not a decision.
   repository checkout (`/repo-file`), so a file pushed to main shows only after that checkout has it.
 - **REV-4** Done and Send back sit beside the panel (MOVE-6, MOVE-7). Send back has a note box, but
   `/resume-card` takes no note, so the note is not stored. **Open point, not decided: see B3 Q15.**
-- **REV-5** There are no Host tests for the commit list (650-C could not change `Scheduler.Host.Tests`).
+- **REV-5** The commit list has Host tests (`PageActions/ReviewCommitsTests.cs`, card 730-B).
 
 ### Trends (card 630-A, roadmap item 3): assumptions of the card
 
 - **TREND-1** The Control window can show a chart of the last 14 days: per local day and model, the cards
-  finished (done or review, each card once per day and model; bars) and the runs (a thin line on a scale of
-  its own, with no label beside it: no "runs" key and no "up to n"; card 941-C). Runs excluded by ACCT-6 stay excluded.
+  finished (done or review, each card once per day and model; bars) and the runs (a thin line). The bars and
+  the line share one axis, whose top (`axisTop` in `Scheduler.Web/Views/TrendChart.cs`) is the larger of the
+  most cards and the most runs any day reached, and the line has its own legend chip, "runs" (card 1052-C). A
+  run with no model is labelled "other" in the legend. Runs excluded by ACCT-6 stay excluded.
 - **TREND-2** The chart is hidden unless two or more local days carry counted runs (`Trends.HasTrend`), so a
   scheduler with less than a day of data shows none.
 - **TREND-3** The 14 days are read from accounting.csv itself (`Trends.RunsFromRows`, cached by the file's
   last write), because the loaded figures reach only 48 h back (ACCT-4); if the file cannot be read, the
-  loaded figures are used. The proper home for the read is Host's `State/AccountingCsv` (open).
+  loaded figures are used. The read lives in Host's `State/AccountingCsv` (`TrendRuns`, card 770-B).
 
 ### Time limits from history (card 640-A, roadmap item 4): assumptions of the card
 
@@ -299,10 +305,16 @@ that built it, it says so: that is current behaviour, not a decision.
   not during it; a message sent after the worker's last tool call stays in the file.
 - **HOOK-3** Only Claude has hooks (`MessageHook.Delivers`); Copilot and text workers keep the prompt's
   file check (developer, 570-B Q1). The prompt for a hooked agent differs from the fallback one.
-- **HOOK-4** *Not yet wired* (request #002, `jobs/requests/002-message-hook-wiring.md`, card 700-B):
-  `TickHost.StartWorker` must set `Hooks = MessageHook.Delivers(agent.Format)` in the prompt request, so
-  until then Claude workers get the fallback prompt; and the worker window's "read at HH:mm:ss" needs a
-  `PageSlotView.MessageReadAt` field. "Message waiting" already shows while the file exists (WRK-14).
+- **HOOK-4** Wired (card 700-B): the worker's prompt request carries `Hooks = MessageHook.Delivers(agent.Format)`,
+  and the worker window shows "read at HH:mm:ss" from `PageSlotView.MessageReadAt`. "Message waiting" shows while
+  the file exists (WRK-14). Assumptions: (a) "read at" is the last-write time of `msg-slotN.read.txt`, which only
+  the hook re-stamps (`MessageDelivery.Run`); a worker that moves the file itself (the Copilot and text path,
+  which keeps the file check) leaves the developer's write time, so the page then says when the message was
+  written. (b) It is shown for a running worker only, as `MessagePending` is: the slot's files are deleted when
+  its worker starts (WRK-6), so it names the current run. (c) `MessageHook.Delivers` is Claude only, so only a
+  Claude worker's prompt loses the "check the message file" steps (developer, 2026-11-19). (d) The live
+  per-slot update (`HostPageSnapshot.Live`) carries only the stats line, so the read time appears when the page
+  is redrawn, not in the live patch.
 
 ### Tray (cards 550-B and 670-B, roadmap item 8)
 
@@ -317,17 +329,42 @@ that built it, it says so: that is current behaviour, not a decision.
   `/live.json`, or the last console line when the page does not answer.
 - **TRAY-4** **Exit (stop all)** POSTs `/stopall` and waits for the scheduler to end, however long its
   workers take; only if the page refuses or does not answer does it kill the scheduler process.
-- **TRAY-5** **Restart scheduler** ends only the scheduler process (a console Ctrl+C event to it; a kill
-  of that one process only if the event did not end it; never its job object), so its workers carry on
+- **TRAY-5** **Restart scheduler** ends only the scheduler process (it sets the named event the tray handed
+  the scheduler as `-ShutdownEvent:<name>` (TRAY-8); a console Ctrl+C is only the fallback for a scheduler
+  that does not hear it, and a kill of that one process only if neither ended it; never its job object), so its workers carry on
   and are adopted (ADOPT-2); then it starts the scheduler again from the same folder with the same
   arguments. The log window keeps its lines and marks the restart.
 - **TRAY-6** **Exit, leave workers running** ends the scheduler process the same way and then the tray;
   the next start adopts the workers.
 - **TRAY-7** If the scheduler ends by itself, a balloon shows its last line and Restart is offered.
-- **TRAY-8** *Open point (670-B Q1, developer, 2026-11-19):* on a desktop, Restart scheduler closed the
-  scheduler and did not start it again, and the workers were killed rather than adopted. TRAY-5 is the
-  intended behaviour; card 670-B is back in active to fix the shutdown path. A Windows security dialog also
-  has to be answered (not yet explained).
+- **TRAY-8** Fixed (card 670-B, after the developer's desktop check of 2026-11-19, where Restart closed the
+  scheduler and did not start it again, and the workers were killed). The tray had borrowed the scheduler's
+  console to send Ctrl+C, which could end the tray too, and a worker (`cmd /c` with no console of its own)
+  shares that console, so the event killed a busy worker. The stop path now uses a named manual-reset event
+  the tray owns and hands the scheduler as `-ShutdownEvent:<name>` (`Host/Program/ShutdownSwitch.cs`); the
+  scheduler's loop ends on it the way PAGE-12 ends (listener stopped, status file written, mutex released),
+  reaching no other process. Restart starts the new scheduler whatever happened to the old one, and logs it
+  when the old one is still there. The Windows security dialog is not the tray's: with `"listen": "lan"`
+  (CFG-17) the page binds every address, and Windows asks about a newly built exe.
+- **TRAY-9** **Update and restart** (card 967-B, `SchedulerUpdater`): it publishes the working tree of the
+  kit as it stands, with no `git pull` first, into `out\windows\scheduler.next`, leaving the running
+  scheduler alone; ends the scheduler as TRAY-5 does (the workers keep running and the new one adopts them);
+  then swaps the folders entry by entry, not by renaming the folder, the old build ending in
+  `scheduler.prev`. Because it moves entries, a tray running from `out\windows\scheduler` can update itself:
+  its own `scheduler-tray.*` and `Scheduler.Tray.dll` are left in place, and the new build's copies of those
+  are dropped with `scheduler.next` (they catch up on a later deploy, once the tray runs from its copy in
+  `%LOCALAPPDATA%\ProjectToolkit	ray`). The new scheduler is started from the same path (so BUILD-3's
+  firewall rule still matches) with `-Replaces:<version>`. If it does not write its start line within 30 s
+  (`StartWindow`), the swap is reversed, the old build started again, and the log window says so; a build
+  that starts and then misbehaves is left running, with the old one in `scheduler.prev` to put back by hand.
+- **TRAY-10** **Attach** (975-B, 1013-B, 1264-B): a tray started while a scheduler runs for its repository, or a
+  pool runs from its pool file (the shutdown event `RepoShutdown.Name(<repository or pool file>)` exists),
+  attaches to it instead of starting a second one, and its Restart, Exit and Exit (stop all) end it through that
+  event, but only when a `scheduler-next.exe` of the tray's own kit folder (the folder of the scheduler it runs) is
+  running: with none, `AttachedScheduler.TryAttach` makes no attach, so a tray can never set the event or kill the
+  process of another folder's scheduler. When one runs from another folder and none from its own, the tray says
+  so in one message box before it copies itself or starts anything, and exits (INS-22). Folders are compared
+  ignoring case and a trailing slash.
 
 ### Build and output layout (card 600-B)
 
@@ -340,8 +377,8 @@ that built it, it says so: that is current behaviour, not a decision.
   output path, so it follows the layout.
 - **BUILD-3** *Assumption:* the page's firewall rule and any testhost rules are bound to the exe path, so
   they must be added again for `out\windows\scheduler\scheduler-next.exe`.
-- **BUILD-4** *Open:* the kit's `bin\projecttoolkit.ps1` still tells a new project to start with
-  `dotnet run --project ...\Scheduler.Host`; that works but makes no published folder.
+- **BUILD-4** The kit's `bin\projecttoolkit.ps1` tells a new project to publish and start the tray
+  (`Write-SchedulerStart`, card 740-B), no longer `dotnet run`.
 
 ### Live feed (card 610-C)
 
@@ -470,7 +507,8 @@ retries (310-A Q4), and the meaning of a `Worker:` line (310-A Q3; a slot number
     T's agent (WT-C9).
 - **WT-C3a** `defaultWorker` (1146-A): the type that takes a card with no `Worker:` line. Missing -> the first type whose old
   `premium` was not true, else the first type; a name that is no type -> logged, same fallback. Save writes it and never
-  `premium`; renaming the default type renames it; a Save whose default names no row is refused.
+  `premium`; renaming the default type renames it; a Save whose default names no row is refused. `premium` there
+  is only the key of an old file (1146-A): it sets nothing and decides nothing but this fallback.
 - **WT-4 Usable now.** A type that fits is usable now when WT-2 allows one more, its agent is not
   out of quota (WT-9) and its model server answers (`Server-Up`, ACCT-8, cached 20 s; no endpoint =
   up).
@@ -570,7 +608,7 @@ retries (310-A Q4), and the meaning of a `Worker:` line (310-A Q3; a slot number
     the save, so a restart adopts it likewise).
   - **Removal**: a type left out of the list is refused, with nothing committed, when open cards name it
     (the notice names the cards) or when one of its workers is still running (the notice names the type
-    and each slot with its card: "type Sonnet has slot 2 (952-B-premium) running: stop it or keep the
+    and each slot with its card: "type Sonnet has slot 2 (952-B-gaps) running: stop it or keep the
     type"). A type no card names and with nothing running is removed.
   - **Cap 0 is "off"**: always allowed, even with workers running (they finish; no new one starts).
   - **A cap-only change** (no rename, add or removal) touches only workers.json: no card is rewritten.
@@ -792,7 +830,7 @@ The projects' plans (DISP-1 to DISP-14, DISP-22 to DISP-24), WT-1 to WT-14 and W
 - **MP-17 Quota.** An out-of-quota result marks the run's agent name out of quota (WT-9); every type with that agent stops starting, in every project. Resume (per agent, or Resume all) clears it for the pool.
 - **MP-18 Retries and time limits** are each project's own: its maxRetries, maxMinutes, stallMinutes, warnMinutes and grace minutes apply to its cards; the time limit from history reads that project's accounting.csv.
 - **MP-19 Threads.** Threads per worker = max(1, floor(cores / pool `maxWorkers`)) (MP-3, WT-11), given in the worker's project's `jobsEnvVar` and `{jobs}`. Each project's health check uses the same figure.
-- **MP-20 Scopes across projects.** Two projects' cards are checked against each other only when their repositories are the same (DISP-24); in a pool of separate repositories no card waits for another project's scope.
+- **MP-20 Scopes across projects.** Two projects' cards are checked against each other only when their repositories are the same (DISP-24); in a pool of separate repositories no card waits for another project's scope. **A pool never has two projects on one repository** (developer, 2026-11-23, request #028; card 1209-B): when the pool file names a repository an earlier project already uses (compared as full paths, case-insensitive, `.`/`..` and trailing separators resolved), the later project is left out with "pool: <name> left out: its repository <path> is already used by <first>"; the first keeps running.
 - **MP-21 Queue notes.** WT-12's notes, per project; "next up; no worker type serves project <P>" when no type's `projects` names it; "next up; <P> is above its share (<used>% of <weight>%)" for a project that offered but lost on shares.
 - **MP-22 Dry run.** `-DryRun` logs "DRY RUN <project> <type> in slot <n> <- <card>" and starts nothing (WT-14 with the project).
 

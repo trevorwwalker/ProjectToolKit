@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Core.WebContract;
 
@@ -34,7 +36,6 @@ internal sealed class FakePageActions : IPageActions
     public string? LastAnswer { get; set; }
 
     /// <summary>The last category /accept-category carried.</summary>
-    public string? LastCategory { get; set; }
 
     /// <summary>The last template action as <c>project|file</c>, from /template-overwrite or /template-keep (580-A).</summary>
     public string? LastTemplate { get; set; }
@@ -151,8 +152,6 @@ internal sealed class FakePageActions : IPageActions
     public ActionResult OpenCategories() => Run("/open-lanes");
 
     public ActionResult OpenWorkers() => Run("/open-workers");
-
-    public ActionResult AcceptCategory(string category) => Run("/accept-lane", () => LastCategory = category);
 
     public ActionResult TemplateOverwrite(string project, string file) => Run("/template-overwrite", () => LastTemplate = $"{project}|{file}");
 

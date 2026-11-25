@@ -1,7 +1,7 @@
 # Card moves written by the scheduler (roadmap item 2, card 660-B)
 
 Part of the scheduler spec (`spec.md`, section A13). Moved here from `Scheduler.Core/Moves/` by card
-720-D. Rules are CM-1 to CM-22; their tests are in `test-plans/claims-and-moves.md`. This adds to
+720-D. Rules are CM-1 to CM-24; their tests are in `test-plans/claims-and-moves.md`. This adds to
 MOVE-1 to MOVE-11, which still govern the page's own actions. It records the code as of card 660-B.
 
 ## Why
@@ -58,10 +58,62 @@ slot), each on the main the previous one left. They are applied:
    `active/` and it never claims;
 2. **CM-10** when a worker has ended, before its result is judged, so the finish the worker asked
    for is on main when the scheduler checks the card;
-3. **CM-11** on every tick, beside the planner step, for anything left.
+3. **CM-11** on every tick, beside the planner step, for anything left, except the move requests of a
+   card whose worker is still running (CM-12).
 
 **CM-12** The worker never waits for an answer: a finish request is its last act, and the scheduler
-applies it within the same tick the session ends in.
+applies it within the same tick the session ends in. Card 1237-B: a request (not a claim) of a card whose
+worker is still running, or starting, waits in the folder until that run ends, and is applied in the
+finish of that run (CM-10); requests of other cards pass it. Before 1237-B the planner step (CM-11) applied
+any waiting request within seconds, so 1228-B was moved to `done/` and its scope released while its worker
+was still pushing; the push was then refused and the code stayed on `wip/1228-B`. The tick hands the move
+step the running cards on its own thread (`CardRequestStep.Running`); tests `..._CM12` in
+`CardRequestStepSettleTests`.
+
+**CM-23 Work not on main is not settled** (cards 1237-B, 1300-B). When a run ends with a waiting `To: done` or
+`To: review` request for its card, the scheduler counts the commits made since the run started that main
+does not have, on the slot worktree's HEAD or on a `wip/<card>` branch (`wip/<n>-<L>` or `wip/<n>-<L>-*`, on the
+remote or local). If there are any, the request is sent back before it is applied: `To: queue` with
+`Status: waiting: planner (finished, but its work is not on main: <where>)`, where `<where>` names the card's
+wip branches on the remote, or says `only in the worktree slot<N>` when there is none, and a line is added to the
+card's Result: `scheduler: the worker's finish asked for <done|review>/, but its work is not on main: <where>; it
+waits on the planner (CM-23).` The card is listed under the cards waiting on the planner in the page's Requests to
+the planner window and no worker takes it; the scheduler's log says which folder was asked for, in one line. (Card
+1300-B replaced the earlier outcome, a park as `needs-human` in `active/`: in the developer's words, "cards that
+haven't pushed to main can't be "done". Done implies the work was completed. I think a task that leaves its work
+sitting in an incomplete state should be in a request state for planner to evaluate".) A card
+whose run's commits are all on main, or that made none, is settled as before; so is one git cannot judge
+(the slot folder is gone, git fails), with a log line. Only commits made since the run started count here; a
+wip branch left from an earlier session is CM-24's.
+Cost: no git on a tick without a finishing card, none for a finish that asks for `active` or `queue`; one
+`git rev-list --count` in the slot worktree per finished card that asks for done or review, and a second
+(`git for-each-ref`, to name the branch) only when commits are found. No fetch: the slot worktrees share the
+repository's refs, so `origin/main` there is the newest main any worker pushed or the scheduler fetched.
+Code: `Moves/UnpushedWork.cs`, `CardRequestStep.NotSettled`, `TickHost.CheckSettled`; tests `..._CM23` in
+`CardRequestStepSettleTests`.
+
+**CM-24 No card reaches done with its work off main, wherever the move comes from** (card 1300-B). A change
+that moves a card into `done/` through the answers worktree - an answer from the page whose choice ends
+`-> done`, the page's Done on a review card, or a move request (one CM-23 did not hold, as when the work is on a
+wip branch from an earlier session) - is held while a `wip/<n>-<L>` or `wip/<n>-<L>-*` branch of the card, remote
+or local, holds work `origin/main` lacks. The card goes to `queue/` instead with
+`Status: waiting: planner (finished, but its work is not on main: <branches>)`; the change's other edits stay (an
+answer is still written after its question), a line is added to the card's Result:
+`scheduler: <an answer from the page | the Done button | a move request> asked for done/, but its work is not on
+main: <branches>; it waits on the planner (CM-24).`, the commit is `jobs: wait <card> (...)`, and the log says
+the same in one line. A branch "holds work main lacks" when it has commits main does not (one `git rev-list
+--count` over the card's wip refs) and, of those branches (one `git for-each-ref`), the files it changed differ
+from main as the wip cleanup judges them (1049-B), so a branch whose work reached main rebased or cherry-picked
+does not hold the card; one git cannot compare counts as holding it. Git is asked only for a change that moves a
+card into `done/`; when it cannot answer at all, the change is applied as asked, with a log line. A planner batch
+that moves a card into `done/` is the planner's evaluation and is applied as it is; when the card still has work
+not on main the log says `planner: <card> moved to done with work not on main: <branch>` (and the wip cleanup
+keeps the branch and notes it in the Result, as before). Nothing changes for a card with no such work, for a park
+(`needs-human` in `active/`), for `To: queue` or `To: active`, or for a wip branch whose work is all on main. A card
+whose wip branch can never be landed (it conflicts with main) waits on the planner too; that is the point.
+Code: `AnswersCommitter.Hold` (in every card update), `UnpushedWork.Wip`, the page's `CommitCard` (takes the edit as
+committed, so the page shows the card in queue/); tests `..._CM24` in `AnswersCommitterUnlandedTests` and
+`CardRequestStepSettleTests`.
 
 ## Conflicts and failures
 

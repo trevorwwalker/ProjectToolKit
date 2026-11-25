@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 
 namespace Scheduler.Core.WebContract;
@@ -21,6 +23,9 @@ public sealed record PoolPageSnapshot
     /// <summary>The projects in the pool file's order (MP-C2).</summary>
     public IReadOnlyList<PoolProjectView> Projects { get; init; } = [];
 
+    /// <summary>1198-B: the projects left out of the pool, with why (MP-H1), in name order; shown in the Projects window.</summary>
+    public IReadOnlyList<PoolLeftOutView> LeftOut { get; init; } = [];
+
     /// <summary>The worker types in the pool file's order (MP-C4).</summary>
     public IReadOnlyList<PoolTypeView> Types { get; init; } = [];
 
@@ -38,6 +43,16 @@ public sealed record PoolPageSnapshot
     /// adds them. Never part of the page version: <see cref="ProjectViews.VersionOf"/> is its own.
     /// </summary>
     public IReadOnlyList<ProjectViews> Views { get; init; } = [];
+}
+
+/// <summary>1198-B: a project left out of the pool and the reason (for example its own scheduler is running).</summary>
+public sealed record PoolLeftOutView
+{
+    /// <summary>The project's name.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>Why it is not in the pool.</summary>
+    public string Why { get; init; } = "";
 }
 
 /// <summary>One project in the Projects window (MP-P4).</summary>

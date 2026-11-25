@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Reflection;
 
 namespace Scheduler.Core;
@@ -26,6 +28,8 @@ public static class CoreInfo
         }
 
         var v = typeof(CoreInfo).Assembly.GetName().Version;
-        return v is null ? "0.0.0" : $"{v.Major}.{v.Minor}.{v.Revision}";
+        // A three-part <Version> lands in the assembly's four-part version as
+        // Major.Minor.Build.Revision, so the Rev the build carries is Build, not Revision (950-C a).
+        return v is null ? "0.0.0" : $"{v.Major}.{v.Minor}.{v.Build}";
     }
 }

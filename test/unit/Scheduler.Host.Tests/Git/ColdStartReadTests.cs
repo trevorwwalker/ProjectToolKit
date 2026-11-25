@@ -1,4 +1,5 @@
-using System.Diagnostics;
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text;
 using Scheduler.Core.Contracts;
 using Scheduler.Host.Git;
@@ -14,7 +15,7 @@ public class ColdStartReadTests
     private const string Jobs = "jobs";
 
     [Fact]
-    public void Requests_ColdStart_150Files_OneBlobProcess_AndQuick()
+    public void Requests_ColdStart_150Files_OneBlobProcess()
     {
         using var fx = new GitFixture();
         var files = new Dictionary<string, string?>();
@@ -28,27 +29,15 @@ public class ColdStartReadTests
         var runner = new GitRunner();
         var main = fx.Main(runner);
         Assert.True(main.Fetch());
-        // The limit is load-adaptive: the PC is shared, so it is measured against what three single git
-        // processes cost right now. One process per request (the old read) would cost fifty times that.
-        var single = Stopwatch.StartNew();
-        for (var i = 0; i < 3; i++)
-        {
-            _ = main.HeadSha();
-        }
-
-        single.Stop();
-        var limit = TimeSpan.FromSeconds(5) + (single.Elapsed * 10);
         var before = runner.Started;
-        var clock = Stopwatch.StartNew();
 
         var requests = new RequestReader(main, Jobs).Read();
 
-        clock.Stop();
         Assert.Equal(150, requests.Count);
         Assert.Equal("Request 150", requests[^1].Title);
         Assert.Equal(75, requests.Count(r => r.Open));
+        // The count is the proof of one batch; a time limit here only failed under load (1275-B).
         Assert.Equal(3, runner.Started - before);   // rev-parse, ls-tree, one cat-file --batch
-        Assert.True(clock.Elapsed < limit, $"the cold read took {clock.Elapsed}, over {limit}");
     }
 
     [Fact]

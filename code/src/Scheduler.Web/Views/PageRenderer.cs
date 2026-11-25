@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text;
 using Scheduler.Core.Accounting;
 using Scheduler.Core.Contracts;
@@ -26,11 +28,14 @@ public sealed class PageRenderer(
     PageThemes? themes = null,
     PageNotice? notice = null,
     Func<int>? maxWorkers = null,
-    Func<IReadOnlyList<string>>? agents = null) : IPageRenderer
+    Func<IReadOnlyList<string>>? agents = null,
+    Func<PageThemes>? themesOf = null) : IPageRenderer
 {
     private const string RemoteReason = "(Only on the PC running the scheduler.)";
 
-    private PageThemes Themes { get; } = themes ?? PageThemes.BuiltIn;
+    // 1198-B: a pool reloads its themes after every project joined, so the pool passes themesOf and the
+    // page reads them at each render; themes is the value fixed at construction.
+    private PageThemes Themes => themesOf?.Invoke() ?? themes ?? PageThemes.BuiltIn;
 
     private Func<int>? MaxWorkers { get; } = maxWorkers;
 
@@ -259,7 +264,6 @@ public sealed class PageRenderer(
         {
             var (word, tone) = item.Kind switch
             {
-                PageWaitingKind.HeldCategory => ("held category", "bad"),
                 PageWaitingKind.Stuck => ("stuck", "bad"),
                 // 410-A: the run finished but never committed a Result, so the row reads as stuck,
                 // not as a review card waiting to be read; its actions still lead with Done.
@@ -270,9 +274,8 @@ public sealed class PageRenderer(
                 _ => ("review", "warn"),
             };
 
-            // A held category and an edited template copy are not cards: no link, no Open (a category's Open
-            // is categories.json, among its actions; a copy's are Overwrite and Keep).
-            var category = item.Kind is PageWaitingKind.HeldCategory or PageWaitingKind.TemplateEdited;
+            // An edited template copy is not a card: no link, no Open (its actions are Overwrite and Keep).
+            var category = item.Kind is PageWaitingKind.TemplateEdited;
             // 510-B: a reason guessed from the card's Result journal keeps its "Result:" marker, muted.
             var notes = string.IsNullOrEmpty(item.Note)
                 ? "<span class='mute'>No reason given; see the card&#39;s Result.</span>"
@@ -281,7 +284,6 @@ public sealed class PageRenderer(
                     : Enc(item.Note);
             var name = item.Kind switch
             {
-                PageWaitingKind.HeldCategory => "Category " + Enc(item.Name),
                 PageWaitingKind.TemplateEdited => Enc(item.Name),
                 _ => CardLink(item.Name, item.Title),
             };
@@ -331,9 +333,6 @@ public sealed class PageRenderer(
 
     private static string WaitingActions(PageWaitingItem item, string project, bool controlsAllowed) => item.Kind switch
     {
-        PageWaitingKind.HeldCategory =>
-            Button("/open-lanes", "Open", "Open the categories file in the editor.", controlsAllowed)
-            + Button($"/accept-lane?lane={Url(item.Name)}", "Accept", "This category's cards still fit its new definition; dispatch it again.", controlsAllowed),
         // Roadmap item 1 (580-A): Overwrite takes the toolkit's template; Keep leaves the project's
         // copy and stops asking until the toolkit's template changes again.
         PageWaitingKind.TemplateEdited =>
@@ -807,8 +806,11 @@ public sealed class PageRenderer(
         _ => "bad",
     };
 
+    // 1195-C: the percent is rounded the way Host's HostLoad.ShownCpuPercent rounds it (half away
+    // from zero, clamped 0-100), so the top bar and the tick line (ACCT-9) never disagree by one.
+    // Web cannot reference Host, so the same expression is written here.
     internal static string HostLoadText(HostLoadSample load) =>
-        $"CPU {(int)Math.Round(load.CpuPercent)}%, {load.FreeMemoryBytes / (1024 * 1024 * 1024)}G free of {load.TotalMemoryBytes / (1024 * 1024 * 1024)}G, {load.Cores} threads";
+        $"CPU {(int)Math.Clamp(Math.Round(load.CpuPercent, MidpointRounding.AwayFromZero), 0d, 100d)}%, {load.FreeMemoryBytes / (1024 * 1024 * 1024)}G free of {load.TotalMemoryBytes / (1024 * 1024 * 1024)}G, {load.Cores} threads";
 
     private static HashSet<string> RunningCards(PageSnapshot snapshot) =>
         new(

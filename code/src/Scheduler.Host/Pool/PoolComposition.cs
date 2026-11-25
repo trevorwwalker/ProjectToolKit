@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
@@ -33,6 +35,12 @@ public sealed class PoolStart
 
     /// <summary>The command line: <c>-Slots</c>, <c>-NoHealthCheck</c>, <c>-Paused</c>, <c>-DryRun</c> apply to every project, <c>-Port</c> to the pool.</summary>
     public required CommandLineOptions Options { get; init; }
+
+    /// <summary>
+    /// 1307-B: the page listens on a port the system picks, neither <c>-Port</c> nor the pool file's; read it back
+    /// from <see cref="PoolComposition.PagePort"/>. Tests use it, so no port is chosen and let go before the page binds it.
+    /// </summary>
+    public bool AnyPort { get; init; }
 
     /// <summary>The clock.</summary>
     public required IClock Clock { get; init; }
@@ -195,12 +203,13 @@ public sealed class PoolComposition : IDisposable
             PollSeconds = _members.Count == 0 ? 15 : _members.Values.Min(m => m.Parts.Config.PollSeconds),
             DryRun = start.Options.DryRun,
             LogDir = LogDir,
-            Port = start.Options.Port != 0 ? start.Options.Port : pool.Port,
+            Port = start.AnyPort ? 0 : start.Options.Port != 0 ? start.Options.Port : pool.Port,
             Listen = pool.Listen,
             RemoteControl = pool.RemoteControl,
         };
 
-        var pageData = new PoolPageData(start.Clock, LogDir, () => ProjectsOf(m => (IPageData)m.Parts.Data), PoolPart);
+        var pageData = new PoolPageData(start.Clock, LogDir, () => ProjectsOf(m => (IPageData)m.Parts.Data), PoolPart,
+            (name, now) => _members.TryGetValue(name, out var member) ? member.Parts.LockCounts(now) : null);
         _pageData = pageData;
         var actions = Actions = new PoolPageActions(new PoolPageActionParts
         {
@@ -255,7 +264,7 @@ public sealed class PoolComposition : IDisposable
                     RemoteControl = Config.RemoteControl,
                     Data = pageData,
                     Actions = actions,
-                    Renderer = new PageRenderer(themes, maxWorkers: () => Tick.Types.MaxWorkers, agents: Agents),
+                    Renderer = new PageRenderer(themes, themesOf: () => _themes, maxWorkers: () => Tick.Types.MaxWorkers, agents: Agents),
                     Feed = feed,
                     Pool = new PoolRouting(pageData, actions, new CombinedPageRenderer(() => _themes, pool.Theme, () => _starting)),
                 }, Hub.Source),
@@ -333,6 +342,9 @@ public sealed class PoolComposition : IDisposable
 
     /// <summary>The pool's own settings for the runner: project "pool", its total, the smallest poll, its log folder.</summary>
     public SchedulerConfig Config { get; }
+
+    /// <summary>1307-B: the port the page listens on once it does (0 before): with <see cref="PoolStart.AnyPort"/>, the one it was given.</summary>
+    public int PagePort => Volatile.Read(ref _page)?.Port ?? 0;
 
     /// <summary>The pool's own log folder (MP-C3, MP-H3).</summary>
     public string LogDir { get; }
@@ -492,7 +504,7 @@ public sealed class PoolComposition : IDisposable
         _pageData?.Refresh();
     }
 
-    // 1053-B: each member's repository, once (two projects may share one).
+    // 1053-B: each member's repository, once (1209-B: no two projects share one; PoolConfig leaves the later out).
     private List<SweepRepo> SweepRepos() =>
     [
         .. _members.Values
@@ -533,6 +545,10 @@ public sealed class PoolComposition : IDisposable
     private PoolPageSnapshot PoolPart()
     {
         var part = Tick.Snapshot() with { Views = [.. ProjectsOf(m => m.Parts.Views.Current).Select(p => p.Part)] };
+        part = part with
+        {
+            LeftOut = [.. LeftOut.OrderBy(o => o.Key, Text.Comparer).Select(o => new PoolLeftOutView { Name = o.Key, Why = o.Value })],
+        };
         var members = ProjectsOf(m => m.Parts);
         if (members.Count == 0)
         {
@@ -579,7 +595,7 @@ public sealed class PoolComposition : IDisposable
                 continue; // 1015-B: it comes in when its join has finished (Harvest)
             }
 
-            projects.Add(new PoolTickProject(entry.Name, entry.Weight, member.Parts.Tick) { Agents = member.Agents, Workspaces = entry.Workspaces });
+            projects.Add(new PoolTickProject(entry.Name, entry.Weight, member.Parts.Tick) { Agents = member.Agents, Workspaces = entry.Workspaces, Repo = entry.Repo });
         }
 
         foreach (var name in _out.Keys.Where(n => !pool.Projects.Any(p => Text.Same(p.Name, n))).ToList())
@@ -692,8 +708,8 @@ public sealed class PoolComposition : IDisposable
         projectLog.Write("workers.json is not read in a pool: the worker types are the pool file's");
         var logTook = step.Elapsed;
         step.Restart();
-        var parts = new ProjectParts(config, loaded.ConfigText, _start.Clock, projectLog, _shared, () => _runner?.RequestTick(),
-            exeDir: _start.ExeDir, poolProject: entry.Name);
+        var parts = new ProjectParts(config, loaded.ConfigText, _start.Clock, projectLog, _shared, new ClickTickGate(_start.Clock, () => _runner?.RequestTick()).Ask,
+            exeDir: _start.ExeDir, poolProject: entry.Name, defaultToolkit: _start.File.Current?.Toolkit);
         var result = new JoinResult { Parts = parts, Agents = config.Agents.Count > 0 ? new HashSet<string>(config.Agents.Keys, Text.Comparer) : null };
         result.Steps.Add(("config", configTook));
         result.Steps.Add(("log", logTook));

@@ -1,8 +1,11 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text.RegularExpressions;
 using Scheduler.Core.Categories;
 using Scheduler.Core.Launch;
 using Scheduler.Core.Locks;
 using Scheduler.Host.Git;
+using Scheduler.Host.Tick;
 
 namespace Scheduler.Host.Program;
 
@@ -106,10 +109,40 @@ public static class CheckPushCommand
 
         if (refused)
         {
+            RecordRefusal(logDir, card);   // DL-26: the page counts it
             output.WriteLine($"check-push: push refused; push your work to wip/{card} instead if you cannot get the lock");
         }
 
         return refused ? Refused : 0;
+    }
+
+    /// <summary>DL-26: appends a line to the refused-pushes file of the table that holds the card (or the only table).</summary>
+    private static void RecordRefusal(string logDir, string card)
+    {
+        var dir = logDir.Length > 0 ? System.IO.Path.Combine(logDir, LockTableText.FolderName) : "";
+        if (dir.Length == 0 || !Directory.Exists(dir))
+        {
+            return;
+        }
+
+        var tables = Directory.EnumerateFiles(dir, "*.json").ToList();
+        var own = tables.FirstOrDefault(f => Holds(f, card)) ?? (tables.Count == 1 ? tables[0] : null);
+        if (own is not null)
+        {
+            LockTableFile.AppendPushRefused(own, DateTimeOffset.Now);
+        }
+    }
+
+    private static bool Holds(string tableFile, string card)
+    {
+        try
+        {
+            return LockTableText.Read(File.ReadAllText(tableFile), "").Table.Find(card) is not null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>The paths <c>from..to</c> changes, with whether each is new and its line counts.</summary>

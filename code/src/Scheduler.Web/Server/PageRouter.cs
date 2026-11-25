@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Scheduler.Core.WebContract;
@@ -351,8 +353,6 @@ public sealed partial class PageRouter
         // per-worker settings, and no control on the page posts it.
         "/open-lanes" => Queued(request, "open-lanes", null, Actions.OpenCategories),
         "/open-workers" => Queued(request, "open-workers", null, Actions.OpenWorkers),
-        "/accept-lane" => Queued(request, "lane", Category(request), () =>
-            Actions.AcceptCategory(request.Query("lane") ?? request.Form("lane") ?? string.Empty)),
         // Roadmap item 1 (580-A): what to do with a generic file whose copy was edited in a project.
         "/template-overwrite" => Queued(request, "template", Template(request), () => Actions.TemplateOverwrite(
             Project(request), request.Query("file") ?? request.Form("file") ?? string.Empty)),
@@ -443,9 +443,6 @@ public sealed partial class PageRouter
 
     private static string Card(PageRequest request) =>
         request.Query("card") ?? request.Form("card") ?? string.Empty;
-
-    private static string Category(PageRequest request) =>
-        request.Query("lane") ?? request.Form("lane") ?? string.Empty;
 
     private static string Template(PageRequest request) =>
         request.Query("file") ?? request.Form("file") ?? string.Empty;

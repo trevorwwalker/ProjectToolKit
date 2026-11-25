@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Host.Program;
 
 /// <summary>The page's listener as the program sees it; <c>Scheduler.Web</c>'s PageServer is one.</summary>

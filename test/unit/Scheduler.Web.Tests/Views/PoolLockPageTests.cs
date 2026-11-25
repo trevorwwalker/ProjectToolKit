@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Core.WebContract;
 using Scheduler.Web.Views;
@@ -27,7 +29,8 @@ public sealed class PoolLockPageTests
                 Projects = [new PoolProjectView { Name = "P", LockCounts = counts }],
             },
             remote: false,
-            controlsAllowed: true);
+            controlsAllowed: true,
+            view: "workers");
 
     // DL-24: claim on one line, granted entries on another, each with its age; in the window and the Queue row.
     [Fact]

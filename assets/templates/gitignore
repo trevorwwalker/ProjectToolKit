@@ -3,9 +3,15 @@ build/
 out/*
 cmake-build-*/
 
-# A git-ignored directory that must still exist in a clone keeps a committed .gitkeep: ignore its
-# contents and un-ignore the placeholder.
-!out/.gitkeep
+# out/<platform>/ must exist in a clone, so it keeps a committed .gitkeep: out/ is ignored a level down,
+# and each platform folder's contents are ignored except its placeholder (see docs/conventions.md).
+!out/*/
+out/*/*
+!out/*/.gitkeep
+
+# Switchyard's dated log and the planner's outbox (card changes a planner could not push) are local.
+jobs/.logs/
+jobs/.planner-outbox/
 
 # Compiled and generated binaries, wherever they land (bin/ keeps the project's scripts committed;
 # the tools built from code/tools/ that land beside them are not).

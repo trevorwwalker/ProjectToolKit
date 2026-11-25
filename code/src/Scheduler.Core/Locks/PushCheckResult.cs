@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Core.Locks;
 
 /// <summary>The push check's verdict on one pushed ref (design <c>dynamic-locks.md</c>, DL-16 to DL-18).</summary>

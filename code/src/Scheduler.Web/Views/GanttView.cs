@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Globalization;
 using System.Text;
 using Scheduler.Core.Accounting;
@@ -15,7 +17,6 @@ namespace Scheduler.Web.Views;
 /// </summary>
 internal static class GanttView
 {
-    public const string CategoryGroup = "category";
     public const string PlanGroup = "plan";
 
     // The tick steps the calendar picks from, shortest first: the first that gives at most MaxTicks labels.
@@ -30,10 +31,6 @@ internal static class GanttView
 
     /// <summary>The range key the address names, or the page's default when it names none or an unknown one.</summary>
     public static string RangeKey(string? key) => CardStats.RangeOf(key ?? "")?.Key ?? CardStats.DefaultRangeKey;
-
-    /// <summary>The grouping the address names: plan, or category for anything else.</summary>
-    public static GanttGroupBy GroupBy(string? group) =>
-        string.Equals(group?.Trim(), PlanGroup, StringComparison.OrdinalIgnoreCase) ? GanttGroupBy.Plan : GanttGroupBy.Category;
 
     /// <summary>
     /// The shown window for a range: the range back from now, and an eighth of it ahead, so a running card's
@@ -54,7 +51,7 @@ internal static class GanttView
     }
 
     /// <summary>The Gantt window's body: the toolbar's choices are in <see cref="Bar"/>.</summary>
-    public static string Html(IReadOnlyList<ProjectViews> views, IReadOnlyList<PageSnapshot> pages, IReadOnlyList<string> names, string rangeKey, GanttGroupBy groupBy, DateTimeOffset now)
+    public static string Html(IReadOnlyList<ProjectViews> views, IReadOnlyList<PageSnapshot> pages, IReadOnlyList<string> names, string rangeKey, DateTimeOffset now)
     {
         var (from, to) = Window(rangeKey, now);
         var ordered = views.OrderBy(v => v.Project, StringComparer.OrdinalIgnoreCase).ToList();
@@ -70,9 +67,9 @@ internal static class GanttView
         {
             var categories = CategoriesOf(pages, view.Project);
             var chip = names.Count < 2 ? "" : ProjectChip.Html(view.Project, names) + " ";
-            var root = GanttRows.Of(view.Snapshot, groupBy, from, to, now, ahead.Listed);
+            var root = GanttRows.Of(view.Snapshot, from, to, now, ahead.Listed);
             sb.Append("<div class='gproject' data-project='").Append(Enc(view.Project)).Append("'>");
-            sb.Append("<div class='grow ghead' data-gd='").Append(Enc(GroupKey(view.Project, groupBy, root.Key))).Append("'><span class='glabel'>")
+            sb.Append("<div class='grow ghead' data-gd='").Append(Enc(GroupKey(view.Project, root.Key))).Append("'><span class='glabel'>")
               .Append(chip).Append("<b>").Append(Enc(view.Project)).Append("</b>").Append(Count(root.Done, root.Total))
               .Append(view.Note.Length == 0 ? "" : " <span class='mute'>" + Enc(view.Note) + "</span>")
               .Append("</span>").Append(Track(root.Summary is { } s ? [s] : [], from, to, now)).Append("</div>");
@@ -83,7 +80,7 @@ internal static class GanttView
 
             foreach (var child in root.Children)
             {
-                AppendRow(sb, view, ahead, child, groupBy, categories, from, to, now);
+                AppendRow(sb, view, ahead, child, categories, from, to, now);
             }
 
             sb.Append("</div>");
@@ -92,8 +89,8 @@ internal static class GanttView
         return sb.Append("</div>").ToString();
     }
 
-    /// <summary>The Gantt window's title-bar choices: the range and the Group by dropdown.</summary>
-    public static string Bar(string rangeKey, GanttGroupBy groupBy)
+    /// <summary>The Gantt window's title-bar choices: the range.</summary>
+    public static string Bar(string rangeKey)
     {
         var range = RangeKey(rangeKey);
         var sb = new StringBuilder(" <select id='rangesel' title='The time range the Gantt shows' aria-label='Time range' style='font: inherit'>");
@@ -102,21 +99,14 @@ internal static class GanttView
             sb.Append("<option value='").Append(r.Key).Append('\'').Append(r.Key == range ? " selected" : "").Append('>').Append(Enc(r.Name)).Append("</option>");
         }
 
-        sb.Append("</select> <label class='mute'>Group by <select id='ganttgroup' aria-label='Group by' style='font: inherit'>");
-        foreach (var (value, label) in new[] { (CategoryGroup, "Category"), (PlanGroup, "Plan") })
-        {
-            var selected = (value == PlanGroup) == (groupBy == GanttGroupBy.Plan);
-            sb.Append("<option value='").Append(value).Append('\'').Append(selected ? " selected" : "").Append('>').Append(label).Append("</option>");
-        }
-
-        return sb.Append("</select></label>").ToString();
+        return sb.Append("</select>").ToString();
     }
 
     /// <summary>
     /// The Details window's body: the shown box (what the page script copies the clicked row's block into) and one
     /// hidden block per row the Gantt shows, keyed as the row's <c>data-gd</c>.
     /// </summary>
-    public static string DetailsHtml(IReadOnlyList<ProjectViews> views, IReadOnlyList<PageSnapshot> pages, IReadOnlyList<string> names, string rangeKey, GanttGroupBy groupBy, DateTimeOffset now)
+    public static string DetailsHtml(IReadOnlyList<ProjectViews> views, IReadOnlyList<PageSnapshot> pages, IReadOnlyList<string> names, string rangeKey, DateTimeOffset now)
     {
         var (from, to) = Window(rangeKey, now);
         var sb = new StringBuilder("<div id='gantt-detail'><p class='mute'>Click a card or a group in the Gantt to see its details here.</p></div><div class='gdets' hidden>");
@@ -125,17 +115,17 @@ internal static class GanttView
             var page = pages.FirstOrDefault(p => string.Equals(p.Project, view.Project, StringComparison.OrdinalIgnoreCase));
             var categories = page?.Categories ?? [];
             var ahead = Ahead.Of(view, page, now);
-            var root = GanttRows.Of(view.Snapshot, groupBy, from, to, now, ahead.Listed);
-            var members = Members(view, groupBy);
-            AppendDetails(sb, view, page, ahead, root, groupBy, categories, names, members);
+            var root = GanttRows.Of(view.Snapshot, from, to, now, ahead.Listed);
+            var members = Members(view);
+            AppendDetails(sb, view, page, ahead, root, categories, names, members);
         }
 
         return sb.Append("</div>").ToString();
     }
 
     /// <summary>The key a row's Details block is found by: project, grouping and the row's own key.</summary>
-    public static string GroupKey(string project, GanttGroupBy groupBy, string rowKey) =>
-        project + "|" + (groupBy == GanttGroupBy.Plan ? PlanGroup : CategoryGroup) + "|" + rowKey;
+    public static string GroupKey(string project, string rowKey) =>
+        project + "|" + PlanGroup + "|" + rowKey;
 
     private static void AppendAxis(StringBuilder sb, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now, DateTimeOffset? lastEnd)
     {
@@ -173,9 +163,9 @@ internal static class GanttView
         sb.Append("</div></div>");
     }
 
-    private static void AppendRow(StringBuilder sb, ProjectViews view, Ahead ahead, GanttRow row, GanttGroupBy groupBy, IReadOnlyList<PageCategory> categories, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now)
+    private static void AppendRow(StringBuilder sb, ProjectViews view, Ahead ahead, GanttRow row, IReadOnlyList<PageCategory> categories, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now)
     {
-        var key = GroupKey(view.Project, groupBy, row.Key);
+        var key = GroupKey(view.Project, row.Key);
         if (row.Kind == GanttRowKind.Card && row.Card is { } card)
         {
             var (svg, labels) = AheadMarks(ahead, card, row.Bars, from, to, now);
@@ -187,12 +177,11 @@ internal static class GanttView
 
         // A group folds like a Plans node (1123-C remembers it under data-key); folded, its summary span shows.
         sb.Append("<details class='ggroup' open data-key='").Append(Enc("g|" + key)).Append("'><summary class='grow' data-gd='").Append(Enc(key)).Append("'><span class='glabel'>")
-          .Append(row.Kind == GanttRowKind.Category ? CategoryChip.Html(categories, row.Label) + " " : "")
-          .Append(Enc(row.Kind == GanttRowKind.Category ? CategoryName(categories, row.Label) : row.Label)).Append(Count(row.Done, row.Total))
+          .Append(Enc(row.Label)).Append(Count(row.Done, row.Total))
           .Append("</span>").Append(Track(row.Summary is { } s ? [s] : [], from, to, now, "gsum")).Append("</summary>");
         foreach (var child in row.Children)
         {
-            AppendRow(sb, view, ahead, child, groupBy, categories, from, to, now);
+            AppendRow(sb, view, ahead, child, categories, from, to, now);
         }
 
         sb.Append("</details>");
@@ -340,9 +329,9 @@ internal static class GanttView
         _ => "var(--bad)",
     };
 
-    private static void AppendDetails(StringBuilder sb, ProjectViews view, PageSnapshot? page, Ahead ahead, GanttRow row, GanttGroupBy groupBy, IReadOnlyList<PageCategory> categories, IReadOnlyList<string> names, IReadOnlyDictionary<string, List<ViewCard>> members)
+    private static void AppendDetails(StringBuilder sb, ProjectViews view, PageSnapshot? page, Ahead ahead, GanttRow row, IReadOnlyList<PageCategory> categories, IReadOnlyList<string> names, IReadOnlyDictionary<string, List<ViewCard>> members)
     {
-        var key = GroupKey(view.Project, groupBy, row.Key);
+        var key = GroupKey(view.Project, row.Key);
         sb.Append("<div class='gdet' data-gdet='").Append(Enc(key)).Append("'>");
         if (row.Kind == GanttRowKind.Card && row.Card is { } card)
         {
@@ -356,7 +345,7 @@ internal static class GanttView
         sb.Append("</div>");
         foreach (var child in row.Children)
         {
-            AppendDetails(sb, view, page, ahead, child, groupBy, categories, names, members);
+            AppendDetails(sb, view, page, ahead, child, categories, names, members);
         }
     }
 
@@ -451,7 +440,6 @@ internal static class GanttView
     {
         var title = row.Kind switch
         {
-            GanttRowKind.Category => CategoryChip.Html(categories, row.Label) + " " + Enc(CategoryName(categories, row.Label)),
             GanttRowKind.Project => "<b>" + Enc(row.Label) + "</b>",
             _ => Enc(row.Label),
         };
@@ -488,25 +476,14 @@ internal static class GanttView
 
     // Every card under each group row's key, whatever the window, mirroring GanttRows' keys: a group's Details
     // counts all its cards, not only those with a bar in the range.
-    private static Dictionary<string, List<ViewCard>> Members(ProjectViews view, GanttGroupBy groupBy)
+    private static Dictionary<string, List<ViewCard>> Members(ProjectViews view)
     {
         var snapshot = view.Snapshot;
         var result = new Dictionary<string, List<ViewCard>>(StringComparer.Ordinal)
         {
             ["project:" + snapshot.Project] = [.. snapshot.Cards],
         };
-        if (groupBy == GanttGroupBy.Category)
-        {
-            foreach (var group in snapshot.Cards.GroupBy(c => c.Category, StringComparer.OrdinalIgnoreCase))
-            {
-                result["category:" + group.Key] = [.. group];
-            }
-
-            return result;
-        }
-
-        var onMain = new HashSet<string>(snapshot.Plans.Select(p => p.Path), StringComparer.Ordinal);
-        foreach (var plan in PlanTree.Of(snapshot.Cards, onMain, snapshot.PlanTexts))
+        foreach (var plan in PlanTree.Of(snapshot).Top)
         {
             if (plan.Plan.Kind == PlanKind.NoPlan)
             {
@@ -516,29 +493,41 @@ internal static class GanttView
                 continue;
             }
 
-            var key = "plan:" + plan.Plan.Path;
-            var all = new List<ViewCard>();
-            foreach (var step in plan.Steps)
-            {
-                all.AddRange(StepMembers(result, key, step));
-            }
-
-            if (plan.Other is { } other)
-            {
-                result[key + "/other"] = [.. other.Cards];
-                all.AddRange(other.Cards);
-            }
-
-            result[key] = all;
+            PlanMembers(result, plan);
         }
 
         return result;
+    }
+
+    // A plan's cards at every depth: its steps (child plans and sub-steps included) and Other cards, by GanttRows' keys.
+    private static List<ViewCard> PlanMembers(Dictionary<string, List<ViewCard>> result, PlanNode plan)
+    {
+        var key = "plan:" + plan.Plan.Path;
+        var all = new List<ViewCard>();
+        foreach (var step in plan.Steps)
+        {
+            all.AddRange(StepMembers(result, key, step));
+        }
+
+        if (plan.Other is { } other)
+        {
+            result[key + "/other"] = [.. other.Cards];
+            all.AddRange(other.Cards);
+        }
+
+        result[key] = all;
+        return all;
     }
 
     private static List<ViewCard> StepMembers(Dictionary<string, List<ViewCard>> result, string parentKey, PlanStepNode node)
     {
         var key = parentKey + "/" + node.Step!.Label;
         var all = new List<ViewCard>(node.Cards);
+        foreach (var child in node.Plans)
+        {
+            all.AddRange(PlanMembers(result, child));
+        }
+
         foreach (var sub in node.SubSteps)
         {
             all.AddRange(StepMembers(result, key, sub));
@@ -591,7 +580,7 @@ internal static class GanttView
         "<svg width='0' height='0' style='position: absolute' aria-hidden='true'><defs><pattern id='ghatch' patternUnits='userSpaceOnUse' width='1.2' height='10'>"
         + "<path d='M0,10 L1.2,0' stroke='var(--muted)' stroke-width='1' vector-effect='non-scaling-stroke'/></pattern></defs></svg>";
 
-    // The maxMinutes an estimate falls back to: the config's default (TIME-1), as the page is not given the project's own.
+    // The maxMinutes an estimate falls back to: the config's default (TIME-1), used only when the project's page carries none (1180-C).
     private const int DefaultMaxMinutes = 240;
 
     private static PageSnapshot? PageOf(IReadOnlyList<PageSnapshot> pages, string project) =>
@@ -606,7 +595,7 @@ internal static class GanttView
         public static Ahead Of(ProjectViews view, PageSnapshot? page, DateTimeOffset now)
         {
             var estimates = new Dictionary<string, EstimatedBar>(StringComparer.OrdinalIgnoreCase);
-            foreach (var bar in GanttEstimate.Of(view.Snapshot, now, DefaultMaxMinutes, page?.SharedAddOnly))
+            foreach (var bar in GanttEstimate.Of(view.Snapshot, now, page is { MaxMinutes: > 0 } ? page.MaxMinutes : DefaultMaxMinutes, page?.SharedAddOnly))
             {
                 estimates.TryAdd(bar.CardId, bar);
             }

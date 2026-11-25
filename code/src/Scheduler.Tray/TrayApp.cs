@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Diagnostics;
 
 namespace Scheduler.Tray;
@@ -21,12 +23,72 @@ public sealed class TrayApp : ApplicationContext
     /// </summary>
     public const string LogTitle = "Switchyard - log";
 
+    /// <summary>
+    /// INS-13 (1247-C): what a pool start says when its pool file is not there, instead of the scheduler's
+    /// error: the guide's create-a-project step, which is what writes that file. Null when this start needs
+    /// no pool file (a repository's) or has it. <paramref name="fileExists"/> is the file system.
+    /// </summary>
+    public static string? NoPoolFileMessage(TrayArguments args, string localAppData, Func<string, bool> fileExists)
+    {
+        if (!args.Pool)
+        {
+            return null;
+        }
+
+        var poolFile = AttachedScheduler.PoolFileOf(args, localAppData);
+        if (fileExists(poolFile))
+        {
+            return null;
+        }
+
+        return
+            $"Switchyard has no pool to run: {poolFile} is not there.\n\n"
+            + "The pool file lists the projects Switchyard runs, and making your first project writes it. Do the\n"
+            + "guide's \"Create the project\" step (docs\\guide\\getting-started.md, step 3.1) in the toolkit's folder:\n\n"
+            + "    .\\bin\\projecttoolkit.ps1 -Action new-project -Repo <your project's folder> ...\n\n"
+            + "Then start Switchyard again.";
+    }
+
+    /// <summary>
+    /// INS-22 (1264-B): what a start says when its pool (or repository) is run by the Switchyard of another kit
+    /// folder: the shutdown event, named by the pool file or repository alone, exists, and a
+    /// <c>scheduler-next.exe</c> runs from another folder but none from <paramref name="kitFolder"/> (the folder of
+    /// the scheduler this tray runs). Such a tray attaches to nothing, stops nothing and starts nothing. Null when
+    /// this tray may go on: no event, its own folder's scheduler running (it attaches, 975-B, 1013-B), or no
+    /// scheduler visible from any folder (it is ending: the tray starts as it does once the event has gone, and the
+    /// scheduler it starts waits for the pool's mutex). <paramref name="eventExists"/> looks up a named event,
+    /// <paramref name="running"/> is the full exe path of every running <c>scheduler-next.exe</c>.
+    /// </summary>
+    public static string? ForeignSchedulerMessage(TrayArguments args, string localAppData, string kitFolder, Func<string, bool> eventExists, IReadOnlyList<string> running)
+    {
+        var key = args.Pool ? AttachedScheduler.PoolFileOf(args, localAppData) : args.Repository;
+        if (key.Length == 0 || !eventExists(RepoShutdown.Name(key)))
+        {
+            return null;
+        }
+
+        var folders = running
+            .Where(path => string.Equals(Path.GetFileName(path), "scheduler-next.exe", StringComparison.OrdinalIgnoreCase))
+            .Select(path => Path.GetDirectoryName(Path.GetFullPath(path)) ?? path)
+            .ToList();
+        if (folders.Count == 0 || folders.Any(folder => AttachedScheduler.SameFolder(folder, kitFolder)))
+        {
+            return null;
+        }
+
+        var other = folders.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).First();
+        return
+            $"This {(args.Pool ? "pool" : "project")} is run by the Switchyard in {other}.\n\n"
+            + "Use that Switchyard's icon, or exit it first and start this one again.";
+    }
+
     private readonly TrayArguments _args;
     private readonly string _exe;
     private readonly LogBuffer _log = new();
     private readonly NotifyIcon _icon;
     private readonly ToolStripMenuItem _restart;
     private readonly ToolStripMenuItem _update;
+    private readonly bool _installed;
     private readonly ToolStripMenuItem _leave;
     private readonly ToolStripMenuItem _exit;
     private readonly System.Windows.Forms.Timer _timer;
@@ -45,6 +107,7 @@ public sealed class TrayApp : ApplicationContext
     private LogForm? _logForm;
     private AttachedScheduler? _attached;
     private SchedulerLogTail? _tail;
+    private readonly TrayExitSignal _exitSignal;
     private IReadOnlyList<(string Name, string State)> _poolProjects = [];
 
     /// <summary>Starts the scheduler and shows the icon.</summary>
@@ -52,6 +115,9 @@ public sealed class TrayApp : ApplicationContext
     {
         _args = args;
         _exe = exe;
+
+        // 1258-B: the exit signal of this tray's kit folder alone, so a stop run from another folder leaves it be.
+        _exitSignal = TrayExitSignal.Listen(TrayExitSignal.NameFor(Path.GetDirectoryName(Path.GetFullPath(exe))!));
         _project = args.ProjectGuess();
         _firstOpen = new FirstPageOpen(args.Quiet, ProbeAsync, Browse, Task.Delay);
         var menu = new ContextMenuStrip();
@@ -59,7 +125,22 @@ public sealed class TrayApp : ApplicationContext
         menu.Items.Add("View log", null, (_, _) => ShowLog());
         _restart = new ToolStripMenuItem("Restart Switchyard", null, async (_, _) => await RestartAsync());
         menu.Items.Add(_restart);
-        _update = new ToolStripMenuItem("Update and restart", null, async (_, _) => await UpdateAndRestartAsync());
+        // INS-18: an installed copy has no Host project to publish, so the item checks for a new release instead.
+        _installed = !DeployLayout.ForSchedulerExe(exe).IsSourceCheckout(new SwapFileSystem());
+        _update = new ToolStripMenuItem(
+            DeployLayout.UpdateItemText(_installed),
+            null,
+            async (_, _) =>
+            {
+                if (_installed)
+                {
+                    Browse(new Uri(DeployLayout.LatestReleaseUrl));
+                }
+                else
+                {
+                    await UpdateAndRestartAsync();
+                }
+            });
         menu.Items.Add(_update);
         _leave = new ToolStripMenuItem("Exit, leave workers running", null, async (_, _) => await ExitAsync(stopWorkers: false));
         menu.Items.Add(_leave);
@@ -114,6 +195,7 @@ public sealed class TrayApp : ApplicationContext
             _http.Dispose();
             _process?.Dispose();
             _attached?.Dispose();
+            _exitSignal.Dispose();
             _logForm?.Dispose();
         }
 
@@ -182,6 +264,15 @@ public sealed class TrayApp : ApplicationContext
 
     private async Task TickAsync()
     {
+        // INS-19 (1245-B): an installer's -StopForUpdate asks its kit's trays to exit, leaving the workers running.
+        // While a Restart or an update is under way the request waits for the next tick.
+        if (!_busy && _exitSignal.IsSet)
+        {
+            _log.Add("[tray] an update asked the tray to exit; the workers keep running and the next scheduler adopts them");
+            await ExitAsync(stopWorkers: false);
+            return;
+        }
+
         if (_tail is not null)
         {
             foreach (var line in _tail.ReadNew())

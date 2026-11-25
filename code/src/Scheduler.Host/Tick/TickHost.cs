@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text;
 using System.Text.Json;
 using Scheduler.Core.Accounting;
@@ -179,6 +181,8 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
             landed();
         }
 
+        ShareRunning();   // CM-12 (1237-B): a running worker's move requests wait for its run to end
+
         // 987-B: the writes go to the git writer and the tick carries on; one that moves main wakes it.
         if (Writer is { } writer)
         {
@@ -245,6 +249,7 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
             AddOnly = categories?.AddOnly ?? [],
             CategoryDefaults = categories is null ? [] : [.. categories.Categories.Values.Select(c => c.Owns)],
             WaitLimit = tick.Locks.WaitLimit,
+            TrackedFiles = (_trackedFiles ??= new Scheduler.Host.Locks.TrackedFiles(_p.Main)).Current(),
         };
         step.Run(
             rules,
@@ -264,6 +269,8 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
             Releases?.MoveFiled(request.Card, request.To, applied);
         }
     }
+
+    private Scheduler.Host.Locks.TrackedFiles? _trackedFiles;
 
     private LockReleases? _releases;
 
@@ -354,14 +361,36 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
                 return result;
             }
 
-            foreach (var entry in doc.RootElement.EnumerateObject())
+            // The real file is {"about": "...", "models": {key: {short, name, source, served[]}}}; a flat file
+            // (key -> entry at the top level, no "models" object) is read the old way.
+            var entries = doc.RootElement.TryGetProperty("models", out var m) && m.ValueKind == JsonValueKind.Object
+                ? m
+                : doc.RootElement;
+            foreach (var entry in entries.EnumerateObject())
             {
                 var names = new List<string>();
-                if (entry.Value.ValueKind == JsonValueKind.Object
-                    && entry.Value.TryGetProperty("short", out var s) && s.ValueKind == JsonValueKind.String
-                    && s.GetString() is { Length: > 0 } shortName)
+                if (entry.Value.ValueKind == JsonValueKind.Object)
                 {
-                    names.Add(shortName);
+                    foreach (var field in new[] { "short", "name", "source" })
+                    {
+                        if (entry.Value.TryGetProperty(field, out var s) && s.ValueKind == JsonValueKind.String
+                            && s.GetString() is { Length: > 0 } text1 && !names.Contains(text1))
+                        {
+                            names.Add(text1);
+                        }
+                    }
+
+                    if (entry.Value.TryGetProperty("served", out var served) && served.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var alias in served.EnumerateArray())
+                        {
+                            if (alias.ValueKind == JsonValueKind.String && alias.GetString() is { Length: > 0 } a1
+                                && !names.Contains(a1))
+                            {
+                                names.Add(a1);
+                            }
+                        }
+                    }
                 }
 
                 result[entry.Name] = names;
@@ -370,6 +399,8 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
         catch (JsonException)
         {
             // An unreadable models.json names no models.
+            result.Clear();
+            _p.Log.Write("models.json is not valid JSON: no models read");
         }
 
         return result;
@@ -425,6 +456,53 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
 
     // 1025-B (DL-19): what the worker pushed is on the remote only, so fetch main and audit it before the moves;
     // a fetch or audit that fails is logged and the moves are applied as before.
+    /// <summary>
+    /// CM-12 (card 1237-B): hands the move step the cards whose workers run (or are starting), taken on the tick's
+    /// own thread, so the step on the writer's thread holds their requests until each run ends.
+    /// </summary>
+    private void ShareRunning()
+    {
+        if (Moves is { } moves && Tick is { } tick)
+        {
+            moves.Running = new HashSet<string>(
+                tick.Running.Values.Select(w => w.Card).Concat(tick.Starting.Values.Select(w => w.Card)),
+                StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>CM-23 (card 1237-B): counts the run's commits not on main; the git it runs, or null for the default.</summary>
+    public UnpushedWork? Unpushed { get; set; }
+
+    /// <summary>
+    /// CM-23 (card 1237-B): a finished run that asks for done or review while commits it made are not on main is
+    /// parked as needs-human instead. No git unless such a request waits for the card.
+    /// </summary>
+    private void CheckSettled(RunningWorker worker, CardRequestStep moves)
+    {
+        try
+        {
+            if (!moves.HasFinish(worker.Card))
+            {
+                return;
+            }
+
+            var unpushed = Unpushed ??= new UnpushedWork(new Scheduler.Host.Git.GitRunner(), _p.Config.Remote, _p.Config.Branch);
+            var reason = unpushed.Reason(_p.Worktrees.SlotDirectory(worker.Slot), worker.Card, worker.Start);
+            if (reason is null)
+            {
+                _p.Log.Write($"slot {worker.Slot} {worker.Card}: could not tell whether its commits are on main; its finish is applied as asked");
+            }
+            else if (reason.Length > 0)
+            {
+                moves.NotSettled(worker.Card, reason);
+            }
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            _p.Log.Write($"slot {worker.Slot} {worker.Card}: the check for commits not on main failed: {e.Message}");
+        }
+    }
+
     private void AuditBeforeMoves()
     {
         if (!LocksOn || Audit is not { } audit)
@@ -483,10 +561,12 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
         if (Moves is { } finishMoves)
         {
             // 1025-B (DL-19): with locks on, main is fetched and audited first, in the same turn on the writer.
+            ShareRunning();
             int Apply()
             {
                 AuditBeforeMoves();
-                return finishMoves.Run();
+                CheckSettled(worker, finishMoves);   // CM-23 (1237-B): work not on main parks the finish
+                return finishMoves.Run(worker.Card);   // CM-12: this card's requests, now that its run has ended
             }
 
             _ = Writer is { } w ? w.Run("moves", Apply) : Apply();
@@ -516,7 +596,10 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
             retries[id] = count;
         }
 
-        var model = ModelColumn.Resolve([], worker.Model, worker.Endpoint, _p.Config.Model);
+        // ACCT-2 (request #022, 285-B (b)): the row names the models.json key the run's model is,
+        // exactly as the page resolves it (HostPageSnapshot), not the worker's raw model string.
+        IReadOnlyList<ModelEntry> modelEntries = [.. ReadModels().Select(m => new ModelEntry { Key = m.Key, Short = m.Value.FirstOrDefault() ?? "" })];
+        var model = ModelColumn.Resolve(modelEntries, worker.Model, worker.Endpoint, _p.Config.Model);
         var running = new Dictionary<int, RunningWorker> { [worker.Slot] = worker };
         var fromPage = StoppedCardHold.Applies(worker);
         var unupdated = _p.FinishedCards?.Check(worker.Card, outcome.Result);
@@ -595,24 +678,66 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
         return ClaimState.Pending;
     }
 
+    /// <summary>
+    /// 995-B, 1190-B: the claim's request is written at once and one shared turn on the writer applies every claim posted
+    /// so far, so the claims of one tick are one push (MM-13). A turn already waiting does the work of a later post.
+    /// </summary>
     private void PostClaimWrite(int slot, PostedClaim claim)
     {
         var moves = Moves!;
         claim.Tries++;
-        Writer!.Post($"claim {claim.Card.Name} slot {slot}", () =>
+        claim.Posted = true;
+        try
         {
-            ClaimState state;
+            claim.Request ??= moves.WriteClaim(claim.Card, slot);
+        }
+        catch (Exception e)
+        {
+            _p.Log.Write($"slot {slot}: the claim of {claim.Card.Name} could not be written: {e.Message}; it is written in the writer's turn");
+        }
+
+        Writer!.Post("claims", () => ApplyClaims(moves));
+    }
+
+    /// <summary>1190-B: on the writer, every posted claim's request applied in one run of the moves; each then hears how it went.</summary>
+    private bool ApplyClaims(CardRequestStep moves)
+    {
+        var posted = _claims.Where(kv => kv.Value.Posted).OrderBy(kv => kv.Key).ToList();
+        var failedWrite = new HashSet<PostedClaim>();
+        foreach (var (slot, claim) in posted)
+        {
             try
             {
                 claim.Request ??= moves.WriteClaim(claim.Card, slot);
-                state = moves.Apply(claim.Request);
             }
             catch (Exception e)
             {
                 _p.Log.Write($"slot {slot}: the claim of {claim.Card.Name} could not be written: {e.Message}");
-                state = ClaimState.Pending;
+                failedWrite.Add(claim);
             }
+        }
 
+        var ran = true;
+        try
+        {
+            if (posted.Any(kv => kv.Value.Request is { } r && moves.StateOf(r) == ClaimState.Pending))
+            {
+                moves.Run();
+            }
+        }
+        catch (Exception e)
+        {
+            _p.Log.Write($"the claims could not be applied: {e.Message}");
+            ran = false;
+        }
+
+        var woke = false;
+        foreach (var (slot, claim) in posted)
+        {
+            claim.Posted = false;
+            var state = ran && !failedWrite.Contains(claim) && claim.Request is { } request
+                ? moves.StateOf(request)
+                : ClaimState.Pending;
             if (state == ClaimState.Pending)
             {
                 _p.Log.Write($"slot {slot}: the claim of {claim.Card.Name} is not on main yet; it is tried again next tick");
@@ -621,10 +746,11 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
             else
             {
                 claim.State = state;
+                woke = true;   // landed or failed: wake the tick to start the worker or free the slot
             }
+        }
 
-            return state != ClaimState.Pending;   // landed or failed: wake the tick to start the worker or free the slot
-        });
+        return woke;
     }
 
     /// <inheritdoc />
@@ -656,6 +782,12 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
             }
 
             var worktree = _p.Worktrees.Prepare(slot);
+            if (Moves is { } held)
+            {
+                // CM-12 (1237-B): from its start, the worker's requests wait for its run to end.
+                held.Running = new HashSet<string>(held.Running.Append(card.Name), StringComparer.OrdinalIgnoreCase);
+            }
+
             Directory.CreateDirectory(config.LogDir);
             var start = _p.Clock.Now;
             var jobs = WorkerSelection.JobsPerWorker(_p.Cores, PoolOf(tick).MaxWorkers); // WT-11
@@ -911,4 +1043,9 @@ internal sealed class PostedClaim(Card card)
 
     /// <summary>Writes posted so far.</summary>
     public int Tries { get; set; }
+
+    /// <summary>1190-B: posted and not yet applied by the writer's claims turn.</summary>
+    public bool Posted { get => _posted; set => _posted = value; }
+
+    private volatile bool _posted;
 }

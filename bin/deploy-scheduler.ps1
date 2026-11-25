@@ -37,7 +37,7 @@
     afterwards attaches to the running pool instead of starting a second one.
 
 .PARAMETER PoolFile
-    With -Pool, the pool file; default %LOCALAPPDATA%ProjectToolkitpool.json (MP-C1).
+    With -Pool, the pool file; default %LOCALAPPDATA%\ProjectToolkit\pool.json (MP-C1).
 
 .PARAMETER UsePublished
     Deploy the out\windows\scheduler.next that is already there instead of publishing a new one.
@@ -51,6 +51,10 @@
 .EXAMPLE
     bin\deploy-scheduler.ps1 -Repo C:\Projects\Game -UsePublished
 #>
+
+# Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+# Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
+
 [CmdletBinding()]
 param(
     [string]$Kit = (Split-Path -Parent $PSScriptRoot),
@@ -101,7 +105,7 @@ function Stop-RunningScheduler {
 function Get-TrayLockedNames {
     # The tray's own files, when a tray is running from the published folder: Windows will not let them go,
     # so the swap leaves them where they are. A tray started from its own copy in
-    # %LOCALAPPDATA%\ProjectToolkit\tray locks nothing here (967-B).
+    # %LOCALAPPDATA%\ProjectToolkit\tray\<key> (one folder per kit folder, 1265-B) locks nothing here (967-B).
     $trays = @(Get-CimInstance Win32_Process -Filter "Name='scheduler-tray.exe'" |
             Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($Current, [StringComparison]::OrdinalIgnoreCase) })
     if ($trays.Count -eq 0) { return @() }
@@ -114,7 +118,8 @@ function Split-CommandLine([string]$Line) {
 
 function Get-TraysForScheduler {
     # 975-B: the trays over this folder's scheduler - run from it, or from their own copy in
-    # %LOCALAPPDATA%\ProjectToolkit\tray and told where it is with -SchedulerDir. A deploy that finds one
+    # %LOCALAPPDATA%\ProjectToolkit\tray\<key> and told where it is with -SchedulerDir. Found by that folder, so
+    # a tray of another kit folder is never ended; a tray still in the old shared tray\ folder is found the same way. A deploy that finds one
     # brings one back, so the icon, its log window and Exit are still there afterwards.
     return @(Get-CimInstance Win32_Process -Filter "Name='scheduler-tray.exe'" | Where-Object {
             ($_.ExecutablePath -and $_.ExecutablePath.StartsWith($Current, [StringComparison]::OrdinalIgnoreCase)) -or
@@ -148,7 +153,8 @@ function Get-PoolArguments {
 function Start-TrayFrom([string[]]$Arguments, [switch]$Quiet) {
     # 1014-B: a tray this script brings back after a deploy is an automatic start: -Quiet, so it opens no page.
     if ($Quiet -and -not (@($Arguments) -match '(?i)^-Quiet$')) { $Arguments = @($Arguments) + '-Quiet' }
-    # The tray in the new build copies itself to %LOCALAPPDATA%\ProjectToolkit\tray, starts from there
+    # The tray in the new build copies itself to %LOCALAPPDATA%\ProjectToolkit\tray\<key> (the key of this kit
+    # folder, 1265-B), starts from there
     # (967-B) and starts the new scheduler as its child.
     $trayExe = Join-Path $Current 'scheduler-tray.exe'
     if (-not (Test-Path $trayExe)) { throw "there is no scheduler-tray.exe in $Current" }

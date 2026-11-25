@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Diagnostics;
 
 namespace Scheduler.Tray;
@@ -42,12 +44,20 @@ public sealed class AttachedScheduler : IDisposable
     }
 
     /// <summary>
-    /// The scheduler running for <paramref name="repo"/>, or null when none is: its shutdown event exists only
-    /// while it runs. <paramref name="exe"/> is the scheduler's path, used to find its process.
+    /// The scheduler running for <paramref name="repo"/> from this tray's own kit folder, or null when none is: its
+    /// shutdown event exists only while it runs. <paramref name="exe"/> is the scheduler's path, used to find its
+    /// process. 1264-B (INS-22): the event is named by the repository (or pool file) alone, so another kit folder's
+    /// scheduler holds the same one; with no <c>scheduler-next.exe</c> of this exe's folder running there is nothing
+    /// of this tray's to attach to, and no attach is made, so this tray can never set that event or kill that process.
+    /// <paramref name="running"/> lists the full exe paths of the running processes of a name (<see cref="RunningExes"/>
+    /// when null; the tests replace it).
     /// </summary>
-    public static AttachedScheduler? TryAttach(string repo, string exe, LogBuffer log)
+    public static AttachedScheduler? TryAttach(string repo, string exe, LogBuffer log, Func<string, IReadOnlyList<string>>? running = null)
     {
-        if (!EventWaitHandle.TryOpenExisting(RepoShutdown.Name(repo), out var shutdown))
+        var name = Path.GetFileNameWithoutExtension(exe);
+        var folder = Path.GetDirectoryName(Path.GetFullPath(exe)) ?? exe;
+        var own = (running ?? RunningExes)(name).Any(path => IsExeIn(path, name, folder));
+        if (!own || !EventWaitHandle.TryOpenExisting(RepoShutdown.Name(repo), out var shutdown))
         {
             return null;
         }
@@ -58,9 +68,60 @@ public sealed class AttachedScheduler : IDisposable
     /// <summary>
     /// 1013-B: the pool running from <paramref name="poolFile"/>, or null when none is. A pool's shutdown event is
     /// named as a repository's is, keyed by its pool file's path (Scheduler.Host's <c>PoolComposition.ShutdownName</c>),
-    /// so a tray started while a pool runs attaches to it instead of starting a second scheduler.
+    /// so a tray started while a pool runs attaches to it instead of starting a second scheduler; only when the pool's
+    /// scheduler is run from this tray's own kit folder (1264-B, as <see cref="TryAttach"/>).
     /// </summary>
-    public static AttachedScheduler? TryAttachPool(string poolFile, string exe, LogBuffer log) => TryAttach(poolFile, exe, log);
+    public static AttachedScheduler? TryAttachPool(string poolFile, string exe, LogBuffer log, Func<string, IReadOnlyList<string>>? running = null) =>
+        TryAttach(poolFile, exe, log, running);
+
+    /// <summary>1264-B: whether two folders are the same, ignoring case and a trailing slash.</summary>
+    public static bool SameFolder(string a, string b) =>
+        string.Equals(Path.GetFullPath(a).TrimEnd('\\', '/'), Path.GetFullPath(b).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>1264-B: whether a named event exists (a scheduler holding it is running).</summary>
+    public static bool EventExists(string name)
+    {
+        if (!EventWaitHandle.TryOpenExisting(name, out var handle))
+        {
+            return false;
+        }
+
+        handle.Dispose();
+        return true;
+    }
+
+    /// <summary>
+    /// 1264-B: the full exe path of every running process named <paramref name="name"/>, this user's alone (another
+    /// user's cannot be read), as <c>KitProcesses</c> lists them.
+    /// </summary>
+    public static IReadOnlyList<string> RunningExes(string name)
+    {
+        var paths = new List<string>();
+        foreach (var p in Process.GetProcessesByName(name))
+        {
+            using (p)
+            {
+                try
+                {
+                    if (p.Id != Environment.ProcessId && p.MainModule?.FileName is { } file)
+                    {
+                        paths.Add(Path.GetFullPath(file));
+                    }
+                }
+                catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+                {
+                    // ended meanwhile, or another user's: not one of ours
+                }
+            }
+        }
+
+        return paths;
+    }
+
+    private static bool IsExeIn(string path, string name, string folder) =>
+        string.Equals(Path.GetFileNameWithoutExtension(path), name, StringComparison.OrdinalIgnoreCase)
+        && Path.GetDirectoryName(Path.GetFullPath(path)) is { } dir
+        && SameFolder(dir, folder);
 
     /// <summary>1013-B: the pool file a <c>-Pool</c> tray means: the one given, else the default (MP-C1).</summary>
     public static string PoolFileOf(TrayArguments args, string localAppData) =>

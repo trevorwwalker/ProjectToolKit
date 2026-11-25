@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Scheduler.Core.Contracts;
@@ -14,7 +16,6 @@ public sealed class CategoryRegistry
     private readonly ISchedulerLog _log;
     private readonly IStateFiles _files;
     private readonly string _categoriesRel;
-    private readonly Dictionary<string, string> _held = new(Text.Comparer);
 
     /// <summary>Categories read from <paramref name="categoriesRel"/> (for example jobs/categories.json).</summary>
     public CategoryRegistry(ISchedulerLog log, IStateFiles files, string categoriesRel)
@@ -26,12 +27,6 @@ public sealed class CategoryRegistry
 
     /// <summary>The categories of the last good read, or null before one.</summary>
     public CategoriesFile? Current { get; private set; }
-
-    /// <summary>
-    /// The held categories and why, by letter: always empty since 560-A (SC-4, 320-A Q5: a redefined
-    /// category is no longer held). Kept until the page snapshot stops passing it to the Waiting window.
-    /// </summary>
-    public IReadOnlyDictionary<string, string> Held => _held;
 
     /// <summary>The overlap warnings of the last good read (LANE-4).</summary>
     public IReadOnlyList<string> Overlaps { get; private set; } = [];

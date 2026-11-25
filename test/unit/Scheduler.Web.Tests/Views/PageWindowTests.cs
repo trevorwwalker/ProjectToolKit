@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Web.Views;
 
 namespace Scheduler.Web.Tests.Views;
@@ -36,7 +38,6 @@ public sealed class PageWindowTests
 
         // Waiting on you: each kind, and the running worker's review entry hidden.
         Assert.Contains("Waiting on you", html, StringComparison.Ordinal);
-        Assert.Contains("held category", html, StringComparison.Ordinal);
         Assert.Contains("stuck", html, StringComparison.Ordinal);
         Assert.Contains("question", html, StringComparison.Ordinal);
         Assert.Contains("waiting", html, StringComparison.Ordinal);

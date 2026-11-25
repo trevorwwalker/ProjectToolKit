@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Net;
 using Scheduler.Core.Contracts;
 using Scheduler.Host.PageActions;
@@ -32,23 +34,7 @@ public class CategoryAcceptTests
         harness.Host.CategoriesJson = CategoriesV2;
         harness.Tick_Once();
 
-        Assert.Empty(harness.Tick.Categories.Held);
-        var stored = AcceptedCategories.Load(harness.Files);
-        Assert.Equal(harness.Tick.Categories.Current!.Categories["A"].Json, stored["A"]);
         Assert.Contains((1, "010-A", false), harness.Host.Starts);
-    }
-
-    // The /accept-category route stays for old pages; with nothing held it only re-stores the definition.
-    [Fact]
-    public async Task Categories_AcceptFromPage_StillAnswers()
-    {
-        using var harness = new PageActionHarness(categoriesJson: CategoriesV1, project: "ptk-280b-accept");
-        harness.Tick_Once();
-
-        var answer = await harness.Post("/accept-lane?lane=A");
-
-        Assert.Equal(HttpStatusCode.SeeOther, answer.StatusCode);
-        Assert.Empty(harness.Tick.Categories.Held);
     }
 
     private static Card Card(CardFolder folder, int num, string category) => new()

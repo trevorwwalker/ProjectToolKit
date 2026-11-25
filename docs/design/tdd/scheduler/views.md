@@ -92,10 +92,10 @@ The board, the Plans view and the Gantt are three drawings of the same snapshot.
 
 - **VW-1 Four views, pool page only.** The pool page (`CombinedPageRenderer`) has four views: **Workers** (today's
   page), **Board**, **Plans**, **Gantt**. A pool with one project has them too. `PageRenderer` gets none.
-- **VW-2 The switch.** Four buttons in the title bar, after the project dropdown and before the theme menu; the current
-  one is pressed. The view is part of the address (`/?view=board`, `plans`, `gantt`; no `view` or an unknown one is
-  Workers), so a view can be bookmarked and opened on the phone, and the browser remembers the last one used (as
-  `#projsel` is remembered) when `/` is opened bare.
+- **VW-2 The switch.** One drop-down (`<select id='viewsel'>`, 1129-C, in `CombinedPageRenderer`) in the title bar, after the project dropdown and before the theme menu; the current
+  view is selected. The view is part of the address (`/?view=board`, `plans`, `gantt`; no `view` or an unknown one is
+  Plans, 1269-C), so a view can be bookmarked and opened on the phone, and the browser remembers the last one used,
+  Workers included (as `#projsel` is remembered) when `/` is opened bare; with none remembered the page opens on Plans.
 - **VW-3 The title bar on every view.** Every view starts with the same title bar (name, version, load, Pause all /
   Resume all, Drain and exit, Stop all and exit, dropdown, switch, theme, last update). Under it the Workers view has its
   windows; the other views have their own window filling the desk, and the Waiting on you window above it (so a
@@ -144,7 +144,7 @@ The board, the Plans view and the Gantt are three drawings of the same snapshot.
   that is on main (plans were archived before 1126-C); a path in `jobs/plans/` not on main is shown under its own
   name marked **missing**; any other path, `none...`, an empty `Plan:` and no `Plan:` line are No plan.
 - **VW-13 A plan's status.** The first line of the file that starts with `Status:` (also `*Status`, `**Status`), cut at
-  200 characters; none shows "no status line". The roadmap is no longer a plan (1126-C): its items are not listed.
+  200 characters; none shows "no status line". The roadmap is no longer a plan (1126-C): its items are not listed. Since 1231-D the roadmap is an ordinary plan in `jobs/plans/` and its leftover code goes (VW-31).
 - **VW-14 Counts.** Per plan, and per step within it: **created** (every card naming it), **done** (done/ and
   archive/), and **pending** split as the board's columns: queue, running, review, waiting on you, waiting on the
   planner. A bar per plan shows done against created. The same counts for No plan.
@@ -362,6 +362,228 @@ by version, by model - and the views draw none of it beyond the Plans counts. Le
 (beside Trends), a CSV of the joined table, filters on the board by category or type, and the version a card shipped
 (open point 2).
 
+## 10. Plan parents (card 1231-D, 2026-11-23)
+
+Built: VW-24 to VW-33 are on main (1230-A, 1232-A, 1233-C, 1234-A, 1236-A; versions 3.4.7 to 3.4.11), reviewed by
+1235-D on 2026-11-24. Design only. It turns step 5 of `jobs/plans/plans_plan.md` into rules; the cards `1232-A`, `1233-C` and `1234-A` build
+it. Fixed by the developer (2026-11-23, the plan's Decisions): a child names exactly one parent, in a header line
+`Parent: jobs/plans/<parent>_plan.md, step <n>` (n or n.m); a plan with no Parent line is a root; a project normally has
+one root, and more than one is shown and flagged, never refused; no depth limit; progress rolls up to the root; only
+numbered headings are steps. Read with VW-11 to VW-17 above and the code on main at `d6d4f606` (`Scheduler.Core/Views/`,
+`Scheduler.Host/Views/ViewsSource.cs`, `Scheduler.Web/Views/PlansView.cs` and `GanttView.cs`). ProjectToolkit's
+`jobs/plans/` today: 17 plans, one root (`projecttoolkit_plan.md`, four steps), every other plan with a `Parent:` line on
+line 3 or 4 of its header; two name a sub-step (`gantt_plan.md` names `views_plan.md, step 2.4`; `multi-project_plan.md`
+names `scheduler-roadmap_plan.md, step 1.1`, the unnumbered `### Multi-project` under its step 1).
+
+### Rules
+
+- **VW-24 Only numbered headings are steps** (built by 1230-A, version 3.4.7). A `##` heading is **numbered** when its
+  title starts with a number and no sub-number (`1. Goal`, `3) Build`, `0. What exists today`; the pattern is
+  `PlanSteps.LeadingNumber`); `## 5.2 Something` is not numbered. In a plan with at least one numbered `##` heading,
+  only the numbered `##` headings are steps, each keeping its own number; a `###` heading under a numbered `##` is its
+  sub-step, numbered as before (its own `n.m` when it has one, else the next sub-number); an unnumbered `##` heading
+  (`Decisions`, `Open questions`) is not a step, and the `###` headings under it are not sub-steps of anything. A plan
+  with no numbered `##` heading at all keeps the older rule: every `##` heading is a step, counted 1, 2, 3 in order.
+  Headings inside code fences are never steps. Headings and their anchors are unchanged.
+- **VW-25 The Parent line** (built by 1232-A, version 3.4.8). A plan's parent is read from its **header**: the lines before its first `## ` heading
+  (outside code fences). The first header line that matches `Parent:` counts, matched as `Status:` is (VW-13): the word
+  in any case, with or without `*` or `**` around it (`Parent:`, `parent:`, `**Parent:**`); any later Parent line, and
+  any in the body, is ignored. The value is cleaned as a card's `Plan:` line is (`PlanPaths`: backticks dropped, `\`
+  read as `/`) and split as one (`CardFiles.SplitPlan`): the path is the first word with a trailing `,`, `;` or `:`
+  dropped, and the step text is the rest (`step 2`, `Step 2.4`, `(5.2)`). An empty value, or one starting `none`, is no
+  parent: the plan is a root.
+- **VW-26 Resolving the parent** (built by 1232-A, version 3.4.8). The path is resolved by VW-12 (`PlanPaths.Resolve`): `docs/jobs/` reads as `jobs/`,
+  `jobs/archive/X` as `jobs/plans/X` when that is on main. The step text picks the parent's step by `PlanStepMatch.Of`
+  over the parent's steps (VW-24), exactly as a card's step does: the first number is step n; a second number picks
+  sub-step n.m, falling back to step n when step n has no such sub-step. The parent is **found** when the path resolves
+  to a plan on main (`PlanKind.Plans`) other than the child itself and the step text picks a step; otherwise the child
+  is **unplaced**, with one reason (VW-28).
+- **VW-27 The tree** (built by 1232-A, version 3.4.8; drawn by 1233-C, 3.4.9). Per project, every plan the Plans view lists (VW-11) is placed exactly once. A placed child is
+  drawn under the step node its Parent line picks (a sub-step node when it picks n.m). Inside a step node the order is:
+  the step's own cards (VW-15, by number), then its child plans, then its sub-steps. Child plans under one step are
+  ordered by path (ordinal, ignoring case), as top-level plans are today. The top level of a project is, in order: its
+  roots (by path), then its unplaced plans (by path, each with its reason), then plans named by cards but not on main
+  (**missing**, VW-12; they have no text, so no parent), then the groups of cards with no plan (1128-C: Bugs, Requests,
+  Plan not found). There is no depth limit. A plan's Other cards (cards naming the plan with no matching step) stay
+  under that plan, wherever it is drawn.
+- **VW-28 Plans that cannot be placed** (built by 1232-A, version 3.4.8; drawn by 1233-C, 3.4.9). An unplaced plan is never hidden and never dropped: it is drawn at the top
+  level, after the roots, with its own steps, cards and children, and with its reason in words:
+  1. **parent not found**: the path is in `jobs/plans/` but not on main: "parent not found: `<path>`";
+  2. **parent is not a plan**: the path resolves to No plan (a design document, anything outside `jobs/plans/`):
+     "parent is not a plan: `<path>`";
+  3. **step not found**: the step text has no number, or the parent has no step n: "step not found: `<path>`,
+     `<step text>`" (with no step text: "step not found: `<path>`, no step given");
+  4. **cycle**: following Parent lines from this plan comes back to it: "in a cycle: its parents lead back to it". A
+     plan naming itself is a cycle of one. A cycle is broken at one plan only, the member of the cycle that sorts first
+     by path (ordinal, ignoring case), so the result does not depend on the order plans are read. That plan is drawn at
+     the top level, flagged; the cycle's other members hang under it by their own Parent lines. A plan that only leads
+     into a cycle (its parent is in one) is placed normally.
+
+  An unplaced plan is not a root (VW-30). A plan with more than one reason shows the first in this list.
+- **VW-29 Roll-up** (built by 1232-A, version 3.4.8; drawn by 1233-C, 3.4.9). A step node's Done, Total and Cancelled are its own cards' plus its sub-steps' plus its child
+  plans' (VW-14's rule for what counts: Total leaves out cancelled cards). A plan's Done, Total and Cancelled are the sum
+  over its steps and its Other cards, so a root's counts equal the sum of everything under it, at any depth. A step's
+  automatic mark is worked out (`PlanMarks.Of`) from the marks of its cards, its child plans and its sub-steps; a plan's
+  from its steps and Other cards, as today. Manual marks (`plan-marks.json`, 1125-C, 1213-B) keep their keys (the plan's
+  own path, and `plan` or the step label) and work at any depth; a manual check on a child plan, or on one of its steps,
+  changes that node's mark, so the parent step sees the child as complete. Manual marks never change counts. An
+  unplaced plan's counts and mark are its own: it adds to no parent.
+- **VW-30 More than one root** (built by 1232-A, version 3.4.8; the note by 1233-C, 3.4.9). A **root** is a plan in `jobs/plans/` on main with no parent (VW-25). All roots are
+  shown. When a project has plans and its number of roots is not 1, its Plans block says so in one line at its top,
+  above its plans: "n root plans" ("0 root plans" when every plan names a parent, "2 root plans", and so on). It is a
+  note, never an error, and nothing is refused. The Completed plans window (1127-C) takes only top-level nodes (roots,
+  unplaced and missing plans) whose mark is complete; a child plan is always drawn inside its parent, in whichever
+  window the parent is, folded.
+- **VW-31 The roadmap is an ordinary plan** (built by 1236-A, version 3.4.11). VW-13's special case is gone: `jobs/plans/scheduler-roadmap_plan.md` is a
+  plan like any other (a child of `projecttoolkit_plan.md`, step 2); its steps are its numbered headings (VW-24: its
+  unnumbered `## Order of the remaining work` is no step) and its child plans hang under them by their own Parent lines.
+  Open point 3's `Roadmap: item n` lines in design documents are not read: designs are inputs to plans, linked from
+  them (VW-11). Removed by `1236-A` (the design named `1232-A`, which left it for the developer's yes): `RoadmapItem`, `PlanStatus.RoadmapItems` and `PlanStatus.RoadmapItemOf`
+  (`Scheduler.Core/Views/PlanStatus.cs`); the test `VW_13_RoadmapItemsArePlans_DocsNestUnderTheItemNamingThem`
+  (`PlansViewModelTests.cs`), which covers only them; `ProjectViews.RoadmapItemOf`
+  (`Scheduler.Core/WebContract/ProjectViews.cs`, never set); and `PlanText.RoadmapItem` in
+  `Scheduler.Host/Views/ViewsSource.cs`, their one caller. The page uses none of it today.
+- **VW-32 The Gantt grouped by plan follows the tree** (built by 1234-A, version 3.4.10, with `GanttView.Members`). The Gantt is always grouped by plan (1241-C removed the Group by control, `GanttGroupBy` and the category grouping; a `group=` in an old address is ignored; row keys stay `<project>|plan|<row key>`). It draws project -> root plan
+  -> step -> (cards, child plan -> its steps -> ..., sub-steps), in VW-27's order, then the unplaced and missing plans,
+  then Bugs and Requests. Row keys stay what they are today for every plan at every depth: `plan:<path>` for a plan,
+  `plan:<path>/<step label>` for a step, `plan:<path>/other` for Other cards. Each plan is placed once, so the keys are
+  unique, and a plan's key does not move when it gains or loses a parent, so folding survives. A row is kept when it,
+  or anything under it, has a card row in the window: a step with no cards of its own but a child plan with rows is
+  kept, and so is a plan with no cards of its own whose children have rows (today's `GanttRows` passes no `alsoPlans`
+  and would drop it). A row's summary bar and Done/Total cover everything under it. The Details panels
+  (`GanttView.Members`) list, for each plan and step row, the cards under it at every depth, by the same keys.
+- **VW-33 Data and speed** (built by 1232-A, version 3.4.8; read by 1233-C and 1234-A). No Host change for the tree: `ViewsSnapshot.PlanTexts` already holds the full text of every
+  `*_plan.md` in `jobs/plans/` on main (`ViewsSource` reads each by blob, once per blob id), so the Parent line and the
+  steps are read in Core. The only Host edit is VW-31's removal of a dead field. The tree is built once per snapshot and
+  kept with it; snapshots are immutable and rebuilt only when something moved (VW-22), so once per snapshot is once per
+  version. At 50 projects by 5,000 cards that is one pass over a project's cards and plan texts per rebuild (cards
+  grouped by plan as today, plus one parent lookup per plan), never per page request. The Plans view, the Gantt rows
+  and the Gantt's Details panels all read that one tree instead of each building their own.
+
+- **VW-34 Hide completed** (built by 1256-C, version 3.4.19). The **Completed plans** window of 1127-C is gone: with one root plan per project
+  it was never filled. The Plans page is one window at full width, and a toggle on its title bar filters the tree.
+  1. *Draws everything.* `PlansView.Html` and `AppendProject` draw every top-level plan, complete or not.
+  2. *The toggle.* The Plans bar, beside Expand all and Collapse all, has one button: **Hide completed** when completed items are shown,
+     **Show completed** when they are hidden. It acts in the page script, with no server round trip.
+  3. *What it hides.* A child plan, a step or a sub-step whose mark is a green check, with everything under it. Each is drawn with
+     `data-complete='1'` (on its `<details>`, or on the `<div>` of a completed step with no children); the toggle sets the class
+     `plans-hide-done` on the Plans window and CSS hides `[data-complete]` under it. Never hidden: a project's top-level plans (so a root and an
+     unplaced plan always show), the Bugs, Requests and Plan not found groups, and done cards inside a step that is not complete.
+     Counts do not change: a parent's done / total still includes what is hidden.
+  4. *Default and memory.* Completed items are hidden by default. The choice is kept per browser in `localStorage` (`ptk-plans-hide-completed`,
+     `0` = shown) and is put back after every refresh of the window (`applyPlans`). A manual mark click that makes an item complete hides
+     it at the next draw when the toggle is on.
+  5. *The old window.* `w-plans-completed` and its CSS are removed; `PlansView.Html` has no `completed` parameter.
+
+- **VW-35 The shown step number is the whole path** (built by 1299-C, version 3.4.33). Developer, 2026-11-24 13:45: "I'd also like the number to be dotted to reflect the entire description. ie 2.7 or 4.5 - etc. The number reflects the entire path to the child in the tree and uniquely identifies it out of the entire plan". Where one step has several child plans (13:51): "option A - can reassess if it's a problem". Display only: the number in front of a step's title is the shown number of the step its plan is drawn inside, a dot, then the step's own label (`n` or `n.m`); a plan at the top level (a root, unplaced or missing plan) shows just its own labels. So `plans_plan.md` step 7 under root step 2 reads `2.7`, a plan under that under `scheduler-roadmap_plan.md` step 10 reads `2.10.8`, and a sub-step `1.2` of a plan under `2` reads `2.1.2`. Option A: nothing is added for which child plan it is, so two child plans under one step both show `<parent>.1`; the plan's own row above them tells them apart. Plan files, `step.Label`, `data-key`s, marks, links, anchors and cards' `Plan:` lines keep the step's own number; the link's `title` says it (`step 7 of jobs/plans/plans_plan.md`). The prefix is passed down `AppendPlan` and `AppendStep`; the Core tree is unchanged.
+### Build notes
+
+**`1232-A` (Core: `Scheduler.Core/Views/`, `test/unit/Scheduler.Core.Tests/Views/`).**
+
+- New `PlanParents.cs`:
+  - `public sealed record PlanParentLine(string Path, string StepText);`: the cleaned path (not yet resolved) and the
+    step text.
+  - `public static class PlanParent { public static PlanParentLine? Of(string? planText); }`: VW-25; null is a root.
+  - `public enum PlanFlag { None, ParentNotFound, ParentNotAPlan, StepNotFound, Cycle }`: VW-28, in its order of
+    precedence; and `public static class PlanFlags { public static string Text(PlanFlag flag, PlanParentLine? line); }`
+    for the words.
+- `PlanTree.cs`:
+  - `PlanStepNode`: add `public IReadOnlyList<PlanNode> Plans { get; init; } = [];` (child plans, in VW-27's order).
+    `Done`, `Total` and `Cancelled` include them (VW-29); `Mark` is `PlanMarks.Of` over the cards' marks, then the
+    `Plans`' marks, then the sub-steps'.
+  - `PlanNode`: add `public PlanFlag Flag { get; init; }`, `public string FlagText { get; init; } = "";`,
+    `public PlanParentLine? Parent { get; init; }` (as read; null for a root), and the rolled-up
+    `public int Done => Steps.Sum(s => s.Done) + (Other?.Done ?? 0);`, with `Total` and `Cancelled` alike (PlansView
+    sums these itself today; 1233-C switches to them).
+  - New `public sealed record PlanForest { public IReadOnlyList<PlanNode> Top { get; init; } = []; public int Roots { get; init; } public static readonly PlanForest Empty = new(); }`:
+    `Top` is VW-27's top level (roots, unplaced, missing, then the No plan node, with which today's list also ends);
+    `Roots` is VW-30's count.
+  - New `public static PlanForest Nest(IEnumerable<ViewCard> cards, ISet<string> onMain, IReadOnlyDictionary<string, string> planText, IEnumerable<PlanRef>? alsoPlans = null, IReadOnlyDictionary<string, IReadOnlyDictionary<string, ManualMark>>? marks = null)`:
+    group the cards by plan as `Of` does; read each plan's `PlanParent.Of`; resolve it (VW-26); break cycles (VW-28:
+    follow each plan's parent chain with a visited set, and for each cycle found cut the link of its first member by
+    path); then build the nodes bottom-up (children before parents, memoised by path), handing `Node` the child plans
+    of each `PlanStep`.
+  - New `public static PlanForest Of(ViewsSnapshot snapshot)`: `Nest` over the snapshot's cards, plan texts, plans (as
+    `alsoPlans`) and marks, with `onMain` the paths of `snapshot.Plans` whose kind is `Plans` (enough for VW-12, which
+    only asks about `jobs/plans/` paths); cached per snapshot instance in a `ConditionalWeakTable<ViewsSnapshot, PlanForest>`
+    (thread-safe and freed with the snapshot; not a field on the record, so `with` copies and snapshots built by
+    initializer in tests stay correct).
+  - New `public static IEnumerable<PlanNode> Walk(PlanNode node)`: the node and every plan under it, depth-first in
+    VW-27's order (for the Gantt's Details panels).
+  - The existing `PlanTree.Of(cards, onMain, planText, alsoPlans, marks)` keeps its signature and its flat behaviour
+    (every plan at the top level, no child plans), so its callers (`PlansView`, `GanttRows`, `GanttView`) keep
+    compiling and keep today's page until `1233-C` and `1234-A` move them to the forest. This replaces the card's
+    wording "`PlanTree.Of` returns the roots": changing what that `Of` returns would drop child plans from the page on
+    main between the cards.
+- VW-31's removal: `PlanStatus.cs` and `PlansViewModelTests.cs` are in the card's scope; `Scheduler.Core/WebContract/ProjectViews.cs`
+  and `Scheduler.Host/Views/ViewsSource.cs` are not, so the worker asks for them with the `lock` command (delete
+  `RoadmapItemOf`; drop `RoadmapItem` from `PlanText` and its `PlanStatus.RoadmapItemOf` call). Deleting the test needs
+  the developer's yes (the card's Questions); without it, `1232-A` leaves the roadmap code in place.
+- Tests, in the new files `PlanParentTests.cs` (VW-25, VW-26) and `PlanTreeNestedTests.cs` (VW-27 to VW-33), xUnit, in
+  the style of `PlanTreeTests.cs`:
+  - `VW25_Parent_ReadFromHeader`, `VW25_Parent_AfterFirstHeadingIsIgnored`, `VW25_Parent_FirstLineWins`,
+    `VW25_Parent_CaseBoldAndBackticks` (``**parent:** `jobs/plans/a_plan.md`, Step 2``), `VW25_Parent_NoneOrEmptyIsRoot`,
+    `VW25_Parent_StepTextKept` (`, step 2.4` gives `step 2.4`);
+  - `VW26_OldPath_ResolvesAsVW12` (`docs/jobs/plans/a_plan.md`), `VW26_SubStep_Picked`, `VW26_SubStepMissing_FallsBackToStep`;
+  - `VW27_Child_UnderParentStep_AfterCards_BeforeSubSteps`, `VW27_Child_UnderSubStep`, `VW27_Siblings_OrderedByPath`,
+    `VW27_ThreeLevels_Nest`, `VW27_EveryPlanPlacedOnce`, `VW27_TopLevel_RootsThenUnplacedThenMissingThenNoPlan`,
+    `VW27_OtherCards_StayWithTheirPlan`;
+  - `VW28_ParentNotFound_TopLevelFlagged`, `VW28_ParentNotAPlan_TopLevelFlagged`, `VW28_StepNotFound_TopLevelFlagged`,
+    `VW28_NoStepGiven_TopLevelFlagged`, `VW28_SelfParent_IsCycle`, `VW28_Cycle_BrokenAtFirstByPath` (a -> b -> c -> a:
+    a is flagged at the top, c under a, b under c), `VW28_LeadingIntoCycle_PlacedNormally`, `VW28_UnplacedKeepsItsChildren`;
+  - `VW29_StepCounts_IncludeChildPlans`, `VW29_RootCounts_EqualSumOfEverythingUnder`, `VW29_StepMark_FromChildPlanMark`,
+    `VW29_ManualCheckOnChild_CountsCompleteInParent`, `VW29_ManualMarkOnNestedStep_Applies`,
+    `VW29_ManualMarks_DoNotChangeCounts`, `VW29_UnplacedPlan_AddsToNoParent`;
+  - `VW30_Roots_CountsOnlyPlansWithNoParent` (one root and one unplaced plan: 1), `VW30_TwoRoots_BothOnTop`;
+  - `VW31_Roadmap_IsAnOrdinaryPlan` (a roadmap-shaped text: its unnumbered first `##` is no step, and a child hangs
+    under step 1.1);
+  - `VW33_Forest_BuiltOncePerSnapshot` (`Assert.Same` on two calls), `VW33_FlatOf_Unchanged` (the old `Of` gives the
+    same nodes as before for plans with Parent lines).
+
+**`1233-C` (Web: `PlansView.cs`, `PageScript.cs`, `PlansViewPageTests.cs`, `PlansNestedTests.cs`).**
+
+- `AppendProject`: take `PlanTree.Of(view.Snapshot)` (the cached forest) instead of building a tree; split
+  `forest.Top` between the two windows by mark (1127-C, top level only, VW-30); when the project has plans and
+  `forest.Roots != 1`, write `<div class='mute plans-roots'>n root plans</div>` first.
+- `AppendPlan(sb, view, node, categories, chip, bool nested = false)`: counts from `node.Done` and `node.Total`; when
+  `node.Flag != PlanFlag.None`, `FlagText` after the name in `<span class='mute plan-flag'>`; a nested plan's
+  `<details>` is never `open` by default (folded, whatever its mark); its key stays `p|<project>|<path>` (each plan is
+  drawn once, so it is unique, and it does not move with its parent). The status line is shown as today.
+- `AppendStep`: after `AppendCards(node.Cards)`, `AppendPlan(..., nested: true)` for each of `node.Plans`, then the
+  sub-steps; a step with child plans but no cards is a `<details>`, not the bare `<div>`. Its count is the rolled-up
+  `node.Done` and `node.Total`.
+- `PageScript.cs`: Expand all and Collapse all (1212-C) must reach every `details` in the window, nested ones included
+  (check it; change it only if it stops at the first level). The mark click (1125-C, 1213-B) already posts the plan's
+  path and the step, so a nested mark needs nothing new.
+- Tests, in `PlansNestedTests.cs`: `VW27_Page_ChildPlanInsideParentStep_AfterCards`, `VW27_Page_NestedPlanFoldedByDefault`,
+  `VW27_Page_StepWithOnlyChildPlan_IsDetails`, `VW27_Page_DetailsKeysUniqueWithNesting` (beside
+  `PlansViewPageTests.Tree_EveryDetails_HasAKey_AndKeysAreUnique`, which must still pass), `VW27_Page_ExpandAllReachesNested`,
+  `VW28_Page_UnplacedPlan_TopLevelWithReason`, `VW29_Page_CountsAreRolledUp`, `VW29_Page_NestedMarkClickCarriesChildPath`,
+  `VW30_Page_TwoRoots_SaysTwoRootPlans`, `VW30_Page_OneRoot_SaysNothing`,
+  `VW30_Page_CompleteChildUnderOpenRoot_StaysInOpenWindow`.
+
+**`1234-A` (Core: `GanttRows.cs`, `GanttRowsTests.cs`).**
+
+- `GanttRows.ByPlan`: walk `PlanTree.Of(snapshot).Top` instead of `PlanTree.Of(snapshot.Cards, onMain, snapshot.PlanTexts)`
+  (this also stops today's `onMain` from counting missing plans as on main). `StepRow(string parentKey, PlanStepNode node,
+  Dictionary<string, GanttRow> rows, IReadOnlyDictionary<string, string> titles)`: its children are the step's card rows,
+  then one `PlanRow` per `node.Plans`, then the sub-step rows. New `private static GanttRow? PlanRow(PlanNode plan,
+  Dictionary<string, GanttRow> rows, IReadOnlyDictionary<string, string> titles)` holds what the loop body does today
+  for one plan, so roots, children and unplaced plans are built alike. Keys as VW-32. An unplaced plan's label carries
+  its `FlagText`.
+- `GanttView.Members` (`Scheduler.Web/Views/GanttView.cs`) must follow the same tree (use `PlanTree.Walk` and add each
+  child plan's members to its step), or the Details panel of a step row leaves out its child plans' cards. That file is
+  in no queued card's scope: see the card's Questions.
+- Tests, in `GanttRowsTests.cs`: `VW32_Gantt_ChildPlanUnderParentStep` (root -> step -> child plan -> step -> card),
+  `VW32_Gantt_KeysUniqueAndPlanKeysUnchanged`, `VW32_Gantt_StepWithOnlyChildPlan_Kept`,
+  `VW32_Gantt_PlanWithNoOwnCards_KeptForItsChildren`, `VW32_Gantt_UnplacedPlan_TopLevel`,
+  `VW32_Gantt_SummaryCoversChildPlans`, `VW32_Gantt_GroupByCategoryUnchanged`; and, with `GanttView.Members`,
+  `VW32_GanttDetails_StepMembersIncludeChildPlans` in `test/unit/Scheduler.Web.Tests/Views/GanttViewPageTests.cs`.
+
+**Checked by hand, by the review card of step 5 (the plan's Done when):** ProjectToolkit's Plans page opens as one root
+(`projecttoolkit_plan.md`) with four steps, no "root plans" note and no flagged plan; every file in `jobs/plans/` is
+reachable from it; the root's counts equal the sum of its children's.
+
 ## Open points (all decided by the developer, 2026-11-21 18:03, as recommended except where noted)
 
 1. **The accounting column name.** accounting.csv's last column `type` is already the worker's type (WT-P6); 1030-A
@@ -372,7 +594,7 @@ by version, by model - and the views draw none of it beyond the Plans counts. Le
 3. **ProjectToolkit's plans.** Its cards name design documents and the roadmap's items point to them. **Decided (differs
    from the recommendation): add a `Roadmap: item n` line to each design document**, since it survives rewording and
    indexes cheaply. The roadmap's items are the plans and each document is listed under its item (VW-13); the build
-   cards add the lines.
+   cards add the lines. *(Superseded 2026-11-23: plans nest by `Parent:` lines, VW-25 to VW-31; the `Roadmap:` lines are not read.)*
 4. **The fix-up's reach.** Recommended: add `Plan:` only where it can be inferred (13 AmigaX cards today) and leave
    existing lines as they are, read through VW-12, so 565 done cards are not rewritten; the alternative rewrites every
    old `docs/jobs/plans/` line to its current path in the same commit. **Decided: add only the missing lines**;

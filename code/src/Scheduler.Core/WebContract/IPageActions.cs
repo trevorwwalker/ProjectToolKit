@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Core.WebContract;
 
 /// <summary>
@@ -48,9 +50,6 @@ public interface IPageActions
 
     /// <summary><c>/open-workers</c>.</summary>
     ActionResult OpenWorkers();
-
-    /// <summary><c>/accept-category</c>.</summary>
-    ActionResult AcceptCategory(string category);
 
     /// <summary><c>/open</c>: open a card (MOVE-9).</summary>
     ActionResult Open(string card);

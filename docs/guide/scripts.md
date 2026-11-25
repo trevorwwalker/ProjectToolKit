@@ -1,7 +1,12 @@
 # The scripts in `bin/`
 
-ProjectToolkit comes with ten PowerShell scripts in its `bin/` folder. This page says what each one is for, how to call it,
-what it changes on disk, and when you would run it.
+ProjectToolkit comes with fifteen PowerShell scripts in its `bin/` folder (plus `publish-release.ps1` itself, which builds the
+releases and calls two of the fifteen, `template-history.ps1` and `test-installer.ps1`; see their sections near the last
+one). This page says
+what each one is for, how to call it, what it changes on disk, and when you would run it. Only the first five are in the
+release branch, and the installer leaves out `build-and-deploy.ps1` and `deploy-scheduler.ps1` too (an installed kit has no
+source to build; it updates with the tray's **Check for update...**): the rest are developer-only, kept out of every release by
+`publish-release.ps1`'s exclude list.
 
 New to the toolkit? Start with the [guide index](README.md). Most people only ever need the first three scripts; the rest are
 checks and measurements for people working on the toolkit itself.
@@ -9,23 +14,30 @@ checks and measurements for people working on the toolkit itself.
 | Script | Who it is for | In one line |
 |---|---|---|
 | [`projecttoolkit.ps1`](#projecttoolkitps1) | everyone | Start a new project, or add or refresh a job queue in one you have. |
-| [`build-and-deploy.ps1`](#build-and-deployps1) | everyone | Bring the toolkit up to date and restart the scheduler. |
-| [`deploy-scheduler.ps1`](#deploy-schedulerps1) | everyone (`build-and-deploy` calls it) | Swap in a new scheduler build without stopping the workers. |
+| [`build-and-deploy.ps1`](#build-and-deployps1) | a clone of the toolkit | Bring the toolkit up to date and restart the scheduler. |
+| [`deploy-scheduler.ps1`](#deploy-schedulerps1) | a clone of the toolkit (`build-and-deploy` calls it) | Swap in a new scheduler build without stopping the workers. |
 | [`init-project.ps1`](#init-projectps1) | old instructions only | An old name that forwards to `projecttoolkit.ps1`. |
 | [`test-projecttoolkit.ps1`](#test-projecttoolkitps1) | toolkit developers | Checks that `projecttoolkit.ps1` still works. |
-| [`startup-gate.ps1`](#startup-gateps1) | toolkit developers | Fails if the scheduler's start got clearly slower. |
-| [`git-baseline.ps1`](#git-baselineps1) | **developer tool** | Counts the processes and time a test run or scheduler job costs. |
-| [`test-profile.ps1`](#test-profileps1) | **developer tool** | Finds the slowest tests. |
-| [`process-start-check.ps1`](#process-start-checkps1) | **developer tool** | Measures how fast this PC starts programs. |
-| [`live-stream-measure.ps1`](#live-stream-measureps1) | **developer tool** | Measures what the scheduler's live page costs. |
+| [`startup-gate.ps1`](#startup-gateps1) | toolkit developers, not released | Fails if the scheduler's start got clearly slower. |
+| [`git-baseline.ps1`](#git-baselineps1) | **developer tool**, not released | Counts the processes and time a test run or scheduler job costs. |
+| [`test-profile.ps1`](#test-profileps1) | **developer tool**, not released | Finds the slowest tests. |
+| [`process-start-check.ps1`](#process-start-checkps1) | **developer tool**, not released | Measures how fast this PC starts programs. |
+| [`process-start-dose.ps1`](#process-start-doseps1) | **developer tool**, not released | Finds which kind of work lowers this PC's process-start rate. |
+| [`paged-pool-probe.ps1`](#paged-pool-probeps1) | **developer tool**, not released | Finds which operation of a test run leaves kernel paged pool behind. |
+| [`pool-tags.ps1`](#pool-tagsps1) | **developer tool**, not released | Reads the kernel pool by tag; no poolmon needed. |
+| [`live-stream-measure.ps1`](#live-stream-measureps1) | **developer tool**, not released | Measures what the scheduler's live page costs. |
+| [`template-history.ps1`](#template-historyps1) | **developer tool**, not released | Writes the template manifest `publish-release.ps1` puts in a release. |
+| [`test-installer.ps1`](#test-installerps1) | **developer tool**, not released | Installs and checks a built `ProjectToolkit-Setup.exe`. |
 
 ## Before you start
 
-- Run the commands from a PowerShell prompt in the toolkit's folder (here `C:\Projects\ProjectToolkit`). Each script finds the
-  kit from its own location, so you can also call it by full path from anywhere.
+- Call each script by its full path in the kit's `bin` folder (an install puts the kit in `%LOCALAPPDATA%\Programs\ProjectToolkit`;
+  a clone is wherever you cloned it). The examples write `.\bin\...` from the kit's folder. Each script finds the kit from its
+  own location, so the full path works from anywhere.
 - Most scripts have built-in help: `Get-Help .\bin\projecttoolkit.ps1 -Full` prints the parameters and examples.
-  `live-stream-measure.ps1` and `init-project.ps1` keep their notes in comments at the top of the file instead.
-- The **scheduler** is the program that hands job cards to AI workers. The **planner** is the AI session you plan with: you
+  Only `live-stream-measure.ps1` keeps its notes in comments at the top of the file instead.
+- **Switchyard** (the scheduler, `scheduler-next.exe`, with its tray and page) is the program that hands job cards to AI
+  workers. The **planner** is the AI session you plan with: you
   describe what you want and it writes plans and cards. Wherever this page says "ask your planner", the
   [planner guide](planner.md) shows how.
 
@@ -36,10 +48,10 @@ checks and measurements for people working on the toolkit itself.
 **What it is for.** The setup script. It does two independent jobs, chosen with `-Action`:
 
 - `new-project` makes a new project: the standard folder layout, a `README.md`, `.gitignore`, `.gitattributes`, a conventions
-  file and two empty design documents, and then it does the second job too.
-- `jobs` sets up the **job queue** alone: the `jobs/` folders (`queue`, `active`, `review`, `done`), the rules every worker
-  reads (`jobs/README.md`), and the project's settings files. Use it to add a queue to a repository you already have, or with
-  `-Update` to pull in newer rules from the toolkit.
+  file, the planner brief (`docs/planner-brief.md`) and the two design documents to fill in, and then it does the second job too.
+- `jobs` sets up the **job queue** alone: the `jobs/` folders (`queue`, `active`, `review`, `done`, `plans`, `archive`,
+  `requests`), the rules every worker reads (`jobs/README.md`), and the project's settings files. Use it to add a queue to a
+  repository you already have, or with `-Update` to pull in newer rules from the toolkit.
 
 **Why.** Workers and the scheduler expect one layout. The script lays it down so you do not have to remember it, and
 `-Update` carries a fix to the rules into every project.
@@ -49,17 +61,17 @@ checks and measurements for people working on the toolkit itself.
 | Parameter | Default | Meaning |
 |---|---|---|
 | `-Action` | (required) | `new-project` or `jobs`. |
-| `-Repo` | (required) | The project's folder. Created, and `git init`-ed on branch `main`, if it does not exist. |
+| `-Repo` | (required) | The project's folder. Created if it does not exist, and `git init`-ed on branch `main` if it is not a git repository yet. |
 | `-Project` | the name in `jobs/scheduler.json`, else the folder name | The project's name. |
 | `-Categories` | `A=core:code/src/,test/` | The kinds of work, as `LETTER=name:path,path;LETTER=name:path`. Each category owns its paths, so two workers never edit the same file. One is fine to start with. Used only when `categories.json` is first written. |
 | `-Modules` | none | Comma-separated folder names to create under `code/src/` (`new-project` only). Leave it out until your design names the modules. |
 | `-Gate` | none | The commands a worker must pass before every push (build, test). Several strings, or one string with `;;` between commands. `{jobs}` becomes the thread count the scheduler allows. |
-| `-Model` | `spark` | The default worker model written to the settings. |
-| `-Endpoint` | `http://spark.local:18400/v1` | Where that model is served. Change it to your own, for example `http://localhost:18400/v1`. |
+| `-Model` | none | The worker model, with `-Endpoint`. Left out, Copilot uses GitHub's own models. |
+| `-Endpoint` | none | A local OpenAI-compatible server's `/v1` address, for example `http://localhost:18400/v1`. Left out, no server is needed. |
 | `-JobsEnvVar` | `AGENT_JOBS` | The environment variable that tells a worker how many threads it may use. |
 | `-Force` | off | Overwrite files that already exist. Without it nothing already there is touched. |
 | `-Update` | off | With `-Action jobs`: refresh the kit's own text and fill in anything missing. |
-| `-JoinPool` / `-NoPool` | joins | By default the last step adds the project to the scheduler's pool file. `-NoPool` skips that. |
+| `-JoinPool` / `-NoPool` | joins | By default the last step adds the project to the scheduler's pool file. `-NoPool` skips that. `-JoinPool` forces the join even where it is skipped by itself (below), but not without `jobs/scheduler.json`. |
 | `-Slots` | 0 | Accepted and ignored (an old option). |
 
 The pool join is skipped by itself inside a worker session, for a folder under the temp folder, and under any
@@ -97,10 +109,10 @@ MyProject is set up in C:\Projects\MyProject with the canonical layout and a job
   1. Fill in README.md (what the project is, ...
 ```
 
-The script ends with a numbered list of what to do next. In short: describe the project, write the design, ask your planner
-to fill in `jobs/categories.json` and `jobs/project.md` and to turn your first plan into cards (see the
-[planner guide](planner.md)), then commit and push to `main`. The pool picks the project up at its next tick; there is no
-scheduler to start for it.
+The script ends with a numbered list of what to do next. In short: describe the project, write the design, have your planner
+write the project's plan in `jobs/plans/` (see the [planner guide](planner.md)), commit and push to `main`, set up the workers
+and start Switchyard (or, if it already runs, it picks the project up at its next tick), then have the planner card the plan's
+first step.
 
 **2. Add a queue to a repository you already have.**
 
@@ -108,7 +120,7 @@ scheduler to start for it.
 .\bin\projecttoolkit.ps1 -Action jobs -Repo C:\Projects\MyExistingApp
 ```
 
-Only the queue, `docs/ai/` and `docs/known_gaps.md` are added. Nothing already there is overwritten.
+Only the queue and `docs/known_gaps.md` are added. Nothing already there is overwritten.
 
 **3. Pull the toolkit's newer rules into a project.**
 
@@ -123,7 +135,7 @@ same     jobs/README.md
 same     jobs/card-template.md
 ...
 Refreshed the kit's own text in C:\Projects\MyProject (the jobs README, the card, plan and request
-templates, docs/ai/README.md, .gitattributes) and filled in any folder or file it was missing.
+templates, .gitattributes) and filled in any folder or file it was missing.
 Left alone, because they are the project's own now: README.md, .gitignore, docs/conventions.md,
 docs/design/, jobs/{project,categories,lanes,workers,scheduler}.json.
 ```
@@ -134,8 +146,9 @@ docs/design/, jobs/{project,categories,lanes,workers,scheduler}.json.
 
 Only files under `-Repo`, plus `%LOCALAPPDATA%\ProjectToolkit\pool.json` for the pool join. It never overwrites a file that
 exists unless you give `-Force`. With `-Update` it rewrites only the kit's own text: `jobs/README.md`, the card, plan and
-request templates, `docs/ai/README.md` and `.gitattributes`. Your `README.md`, `.gitignore`, `docs/conventions.md`,
-`docs/design/`, `jobs/project.md`, `jobs/categories.json` and `jobs/scheduler.json` are never touched by it.
+request templates and `jobs/attachments/README.md` (and `.gitattributes`, with `-Action new-project`). Your `README.md`,
+`.gitignore`, `docs/conventions.md`, `docs/design/`, `jobs/project.md`, `jobs/categories.json` and `jobs/scheduler.json` are
+never touched by it.
 
 ### When to run it
 
@@ -144,14 +157,17 @@ its job rules. Update the toolkit itself first (see [`build-and-deploy.ps1`](#bu
 
 ### A card, before and after
 
-The queue is folders of Markdown cards. A card the planner writes sits in `jobs/queue/`:
+The queue is folders of Markdown cards. A card the planner writes sits in `jobs/queue/new-A-version-flag.md`; the scheduler
+gives it a number:
 
 ```
-# 1-A: Add a --version flag
+# new-A: Add a --version flag
 
 Category: A
 Status: ready
 Depends on: none
+Locks: none
+Plan: jobs/plans/<name>_plan.md, step 1
 
 ## Task
 Make `myapp --version` print the version. Test first.
@@ -180,7 +196,7 @@ the change without losing workers that are in the middle of a card.
 | `-PoolFile` | `%LOCALAPPDATA%\ProjectToolkit\pool.json` | The pool file listing the projects the scheduler serves. It must exist (`projecttoolkit.ps1` creates it when a project joins). |
 | `-NoPull` | off | Deploy what is checked out now; do not fetch `main` first. |
 | `-Single` | off | The old one-project mode, kept for reference only; it will be removed. |
-| `-Project` | `ProjectToolkit` | With `-Single`, the project folder to serve. |
+| `-Project` | the running scheduler's repository | With `-Single`, the project folder to serve. |
 
 ### Examples
 
@@ -279,6 +295,9 @@ It touches nothing outside its temp folder, so your real pool file is safe. **Wh
 
 ## startup-gate.ps1
 
+> **Toolkit developer tool**, not in the released toolkit: it guards the toolkit's own startup time against
+> `test\perf\startup-baseline.json`.
+
 **What it is for.** Guards the scheduler's start time. It builds a benchmark that writes a pool of generated projects (three of
 300 cards and one of 2,000) to a temp folder, starts the built scheduler on it three times, and takes the median time until
 the page answers and until every project has joined. It fails when a median is more than 50% **and** more than 2 seconds over
@@ -312,7 +331,8 @@ does not touch your live pool. **When to run it.** After a change that could slo
 
 ## git-baseline.ps1
 
-> **Developer tool.** Measurement for people working on the scheduler's code. You do not need it to use the toolkit.
+> **Developer tool**, not in the released toolkit. Measurement for people working on the scheduler's code; you do not need
+> it to use the toolkit.
 
 **What it is for.** Counts how many processes, and how much time, a test run or a scheduler job costs, so a later change can be
 compared before and after. It counts `git` starts exactly (a `git.exe` shim is put first on `PATH`) and other processes by
@@ -347,7 +367,7 @@ Nothing else should run beside it.
 
 ## test-profile.ps1
 
-> **Developer tool.** Measurement; not needed to use the toolkit.
+> **Developer tool**, not in the released toolkit. Measurement; not needed to use the toolkit.
 
 **What it is for.** Profiles the test suites: wall time per project (Core, Web, Tray, Host), pass, fail and skip counts, and
 the slowest tests. For Host it then re-runs the slowest tests one at a time and counts the processes each starts. It does not
@@ -375,7 +395,7 @@ and you want to know which to fix. Run it with nothing else going on.
 
 ## process-start-check.ps1
 
-> **Developer tool.** A health check for the PC, not part of the toolkit.
+> **Developer tool**, not in the released toolkit. A health check for the PC, not part of the toolkit.
 
 **What it is for.** Measures how fast this PC starts programs, in starts per second. Each round starts 8 separate `cmd.exe`
 processes (hidden), each starting `whoami.exe` 50 times; the rate is the 400 starts over the round's time. The loops are
@@ -406,7 +426,7 @@ PC was unhealthy. **It writes nothing to disk.** Measure with the scheduler idle
 
 ## live-stream-measure.ps1
 
-> **Developer tool.** Measures the scheduler's live page; you do not need it to use the toolkit.
+> **Developer tool**, not in the released toolkit. Measures the scheduler's live page; you do not need it to use the toolkit.
 
 **What it is for.** Drives the page server of a **running** pool the way a browser would and reports, per scenario, the
 scheduler process's CPU, requests and frames per second, and the pool's tick times. Scenarios: `none` (no page open),
@@ -433,3 +453,155 @@ and moves no card.
 
 **What it changes.** Only the CSV file. **When to run it.** After a change to the live page or stream, with the pool running.
 Reference readings are in [`docs/perf/live-stream.md`](../perf/live-stream.md).
+
+---
+
+## process-start-dose.ps1
+
+> **Developer tool**, not in the released toolkit. A PC-health experiment; you do not need it to use the toolkit.
+
+**What it is for.** Finds which kind of work lowers this PC's process-start rate (card 1158-B). From a healthy start it
+gives the PC measured doses - `whoami` starts, `git` starts, a build, test runs, waits - and reads the rate (three runs of
+`process-start-check.ps1`) after each one, appending each reading as a JSON line to `<OutDir>\dose.jsonl` so an interrupted
+experiment survives. Steps run one at a time (`-Step baseline|whoami|git|build|test1|fsmon|report...`); `report` prints the
+recorded readings as markdown tables. **What it changes.** `out\process-start-dose\dose.jsonl`; step `build` rebuilds the
+solution and step `fsmon` ends git's fsmonitor daemons. **When to run it.** When a PC's
+process starts are slow and you want to know what work caused it. Reference: [`docs/perf/process-start-log.md`](../perf/process-start-log.md).
+
+---
+
+## paged-pool-probe.ps1
+
+> **Developer tool**, not in the released toolkit. A PC-health experiment; you do not need it to use the toolkit.
+
+**What it is for.** Finds which operation of a test run leaves kernel paged pool behind (card 1159-B). Run with pwsh (7) on a
+quiet PC: each `-Probe` (drift, build, host:<Folder>, core, files, gitinit, gitfsmon, gitcommits, ...) reads
+`Pool Paged/Nonpaged Bytes` and the ended-but-held process count, does ONE kind of work, reads again, waits a minute and
+reads a third time, appending one JSON line to `<OutDir>\probe.jsonl`. Run every probe twice; a difference under 3 MB is
+nothing. **What it changes.** Its `probe.jsonl` and `out\test-tmp` folders. **When to run it.** When a PC is short on paged
+pool and you want the operation responsible.
+
+---
+
+## pool-tags.ps1
+
+> **Developer tool**, not in the released toolkit. A PC-health experiment; you do not need it to use the toolkit.
+
+**What it is for.** Reads the kernel pool by tag (`NtQuerySystemInformation` class 22), so no poolmon is needed (card
+1160-B). Three uses: `-Snapshot <file>` writes the whole tag table plus the pool counters as JSON; `-Top <n> [-From file]`
+prints the n largest tags by paged and by nonpaged bytes; `-Diff <before>,<after>` prints tags whose bytes changed by more
+than 0.5 MB, largest first. It never elevates; a refused call reports itself and exits 3. **What it changes.** Only the
+snapshot file you name. **When to run it.** To watch a suspected tag (for example `Toke`) while reproducing a pool leak.
+
+---
+
+## template-history.ps1
+
+> **Developer tool**, not in the released toolkit. `publish-release.ps1` calls it when it builds a release; you
+> do not need it to use the toolkit.
+
+**What it is for.** Writes the manifest `assets\templates\template-history.json` for a commit: the kit's version and,
+for every template under `assets\templates`, the git blob ids each of its versions has had on that commit's history
+(`INS-17` in the installer's design). An installed kit has no `.git`, so `TemplateRefresh` cannot walk the kit's
+history for the past versions of a template; the release carries them in this manifest instead, which lets it tell an
+old copy of a template from one the project edited. The shape is
+`{ "version": "<kit version>", "templates": { "<template path>": ["<git blob id>", ...] } }`: the version is the kit's
+`<Version>` from `code/src/Directory.Build.props` at that commit, a template path is its path under `assets/templates`
+with forward slashes (`jobs/README.md`), and the ids are git's own (`git hash-object`), newest first. Deleted
+templates are not listed - only what the commit has - and the manifest never lists itself.
+
+### Parameters
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `-Repo` | the kit's own folder | The git repository to read. It must have a `.git`; the script throws when it does not. |
+| `-Commit` | `HEAD` | The commit whose history the manifest is written from. Any revision git accepts. |
+| `-OutFile` | none | Where the JSON goes, with a BOM-less UTF-8 write so any PowerShell can read it. With no `-OutFile` the JSON is printed on the console and nothing is written. |
+| `-Version` | read from the commit | The kit version to write in the manifest, instead of the `<Version>` in `code/src/Directory.Build.props` at that commit. |
+
+### Examples
+
+```powershell
+.\bin\template-history.ps1                                    # the kit at HEAD, the JSON on the console
+.\bin\template-history.ps1 -OutFile out\test-tmp\template-history.json
+.\bin\template-history.ps1 -Commit <sha> -OutFile <stage>\assets\templates\template-history.json
+```
+
+The last is what a release does: `publish-release.ps1` passes the release commit, the staging folder's manifest path
+and the version it is releasing, and refuses to commit or push when the script writes no manifest. It prints one line
+when it writes a file: `template-history.json: <version>, <n> templates, <n> blob ids -> <OutFile>`.
+
+**What it changes.** Only the file named by `-OutFile`, creating its folder when needed; nothing else on disk. It only
+reads git. **When to run it.** You normally never do: `publish-release.ps1` runs it as part of building a release. Run
+it by hand to check the manifest a release would carry, or when changing this script or the templates.
+
+---
+
+## test-installer.ps1
+
+> **Developer tool**, not in the released toolkit. `publish-release.ps1` calls it to test the installer it just
+> built; you do not need it to use the toolkit.
+
+**What it is for.** Installs a test build of the installer silently into a scratch folder, checks the result, uninstalls
+it, and checks that nothing else on the machine was touched (`INS-24`, section 10 of
+`docs\design\tdd\installer.md`). `publish-release.ps1` runs it after Inno Setup has compiled the setup with `/DTest`, so
+the test AppId keeps it from ever upgrading or removing a real install. Its five steps, in order:
+
+1. install: `Setup /VERYSILENT /SUPPRESSMSGBOXES /CURRENTUSER /NOICONS /TASKS="" /DIR=<scratch>\app`;
+2. check the files: both exes, `assets\templates`, `template-history.json`, `bin\projecttoolkit.ps1`, `LICENSE`, the
+   uninstaller; no pdb files and no `code\`;
+3. run the installed `bin\projecttoolkit.ps1 -Action new-project -NoPool` into a scratch repository, which proves the
+   templates are found;
+4. uninstall silently with the `unins000.exe` beside the install;
+5. check the install folder is gone, `%LOCALAPPDATA%\ProjectToolkit\pool.json` is as it was, no process runs from the
+   scratch folder, and - when you pass `-AllowRunningSwitchyard` - every Switchyard process running beforehand is still
+   running with the same start time.
+
+Each check prints `ok` or `FAIL`. **Exit codes:** 0 when every check passed, 1 otherwise (each failed check is printed,
+and so is the scratch folder, which is then kept). It refuses to start, with exit 1, while a `scheduler-next.exe` or
+`scheduler-tray.exe` is running unless you pass `-AllowRunningSwitchyard` (card 1258-B, card 1266-B: the uninstall it
+ends with runs `-StopForUpdate`), and likewise when an earlier test install is still registered at `-TestUninstallKey`.
+
+### Parameters
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `-Setup` | none | The compiled test installer to install (an `.exe` built with `/DTest`). Required, and the script throws when the file is not there. |
+| `-Scratch` | a new folder under `$env:TEMP` | The folder to work in. It must not exist or must be empty; the install goes in `<scratch>\app`, the scratch repository in `<scratch>\repo`, the installer's log in `<scratch>\setup.log`. |
+| `-KeepScratch` | off | Leave the scratch folder in place so you can look at a failure. Without it the folder is removed when every check passed; a failing run always keeps it. |
+| `-AllowRunningSwitchyard` | off | Run beside a Switchyard started from another folder, and prove it is left alone: the id, start time and path of each such process are recorded before the install and compared after the uninstall. Without the switch the test refuses to start (exit 1) while one runs. |
+| `-TestUninstallKey` | the `/DTest` AppId's key under `HKCU` | The registry key of the test AppId's uninstall entry: `HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{7E1B5C0A-2D44-4B6F-9A3E-5C1D8F20A6B1}_is1`. When it exists - an earlier test install is still registered, whose old `-StopForUpdate` the new setup would run - the test refuses (exit 1) and says which key, with the uninstaller to run instead. |
+| `-SelfTest` | off | Install nothing: run only the survivors comparison on `-SelfTestBefore` and `-SelfTestAfter` and exit 0 when it passes, 1 otherwise. |
+| `-SelfTestBefore` | empty | For `-SelfTest`: the processes running beforehand, as `id,start,path` items separated by `\|`. |
+| `-SelfTestAfter` | empty | For `-SelfTest`: the processes running afterwards, in the same form. |
+
+**Time limits.** The install has 180 seconds and the uninstall 120 seconds; a step that does not finish in its time is
+reported as a failed check, and the script ends that process and everything running from the scratch folder. After the
+uninstaller exits it allows up to 10 more seconds for the temporary copy of itself to remove the install folder.
+
+### Examples
+
+```powershell
+.\bin\test-installer.ps1 -Setup $env:TEMP\ptk-setup\ProjectToolkit-Setup.exe
+.\bin\test-installer.ps1 -Setup <setup> -AllowRunningSwitchyard    # beside a Switchyard you will not stop
+.\bin\test-installer.ps1 -SelfTest -SelfTestBefore '<id>,<start>,<path>' -SelfTestAfter '<id>,<start>,<path>'
+```
+
+**What it changes.** Installs into `<scratch>\app` and uninstalls it again; writes the scratch folder, the scratch
+repository and `setup.log` under it, and removes the scratch folder at the end unless a check failed or you passed
+`-KeepScratch`. It never touches a real install (the test AppId) and it checks that your `pool.json` is unchanged.
+**When to run it.** `publish-release.ps1` runs it on the installer of every release. Run it by hand after changing the
+Inno Setup script, the installer's steps, or this script - build the test setup first.
+
+---
+
+## publish-release.ps1 (and what a release leaves out)
+
+`publish-release.ps1` is itself developer-only: it takes a commit of `main`, copies the repository minus an exclude list into
+the release branch, builds the scheduler and tray into the installer `ProjectToolkit-Setup.exe` (Inno Setup, tested by
+`test-installer.ps1`), tags the commit and publishes the GitHub Release with the installer. The exclude list is the
+rule for what ships: `jobs`, `docs/perf`, `test/perf/git-baseline.json`, and the eleven **developer tools** -
+`startup-gate.ps1`, `git-baseline.ps1`, `test-profile.ps1`, `process-start-check.ps1`, `process-start-dose.ps1`,
+`paged-pool-probe.ps1`, `pool-tags.ps1`, `live-stream-measure.ps1`, `template-history.ps1`, `test-installer.ps1` and
+`publish-release.ps1` itself - stay in the toolkit repository only. None of them is called by a released script, by the build
+or by the tests.

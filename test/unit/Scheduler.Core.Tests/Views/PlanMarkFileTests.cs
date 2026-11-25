@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Views;
 
 namespace Scheduler.Core.Tests.Views;
@@ -18,30 +20,30 @@ public class PlanMarkFileTests
         PlanTree.Of(cards, new HashSet<string> { Plan }, new Dictionary<string, string> { [Plan] = Doc }, null, marks)[0];
 
     [Fact]
-    public void Cycle_IsAutomaticCheckedClearedAutomatic()
+    public void Cycle_IsAutomaticCheckedAutomatic()
     {
         var mark = ManualMark.Automatic;
         var seen = new List<ManualMark>();
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < 3; i++)
         {
             mark = PlanMarkFile.Next(mark);
             seen.Add(mark);
         }
 
-        Assert.Equal([ManualMark.Checked, ManualMark.Cleared, ManualMark.Automatic, ManualMark.Checked], seen);
+        Assert.Equal([ManualMark.Checked, ManualMark.Automatic, ManualMark.Checked], seen);
     }
 
     [Fact]
     public void File_RoundTrips_AndAutomaticRemovesTheEntry()
     {
         var text = PlanMarkFile.With(null, Plan, "3", ManualMark.Checked);
-        text = PlanMarkFile.With(text, Plan, "3.1", ManualMark.Cleared);
+        text = PlanMarkFile.With(text, Plan, "3.1", ManualMark.Checked);
 
         var read = PlanMarkFile.Read(text);
         Assert.Equal(ManualMark.Checked, PlanMarkFile.Of(read, Plan, "3"));
-        Assert.Equal(ManualMark.Cleared, PlanMarkFile.Of(read, Plan, "3.1"));
+        Assert.Equal(ManualMark.Checked, PlanMarkFile.Of(read, Plan, "3.1"));
         Assert.Equal(text, PlanMarkFile.Write(read));
-        Assert.Contains("\"3.1\": \"cleared\"", text, StringComparison.Ordinal);
+        Assert.Contains("\"3.1\": \"checked\"", text, StringComparison.Ordinal);
 
         var back = PlanMarkFile.With(PlanMarkFile.With(text, Plan, "3", ManualMark.Automatic), Plan, "3.1", ManualMark.Automatic);
         Assert.Empty(PlanMarkFile.Read(back));
@@ -65,20 +67,22 @@ public class PlanMarkFileTests
     }
 
     [Fact]
-    public void ClearedStep_KeepsTheParentOpen()
+    public void StoredCleared_ReadsAsAutomatic_AndIsNotWrittenBack()
     {
-        var node = Tree([Card("1-C", ViewFolder.Done, "step 1"), Card("2-C", ViewFolder.Done, "step 2")], Marks(("2", ManualMark.Cleared)));
+        var text = "{\"" + Plan + "\": {\"1\": \"cleared\", \"2\": \"checked\"}}";
 
-        Assert.Equal(PlanMark.Open, node.Steps[1].Mark);
-        Assert.Equal(PlanMark.Open, node.Mark);
-        Assert.False(node.Complete);
+        var read = PlanMarkFile.Read(text);
+        Assert.Equal(ManualMark.Automatic, PlanMarkFile.Of(read, Plan, "1"));
+        Assert.Equal(ManualMark.Checked, PlanMarkFile.Of(read, Plan, "2"));
+        Assert.DoesNotContain("cleared", PlanMarkFile.Write(read), StringComparison.Ordinal);
+        Assert.DoesNotContain("cleared", PlanMarkFile.With(text, Plan, "3", ManualMark.Checked), StringComparison.Ordinal);
     }
 
     [Fact]
     public void SubStepMark_FeedsItsStep_AndThePlanOwnMarkWinsOverAll()
     {
-        var node = Tree([Card("1-C", ViewFolder.Done, "step 1.1"), Card("2-C", ViewFolder.Done, "step 1.2"), Card("3-C", ViewFolder.Done, "step 2")], Marks(("1.2", ManualMark.Cleared)));
-        Assert.Equal(PlanMark.Open, node.Steps[0].Mark);
+        var node = Tree([Card("1-C", ViewFolder.Done, "step 1.1"), Card("2-C", ViewFolder.Queue, "step 1.2"), Card("3-C", ViewFolder.Done, "step 2")], Marks(("1.2", ManualMark.Checked)));
+        Assert.Equal(PlanMark.Complete, node.Steps[0].Mark);
 
         var forced = Tree([Card("3-C", ViewFolder.Queue, "step 2")], Marks((PlanMarkFile.PlanKey, ManualMark.Checked)));
         Assert.Equal(PlanMark.Complete, forced.Mark);
@@ -88,7 +92,7 @@ public class PlanMarkFileTests
     public void AMarkForAStepThatDoesNotExist_IsIgnored()
     {
         var plain = Tree([Card("1-C", ViewFolder.Done, "step 1")], null);
-        var with = Tree([Card("1-C", ViewFolder.Done, "step 1")], Marks(("9", ManualMark.Cleared), ("1.7", ManualMark.Checked)));
+        var with = Tree([Card("1-C", ViewFolder.Done, "step 1")], Marks(("9", ManualMark.Checked), ("1.7", ManualMark.Checked)));
 
         Assert.Equal(plain.Mark, with.Mark);
         Assert.Equal(plain.Steps.Select(s => s.Mark), with.Steps.Select(s => s.Mark));

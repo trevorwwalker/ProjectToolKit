@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Host.Git;
 using Scheduler.Host.Moves;
@@ -213,7 +215,7 @@ public sealed class TemplateRefreshTests : IDisposable
     {
         var targets = GenericFiles.For("jobs").Select(f => f.Target).ToList();
 
-        Assert.Equal([".gitattributes", "jobs/README.md", "jobs/card-template.md", "jobs/plan-template.md", "jobs/card-template-feature.md", "jobs/card-template-bug.md", "jobs/attachments/README.md", "jobs/requests/README.md", "docs/ai/README.md"], targets);
+        Assert.Equal([".gitattributes", "jobs/README.md", "jobs/card-template.md", "jobs/plan-template.md", "jobs/card-template-feature.md", "jobs/card-template-bug.md", "jobs/attachments/README.md", "jobs/requests/README.md"], targets);
         foreach (var own in new[] { "project.md", "lanes.json", "workers.json", "scheduler.json", "models.json" })
         {
             Assert.DoesNotContain(targets, t => t.EndsWith(own, StringComparison.Ordinal));

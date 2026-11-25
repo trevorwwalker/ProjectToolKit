@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Accounting;
 using Scheduler.Core.Config;
 using Scheduler.Core.Contracts;
@@ -29,6 +31,7 @@ public sealed class SchedulerTick
     private readonly Dictionary<int, PendingStart> _starting = [];   // 995-B: slots whose claim is on its way to main
     private readonly ISchedulerLog _log;
     private readonly Dictionary<string, int> _retries = new(Text.Comparer);
+    private bool _endedUnread;   // 1309-B: a run ended and no card read has succeeded since
     private IReadOnlyDictionary<string, IReadOnlyList<string>> _models = new Dictionary<string, IReadOnlyList<string>>();
     private string? _readSha;   // 981-A: main's sha when the cards were last read, or null
     private WorkerPool? _poolTypes;   // MP-C4: the pool file's types, which replace workers.json in a pool
@@ -237,6 +240,13 @@ public sealed class SchedulerTick
         Step(TickStep.ReadRequests);
         Requests = _host.ReadRequests();
 
+        if (_endedUnread)
+        {
+            // 1309-B (DISP-8): the cards are from before a run this scheduler ended (the read after it failed or found
+            // no fetch since the end), so its card would look orphaned; no plan until a read succeeds.
+            return false;
+        }
+
         Step(TickStep.Plan);
         var plan = DispatchPlanner.Plan(Cards, [.. Busy()],_retries, Categories.Current, _config.MaxRetries);   // SC-2, 560-A: no held categories
         plan = GateOnLocks(plan);   // DL-1, DL-10: held and remembered sets, when locks are on
@@ -310,6 +320,7 @@ public sealed class SchedulerTick
             _running.Remove(w.Slot);
             _health?.RunFinished();
             finished = true;
+            _endedUnread = true;
         }
 
         return finished;
@@ -383,6 +394,7 @@ public sealed class SchedulerTick
         if (cards is not null)
         {
             Cards = cards;
+            _endedUnread = false;
         }
 
         _readSha = cards is null ? null : sha;

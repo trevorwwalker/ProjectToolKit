@@ -12,10 +12,15 @@
 .PARAMETER Single
   Reference only: deploy and start the scheduler for one project (-Project) instead of the pool.
 .PARAMETER Project
-  With -Single, the project folder the scheduler serves. Default: ProjectToolkit.
+  With -Single, the project folder the scheduler serves. No default: without it the deployed scheduler
+  keeps the repository the running one was started for (deploy-scheduler.ps1), and the tray is started for the kit folder.
 .PARAMETER NoPull
   Deploy what is checked out now, without fetching main first.
 #>
+
+# Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+# Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
+
 param(
     [string]$PoolFile = '',
     [switch]$Single,

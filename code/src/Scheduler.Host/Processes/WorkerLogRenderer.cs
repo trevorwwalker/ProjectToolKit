@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text;
 using Scheduler.Core.Contracts;
 using Scheduler.Core.PageModel;
@@ -89,6 +91,29 @@ public sealed class WorkerLogRenderer(IClock clock)
             {
                 Render(live, false);
             }
+        }
+    }
+
+    /// <summary>
+    /// 1191-B: after a scheduler restart, start an adopted worker's stats from the figures running.json
+    /// saved, and its scan from its saved raw position, instead of from zero.
+    /// </summary>
+    public void Seed(RunningWorker w, WorkerStats stats)
+    {
+        lock (_gate)
+        {
+            var live = new Live(w.Pid, w.Start) { Position = w.RawPosition };
+            var s = live.Stats;
+            s.Calls = stats.Calls;
+            s.Tools = stats.Tools;
+            s.ToolFails = stats.ToolFails;
+            s.CtxChars = stats.CtxChars;
+            s.Compactions = stats.Compactions;
+            s.GenTokens = stats.GenTokens;
+            s.GenSeconds = stats.GenSeconds;
+            s.LastTps = stats.LastTps;
+            s.LastTtft = stats.LastTtft;
+            _live[w.Slot] = live;
         }
     }
 

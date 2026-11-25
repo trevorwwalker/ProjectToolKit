@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Tray;
 using Xunit;
 
@@ -23,7 +25,10 @@ public sealed class PoolAttachTests : IDisposable
         using var running = new EventWaitHandle(false, EventResetMode.ManualReset, RepoShutdown.Name(poolFile));
         var args = TrayArguments.Parse(["-Pool", poolFile]);
 
-        using var attached = AttachedScheduler.TryAttachPool(AttachedScheduler.PoolFileOf(args, _dir), Path.Combine(_dir, "scheduler-next.exe"), new LogBuffer());
+        var exe = Path.Combine(_dir, "scheduler-next.exe");
+
+        // 1264-B: the pool's scheduler runs from the tray's own folder.
+        using var attached = AttachedScheduler.TryAttachPool(AttachedScheduler.PoolFileOf(args, _dir), exe, new LogBuffer(), _ => [exe]);
 
         Assert.NotNull(attached);
     }

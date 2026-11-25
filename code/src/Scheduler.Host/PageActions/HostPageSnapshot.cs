@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Globalization;
 using Scheduler.Core.Accounting;
 using Scheduler.Core.Cards;
@@ -6,6 +8,7 @@ using Scheduler.Core.Dispatch;
 using Scheduler.Core.Health;
 using Scheduler.Core.Categories;
 using Scheduler.Core.Launch;
+using Scheduler.Core.Locks;
 using Scheduler.Core.PageModel;
 using Scheduler.Core.Tick;
 using Scheduler.Core.Watchdog;
@@ -62,6 +65,9 @@ public static class HostPageSnapshot
         var templates = (sources.EditedTemplates?.Invoke() ?? [])
             .Select(e => new PageTemplateEdit(config.Project, e.Target))
             .ToList();
+        // DL-24, DL-25: the lock table, read once for this snapshot; null when locks are off.
+        var lockTable = sources.Locks?.Invoke();
+        var addOnly = tick.Categories.Current?.AddOnly ?? [];
         var categoryNames = (tick.Categories.Current?.Categories ?? new Dictionary<string, CategoryDefinition>())
             .OrderBy(l => l.Key, StringComparer.Ordinal)
             .ToDictionary(l => l.Key, l => l.Value.Name, Text.Comparer);
@@ -81,20 +87,21 @@ public static class HostPageSnapshot
             PlannerPush = push,
             Categories = PageCategories.From(tick.Categories.Current),
             SharedAddOnly = tick.Categories.Current?.AddOnly ?? [],
-            Slots = Slots(config, tick, models, categoryNames, cards, now, sources.Stats),
+            MaxMinutes = config.MaxMinutes,
+            Slots = Slots(config, tick, models, categoryNames, cards, now, sources.Stats, lockTable, addOnly),
             WorkerTypes = WorkerTypes(config, tick, sources, models),
-            Waiting = [.. PageWaiting.Window(all, plan?.Stuck, tick.Categories.Held, running, config.MaxRetries, finished, templates, StuckRuns(plan?.Stuck, tick, recent)).Select(w => Waiting(w, cards))],
+            Waiting = [.. PageWaiting.Window(all, plan?.Stuck, running, config.MaxRetries, finished, templates, StuckRuns(plan?.Stuck, tick, recent)).Select(w => Waiting(w, cards))],
             Planner = Planner(tick, all, plan),
-            Queue = [.. PageQueue.Order(all, running, Notes(tick)).Select(q => Queued(q, cards, recent, areaTypicals, queueTypes, tick.Workers.Pool.Migrated, modelEntries, config))],
+            Queue = [.. PageQueue.Order(all, running, Notes(tick)).Select(q => Queued(q, cards, recent, areaTypicals, queueTypes, tick.Workers.Pool.Migrated, modelEntries, config, lockTable, addOnly))],
             Events = Events(recent),
             Trends = TrendDays(sources, runs, models, now),
         };
     }
 
     // 510-B: a waiting card's title, and where its note came from (CARD-13), for the tooltip and
-    // the "Result:" marker. A held category is not a card and keeps neither.
+    // the "Result:" marker.
     private static PageWaitingItem Waiting(PageWaitingItem item, Dictionary<string, Card> cards) =>
-        item.Kind != PageWaitingKind.HeldCategory && cards.TryGetValue(item.Name, out var card)
+        cards.TryGetValue(item.Name, out var card)
             ? item with { Title = card.Title, NoteFrom = card.Why.Length > 0 && (item.Note == card.Why || item.Note == $"Result: {card.Why}") ? card.WhyFrom : "" }
             : item;
 
@@ -138,8 +145,11 @@ public static class HostPageSnapshot
         IReadOnlyList<DispatchType> types,
         bool migrated,
         IReadOnlyList<ModelEntry>? modelEntries,
-        SchedulerConfig config) => item with
+        SchedulerConfig config,
+        LockTable? lockTable,
+        IReadOnlyList<string> addOnly) => item with
     {
+        Yielded = lockTable is null ? "" : PageLocks.YieldedNote(lockTable, item.Name, addOnly),
         Depends = cards.TryGetValue(item.Name, out var card) ? card.Depends : [],
         Log = recent.FirstOrDefault(r => Text.Comparer.Equals(r.Card, item.Name) && !string.IsNullOrEmpty(r.Log))?.Log ?? "",
         TimeBoxNote = TimeBoxNote(cards.GetValueOrDefault(item.Name), typicals, types, migrated, modelEntries, config),
@@ -253,6 +263,46 @@ public static class HostPageSnapshot
                 Quiet(w, clock.Now) is { } quiet ? $", quiet {quiet} min" : ""))),
     ];
 
+    /// <summary>The most lines of a worker's log a freshly drawn page carries (the live feed's own cap).</summary>
+    public const int LogTailLines = 500;
+
+    /// <summary>
+    /// 1191-B: the last lines of a worker's readable log, so a page opened fresh shows them at once, as
+    /// the first <c>/live.json</c> answer would. Empty when the log is not there or cannot be read.
+    /// </summary>
+    public static IReadOnlyList<string> LogLines(string path)
+    {
+        try
+        {
+            if (path.Length == 0 || !File.Exists(path))
+            {
+                return [];
+            }
+
+            var tail = new Queue<string>();
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            while (reader.ReadLine() is { } line)
+            {
+                tail.Enqueue(line);
+                if (tail.Count > LogTailLines)
+                {
+                    tail.Dequeue();
+                }
+            }
+
+            return [.. tail];
+        }
+        catch (IOException)
+        {
+            return [];
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
     /// <summary>The minutes since <paramref name="w"/>'s log last grew (TIME-8), once 5 or more, else null (510-B, schedule.ps1 L2380).</summary>
     public static int? Quiet(RunningWorker w, DateTimeOffset now)
     {
@@ -287,7 +337,9 @@ public static class HostPageSnapshot
         Dictionary<string, string> categoryNames,
         Dictionary<string, Card> cards,
         DateTimeOffset now,
-        Func<int, WorkerStats?>? stats = null)
+        Func<int, WorkerStats?>? stats = null,
+        LockTable? lockTable = null,
+        IReadOnlyList<string>? addOnly = null)
     {
         var slots = new List<PageSlotView>();
         var starting = tick.Starting;   // 995-B: slots whose claim is on its way to main show their card as starting
@@ -321,6 +373,7 @@ public static class HostPageSnapshot
                 // 1097-B (PAGE-10): the same stats line the live view gives this slot, so a freshly drawn
                 // page shows it at once instead of "- T/s" until /live.json answers. PageVersion strips
                 // Stats, so a stats change never reloads the page.
+                LogTail = live is null ? [] : LogLines(live.Log),
                 Stats = live is null ? "" : WorkerStatsText.Line(stats?.Invoke(slot), live.Model, live.Endpoint),
                 StopWhy = running?.StopWhy ?? "",
                 TimeLimit = running is null ? null : WatchdogRules.Limit(running.TimeBox, config),
@@ -332,6 +385,8 @@ public static class HostPageSnapshot
                 MessagePending = running is not null && File.Exists(WorkerFiles.MessageFile(config.LogDir, slot)),
                 MessageReadAt = running is null ? null : MessageRead(config, slot),
                 ServerDown = running is null && worker.Endpoint.Length > 0 && tick.Servers.KnownDown(worker.Endpoint),
+                // DL-24, DL-25: what the running card holds and any open wait.
+                Holds = lockTable is null || running is null ? null : PageLocks.Holds(lockTable, running.Card, now, addOnly),
             });
         }
 
@@ -389,6 +444,7 @@ public static class HostPageSnapshot
             return view with { Text = "no health check set" };
         }
 
+        var checkingSha = "";
         var text = health.LastWhen is { } when
             ? string.Format(
                 CultureInfo.InvariantCulture,
@@ -399,6 +455,7 @@ public static class HostPageSnapshot
             : "main not checked yet";
         if (health.Running && health.Started is { } started)
         {
+            checkingSha = health.Sha;
             text += string.Format(CultureInfo.InvariantCulture, "; checking {0} ({1} min)", health.Sha, (int)(now - started).TotalMinutes);
 
             // 1100-B (HLTH-11): the time-box warning sits in the line while the check that earned it runs.
@@ -413,6 +470,7 @@ public static class HostPageSnapshot
             Green = health.LastResult != HealthResult.Red,
             Text = text,
             Sha = health.LastSha,
+            CheckingSha = checkingSha,
             HasLog = health.LogPath.Length > 0 && File.Exists(health.LogPath),
         };
     }

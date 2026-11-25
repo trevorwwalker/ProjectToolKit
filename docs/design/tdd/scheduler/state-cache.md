@@ -8,7 +8,7 @@ design, the cost tables and the test plan. Rule IDs `MM-1` onward ("model of mai
 are stable names for test cases. (`SC-` is taken: spec B2's scope
 rules SC-1 to SC-8.)
 
-Roadmap: the git performance step (`scheduler-roadmap.md`, "Order of the remaining work", step 5). It replaces card
+Roadmap: the git performance step (`jobs/plans/scheduler-roadmap_plan.md`, "Order of the remaining work", step 5). It replaces card
 1045-B (in-process git reads, folded in and archived) and reshapes 1044-B, 1046-B and 1047-B (section 9).
 
 Sources: the card's decisions (developer, 2026-11-22 00:08-00:11); `docs/perf/git-baseline.md` (1041-B, measured
@@ -453,7 +453,7 @@ Each is one session. Worker Opus for 1-6 (new code across the Host's reading pat
    `test/unit/Scheduler.Host.Tests/` fixtures. Worker: Sonnet. Depends on: 1042-B, 1043-B, 6.
 10. **D - spec (done, 1069-D).** MM-1 to MM-18 into `spec.md`; CARD-5 amended; views.md VW-21/VW-22 pointed at the model; roadmap
     status. Scope: `docs/design/tdd/scheduler/spec.md`, `views.md`, `state-cache.md`,
-    `docs/design/gdd/scheduler-roadmap.md`. Worker: Sonnet. Depends on: 8.
+    `jobs/plans/scheduler-roadmap_plan.md`. Worker: Sonnet. Depends on: 8.
 
 The views' cards (views.md section 8) take done headers from the model: their card 2 ("B - views source") depends on
 card 3 here and drops its own done reader.

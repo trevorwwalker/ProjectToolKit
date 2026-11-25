@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text.Json;
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Dispatch;
@@ -8,7 +10,6 @@ using Scheduler.Core.Tick;
 using Scheduler.Core.WebContract;
 using Scheduler.Host.Git;
 using Scheduler.Host.Moves;
-using Scheduler.Host.Observe;
 using Scheduler.Host.PageActions;
 using Scheduler.Host.Planner;
 using Scheduler.Host.Processes;
@@ -51,6 +52,9 @@ public sealed class SharedParts
 
     /// <summary>1111-B: the one counter of card numbers for every project here; null = the process's (<see cref="CardNumbering.Shared"/>).</summary>
     public CardNumbering? Numbering { get; init; }
+
+    /// <summary>1308-B: each project's count of workers running, so a health check's log line can say how many ran across the pool.</summary>
+    public System.Collections.Concurrent.ConcurrentDictionary<object, Func<int>> WorkerCounts { get; } = new();
 }
 
 /// <summary>
@@ -73,9 +77,9 @@ public sealed class ProjectParts : IDisposable
     /// <param name="log">The project's log.</param>
     /// <param name="shared">What a pool shares (MP-H4).</param>
     /// <param name="requestTick">Asks the loop for a tick.</param>
-    /// <param name="observe">The observe run's settings; null when this is not one.</param>
     /// <param name="exeDir">The exe's folder, above which ProjectToolkit is looked for (540-B); null looks nowhere.</param>
     /// <param name="poolProject">In a pool, the project's name: the dry run's lines name it (MP-22).</param>
+    /// <param name="defaultToolkit">In a pool, the pool file's <c>toolkit</c>: the default for a project that sets none (1193-A).</param>
     public ProjectParts(
         SchedulerConfig config,
         string configText,
@@ -83,9 +87,9 @@ public sealed class ProjectParts : IDisposable
         ISchedulerLog log,
         SharedParts shared,
         Action requestTick,
-        ObserveSettings? observe = null,
         string? exeDir = null,
-        string? poolProject = null)
+        string? poolProject = null,
+        string? defaultToolkit = null)
     {
         Config = config;
         Log = log;
@@ -105,7 +109,11 @@ public sealed class ProjectParts : IDisposable
         // could not run from un-pausing a scheduler that is already paused-red.
         var health = new HealthCheck(config, clock, log,
             new HealthWorktreeRunner(config, git, processes, clock, log, cores, () => Tick is { } t ? t.State : SchedulerState.Running,
-                pid => _exits.WatchOnce(pid)));
+                pid => _exits.WatchOnce(pid)),
+            () => Tick?.Load is { } l
+                ? new HealthLoadReading(l.CpuPercent, l.FreeMemoryBytes, shared.WorkerCounts.Values.Sum(count => count()))
+                : null);
+        shared.WorkerCounts[this] = () => Tick?.Busy().Count ?? 0;   // 1308-B
         var finishedCards = new FinishedCardCheck(main, config.JobsDir);
         var notice = new PageNotice(clock);
         Notice = notice;
@@ -131,8 +139,7 @@ public sealed class ProjectParts : IDisposable
             Ended = pid => _exits.Forget(pid),
             TickNow = requestTick,
         });
-        ITickHost tickHost = observe is not null ? new ObserveTickHost(Host, log, clock)
-            : config.DryRun ? new DryRunTickHost(Host, log, Host.TypeFor) { Project = poolProject }
+        ITickHost tickHost = config.DryRun ? new DryRunTickHost(Host, log, Host.TypeFor) { Project = poolProject }
             : Host;
         Tick = new SchedulerTick(config, clock, log, shared.Load, shared.Probe, processes, files, tickHost,
             config.HealthCommand.Length > 0 ? health : null, shared.Quota, shared.Servers);
@@ -158,12 +165,6 @@ public sealed class ProjectParts : IDisposable
             Tick.Workers.Apply(workersText, []);
         }
 
-        if (observe is not null)
-        {
-            Observer = new ObserveTicker(Tick, new OldSchedulerMirror(observe.OldLogDir, files, processes, clock, log), new ObserveRecorder(log, clock));
-            log.Write(ObserveLine.Format(clock.Now, $"observing beside the scheduler whose log folder is {observe.OldLogDir}: starts nothing, commits nothing, no health check"));
-        }
-
         if (config.StartPaused)
         {
             Tick.State = SchedulerState.Paused;
@@ -172,14 +173,14 @@ public sealed class ProjectParts : IDisposable
         var planner = PlannerSettingsOf(configText);
         var pushFile = Path.Combine(config.LogDir, "planner-state.json");
         bool PushOn() => File.Exists(pushFile) && PlannerSwitch.Parse(File.ReadAllText(pushFile));
-        if (planner is not null && observe is null)
+        if (planner is not null)
         {
             Host.Planner = new PlannerStep(planner, git, committer, clock, log, PushOn, Tick.Retries,
                 config.JobsDir, config.Remote, config.Branch) { Project = poolProject ?? "", Numbering = shared.Numbering ?? CardNumbering.Shared };
         }
 
-        // 660-B: the scheduler as the only writer of card moves; never in an observe or dry run.
-        if (observe is null && !config.DryRun)
+        // 660-B: the scheduler as the only writer of card moves; never in a dry run.
+        if (!config.DryRun)
         {
             Host.Moves = new CardRequestStep(committer, Scheduler.Core.Moves.CardRequests.Folder(config.LogDir), config.JobsDir, clock, log);
             Host.NewCards = new NewCardStep(committer, shared.Numbering ?? CardNumbering.Shared, config.JobsDir, poolProject ?? "", log);   // 1111-B
@@ -193,14 +194,20 @@ public sealed class ProjectParts : IDisposable
                 Host.LockFile = table;
                 Host.LockRequests = new Scheduler.Host.Locks.LockRequestStep(
                     Scheduler.Core.Moves.CardRequests.Folder(config.LogDir), table.Read, table.Save, clock, log);
+                LockEvents = new Scheduler.Host.Locks.LockEventLog();
+                Host.LockRequests.Events = LockEvents;
                 Host.LockExe = Environment.ProcessPath ?? "";
                 Host.Moves.Filed = Host.MoveFiled;
 
                 // 1021-B: the hooks workers' git runs (DL-18), and the audit of main on every card read (DL-19).
                 Scheduler.Host.Locks.HookFiles.Write(Scheduler.Core.Launch.WorkerFiles.HooksDir(config.LogDir), Host.LockExe, log);
+                // 1274-B: the tick reads main's cards (and so audits) before it reads the categories; until it has,
+                // the audit reads categories.json from main itself, and waits if that cannot be read.
                 var tick = Tick;
+                var host = Host;
                 var audit = new Scheduler.Host.Locks.AuditRunner(git, config.Repo, table.Read, table.Save,
-                    Scheduler.Core.Moves.CardRequests.Folder(config.LogDir), () => tick.Categories.Current?.AddOnly ?? [], clock, log);
+                    Scheduler.Core.Moves.CardRequests.Folder(config.LogDir),
+                    () => Scheduler.Host.Locks.AuditRunner.AddOnlyOf(tick.Categories.Current, host.ReadCategories), clock, log);
                 reader.MainSeen = head => audit.Run(head);
                 Host.Audit = audit;   // 1025-B: and before a run's moves are applied
                 log.Write($"locks: on, table {table.Path}, an older card waits up to {Tick.Locks.WaitMinutes} min");
@@ -218,9 +225,9 @@ public sealed class ProjectParts : IDisposable
         reader.Feed = Model;
         finishedCards.Feed = Model;
 
-        // 540-B: the generic files kept in step with ProjectToolkit's templates; never in an observe or dry run.
-        var toolkit = ToolkitLocator.Find(StringSetting(configText, "toolkit"), config.Repo, exeDir);
-        if (toolkit is not null && observe is null && !config.DryRun)
+        // 540-B: the generic files kept in step with ProjectToolkit's templates; never in a dry run.
+        var toolkit = ToolkitLocator.Find(ToolkitSetting(configText, defaultToolkit), config.Repo, exeDir);
+        if (toolkit is not null && !config.DryRun)
         {
             Host.Templates = new TemplateRefresh(git, toolkit, main, committer, config.JobsDir,
                 Path.Combine(config.LogDir, TemplateState.FileName), log);
@@ -229,9 +236,9 @@ public sealed class ProjectParts : IDisposable
         }
 
         // 987-B: one background writer for every commit and push to main - the planner step, claims,
-        // finishes and page actions - so the tick never waits on git.local; never in an observe or dry run.
+        // finishes and page actions - so the tick never waits on git.local; never in a dry run.
         // One per repository in a pool.
-        if (observe is null && !config.DryRun)
+        if (!config.DryRun)
         {
             _writer = new GitWriter(log) { Moved = requestTick };
             committer.Writer = _writer;
@@ -264,7 +271,8 @@ public sealed class ProjectParts : IDisposable
         var sources = new PageSnapshotSources
         {
             Overlay = overlay,
-            Health = config.HealthCommand.Length > 0 && observe is null ? health : null,
+            Locks = Host.LockFile is { } lockFile ? lockFile.Read : null,
+            Health = config.HealthCommand.Length > 0 ? health : null,
             Recent = () => accounting.Recent,
             Runs = () => accounting.Runs,
             // 770-B: the Trends window's 14 days come from the same reader as the figures, not from
@@ -288,9 +296,8 @@ public sealed class ProjectParts : IDisposable
         Views = new ViewsSource(config.Project, config.JobsDir, () => Model.Model, () => Data.Snapshot().Slots, accountingPath: accounting.FilePath,
             maxWorkers: () => Tick?.Workers.Pool.MaxWorkers ?? 0, now: () => clock.Now);
         // 680-B: Open (MOVE-9) opens the card or file with this PC's default program. Opening belongs
-        // to the PC running the scheduler (PAGE-7), and an observe run's page refuses it outright
-        // (ObservePageActions), so an observe composition is given no launcher at all.
-        var launcher = observe is null ? new ShellLauncher() : null;
+        // to the PC running the scheduler (PAGE-7).
+        var launcher = new ShellLauncher();
         PageLauncher = launcher;
         Actions = new HostPageActions(new PageActionParts
         {
@@ -316,6 +323,8 @@ public sealed class ProjectParts : IDisposable
             WorkersFromMain = () => Host.WorkersFromMain,
             Overlay = overlay,
         });
+        // 1213-B: a clicked plan mark shows in the views before its background commit is on main.
+        Views.PendingMarks = Actions.PendingMarks;
         _adopter = new WorkerAdopter(files, processes, clock, log);
 
         // 966-B: a worker's move request and a new planner batch wake the loop.
@@ -354,6 +363,17 @@ public sealed class ProjectParts : IDisposable
     /// <summary>The tick host.</summary>
     public TickHost Host { get; }
 
+    /// <summary>The lock events the page counts (DL-26); null when locks are off.</summary>
+    public Scheduler.Host.Locks.LockEventLog? LockEvents { get; private set; }
+
+    /// <summary>Today's lock event counts for the pool page; null when locks are off.</summary>
+    public Scheduler.Core.WebContract.PageLockCounts? LockCounts(DateTimeOffset now) =>
+        LockEvents is { } log
+            ? Scheduler.Core.PageModel.PageLocks.Counts(
+                [.. log.Snapshot(), .. (Host.LockFile?.ReadPushRefusals() ?? []).Select(at => (at, Scheduler.Core.PageModel.LockEventKind.PushRefused))],
+                DateOnly.FromDateTime(now.DateTime))
+            : null;
+
     /// <summary>The project's tick.</summary>
     public SchedulerTick Tick { get; }
 
@@ -372,11 +392,8 @@ public sealed class ProjectParts : IDisposable
     /// <summary>The page's actions.</summary>
     public HostPageActions Actions { get; }
 
-    /// <summary>The launcher the page's Open buttons use (MOVE-9); null in an observe run.</summary>
+    /// <summary>The launcher the page's Open buttons use (MOVE-9).</summary>
     public IFileLauncher? PageLauncher { get; }
-
-    /// <summary>The observe run's tick (390-B); null when this is not an observe run.</summary>
-    public ObserveTicker? Observer { get; }
 
     /// <summary>ADOPT-2, WT-W5 (MP-H6): adopt the workers in the project's running.json into its tick, against <paramref name="types"/> (a pool's) or the tick's own.</summary>
     public int AdoptWorkers(WorkerPool? types = null)
@@ -386,6 +403,11 @@ public sealed class ProjectParts : IDisposable
         foreach (var entry in _adopter.Adopt(types ?? Tick.Workers.Pool).Entries)
         {
             Tick.Adopt(entry.Worker);
+            if (entry.Stats is { } saved)
+            {
+                Host.Logs.Seed(entry.Worker, saved);   // 1191-B: the saved stats carry on, not restart from zero
+            }
+
             _exits.Watch(entry.Worker.Pid);
             adopted.Add(entry.Worker);
             count++;
@@ -457,6 +479,13 @@ public sealed class ProjectParts : IDisposable
             return null;
         }
     }
+
+    /// <summary>
+    /// The <c>toolkit</c> a project looks for ProjectToolkit by: its own setting when it has one, else the
+    /// pool file's (1193-A), else null (the exe folder search).
+    /// </summary>
+    public static string? ToolkitSetting(string configText, string? poolDefault) =>
+        StringSetting(configText, "toolkit") is { Length: > 0 } own ? own : string.IsNullOrEmpty(poolDefault) ? null : poolDefault;
 
     private static string? StringSetting(string configText, string name)
     {

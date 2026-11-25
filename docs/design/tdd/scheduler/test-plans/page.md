@@ -55,8 +55,7 @@ project in-process on a free port.
 
 ### Page_SlotsAddRemove_ApiOnly
 - **Superseded:** `/worker-settings`, `/enable`, `/disable`, `/slots-add` and `/slots-remove` are retired (937-B, 943-A); the test becomes: each of them answers 404.
-- Checks: PAGE-9 · Project: Web · **blocked on C10**
-- Expected today: POST `/slots-add` raises the count by one; `/slots-remove` lowers it (not below the highest running). After C10: keep or delete this test.
+- **Retired** (943-A): the routes it drove no longer exist, so the test was deleted; nothing replaces it but the 404 line above, which is not yet a test.
 
 ### Page_LogFile_CardIdOfAnyWidth
 - Checks: PAGE-9, WRK-9 · Project: Web

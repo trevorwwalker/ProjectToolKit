@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Views;
 
 namespace Scheduler.Core.Tests.Views;
@@ -39,28 +41,6 @@ public class GanttRowsTests
         row.Key == key ? row : row.Children.Select(c => FindOrNull(c, key)).FirstOrDefault(r => r is not null);
 
     [Fact]
-    public void ByCategory_GroupsCardsUnderTheirCategory_WithSpanAndCounts()
-    {
-        var snap = ViewsSnapshot.Build(
-            "p",
-            [Card("1-A-x"), Card("2-A-y", ViewFolder.Review), Card("3-B-z")],
-            [],
-            runs: [Run("1-A-x", 0, 1), Run("2-A-y", 2, 3, "review"), Run("3-B-z", 1, 4)]);
-
-        var root = GanttRows.Of(snap, GanttGroupBy.Category, T0, T0.AddHours(8), Now);
-
-        Assert.Equal(["A", "B"], root.Children.Select(c => c.Label));
-        var a = root.Children[0];
-        Assert.Equal(2, a.Total);
-        Assert.Equal(1, a.Done);
-        Assert.Equal(T0, a.Summary!.Start);
-        Assert.Equal(T0.AddHours(3), a.Summary.End);
-        Assert.Equal(["1-A-x t1-A-x", "2-A-y t2-A-y"], a.Children.Select(c => c.Label));
-        Assert.Equal(T0, root.Summary!.Start);
-        Assert.Equal(T0.AddHours(4), root.Summary.End);
-    }
-
-    [Fact]
     public void ByPlan_GroupsStepsAndCards_WithBugsAndRequestsForNoPlan()
     {
         const string plan = "jobs/plans/p_plan.md";
@@ -77,7 +57,7 @@ public class GanttRowsTests
             new Dictionary<string, string> { [plan] = "# P\n\n## One\n\n## Two\n" },
             [Run("1-A-x", 0, 1), Run("2-A-y", 1, 2), Run("3-A-z", 2, 3), Run("4-A-bug", 3, 4), Run("5-A-req", 4, 5)]);
 
-        var root = GanttRows.Of(snap, GanttGroupBy.Plan, T0, T0.AddHours(8), Now);
+        var root = GanttRows.Of(snap, T0, T0.AddHours(8), Now);
 
         Assert.Equal(["The plan", "Bugs", "Requests"], root.Children.Select(c => c.Label));
         var p = root.Children[0];
@@ -97,11 +77,11 @@ public class GanttRowsTests
             [],
             runs: [Run("1-A-x", 0, 1), Run("2-B-y", 20, 21)]);
 
-        var root = GanttRows.Of(snap, GanttGroupBy.Category, T0, T0.AddHours(5), Now);
+        var root = GanttRows.Of(snap, T0, T0.AddHours(5), Now);
 
-        Assert.Equal(["A", "C"], root.Children.Select(c => c.Label));
-        Assert.Empty(root.Children[1].Children[0].Bars);
-        Assert.Null(root.Children[1].Summary);
+        Assert.Equal(["Requests"], root.Children.Select(c => c.Label));
+        Assert.Equal(["card:1-A-x", "card:3-C-z"], root.Children[0].Children.Select(c => c.Key));
+        Assert.Empty(root.Children[0].Children[1].Bars);
     }
 
     [Fact]
@@ -113,11 +93,10 @@ public class GanttRowsTests
             [],
             runs: [Run("1-A-x", 0, 1)]);
 
-        var root = GanttRows.Of(snap, GanttGroupBy.Category, T0, T0.AddHours(5), Now, new HashSet<string>(["4-D-q"], StringComparer.Ordinal));
+        var root = GanttRows.Of(snap, T0, T0.AddHours(5), Now, new HashSet<string>(["4-D-q"], StringComparer.Ordinal));
 
-        Assert.Equal(["A", "D"], root.Children.Select(c => c.Label));
-        Assert.Equal(["card:4-D-q"], root.Children[1].Children.Select(c => c.Key));
-        Assert.Empty(root.Children[1].Children[0].Bars);
+        Assert.Equal(["card:1-A-x", "card:4-D-q"], root.Children[0].Children.Select(c => c.Key));
+        Assert.Empty(root.Children[0].Children[1].Bars);
     }
 
     [Fact]
@@ -129,7 +108,7 @@ public class GanttRowsTests
             [],
             runs: [Run("1-A-x", 3, 4, "review", "sonnet"), Run("1-A-x", 0, 1, "failed", "spark"), Run("1-A-x", 20, 21)]);
 
-        var root = GanttRows.Of(snap, GanttGroupBy.Category, T0, T0.AddHours(8), Now);
+        var root = GanttRows.Of(snap, T0, T0.AddHours(8), Now);
 
         var card = root.Children[0].Children[0];
         Assert.Equal(["failed", "review"], card.Bars.Select(b => b.ColorKey));
@@ -144,7 +123,7 @@ public class GanttRowsTests
         var run = Run("1-A-x", 8, null) with { TimeBoxEnd = T0.AddHours(11) };
         var snap = ViewsSnapshot.Build("p", [Card("1-A-x", ViewFolder.Active)], [], runs: [run]);
 
-        var root = GanttRows.Of(snap, GanttGroupBy.Category, T0, T0.AddHours(12), Now);
+        var root = GanttRows.Of(snap, T0, T0.AddHours(12), Now);
 
         var bar = Assert.Single(root.Children[0].Children[0].Bars);
         Assert.True(bar.Running);
@@ -171,9 +150,111 @@ public class GanttRowsTests
             [],
             runs: [Run("1-A-x", 0, 1), Run("2-A-y", 1, 2)]);
 
-        var root = GanttRows.Of(snap, GanttGroupBy.Category, T0, T0.AddHours(8), Now);
+        var root = GanttRows.Of(snap, T0, T0.AddHours(8), Now);
 
-        Assert.Equal(1, Find(root, "category:A").Total);
-        Assert.Equal(2, Find(root, "category:A").Children.Count);
+        Assert.Equal(1, Find(root, "requests").Total);
+        Assert.Equal(2, Find(root, "requests").Children.Count);
+    }
+
+    private const string Root = "jobs/plans/p_plan.md";
+    private const string Child = "jobs/plans/c_plan.md";
+
+    private static ViewsSnapshot Nested(params ViewCard[] cards) =>
+        ViewsSnapshot.Build(
+            "p",
+            cards,
+            [
+                new ViewPlan { Path = Root, Kind = PlanKind.Plans, Title = "Root" },
+                new ViewPlan { Path = Child, Kind = PlanKind.Plans, Title = "Kid" },
+            ],
+            new Dictionary<string, string>
+            {
+                [Root] = "# Root\n\n## 1. One\n\n## 2. Two\n",
+                [Child] = "# Kid\n\nParent: jobs/plans/p_plan.md, step 1\n\n## 1. Inner\n",
+            },
+            cards.Select((c, n) => Run(c.Id, n, n + 1)).ToList());
+
+    private static GanttRow NestedRows(ViewsSnapshot snap) => GanttRows.Of(snap, T0, T0.AddHours(8), Now);
+
+    private static IEnumerable<GanttRow> All(GanttRow row) => new[] { row }.Concat(row.Children.SelectMany(All));
+
+    [Fact]
+    public void VW32_Gantt_ChildPlanUnderParentStep()
+    {
+        var root = NestedRows(Nested(Card("1-A-x", plan: Child, step: "1"), Card("2-A-y", plan: Root, step: "1")));
+
+        var step = Find(root, "plan:" + Root + "/1");
+        Assert.Equal(["2-A-y t2-A-y", "Kid"], step.Children.Select(c => c.Label));
+        Assert.Equal(GanttRowKind.Plan, step.Children[1].Kind);
+        Assert.Equal("1-A-x t1-A-x", Find(root, "plan:" + Child + "/1").Children[0].Label);
+        Assert.Equal(["Root"], root.Children.Select(c => c.Label));
+    }
+
+    [Fact]
+    public void VW32_Gantt_KeysUniqueAndPlanKeysUnchanged()
+    {
+        var root = NestedRows(Nested(Card("1-A-x", plan: Child, step: "1"), Card("2-A-y", plan: Root, step: "2"), Card("3-A-z", plan: Child)));
+
+        var keys = All(root).Select(r => r.Key).ToList();
+        Assert.Equal(keys.Count, keys.Distinct(StringComparer.Ordinal).Count());
+        Assert.Contains("plan:" + Child, keys);
+        Assert.Contains("plan:" + Child + "/1", keys);
+        Assert.Contains("plan:" + Child + "/other", keys);
+        Assert.Contains("plan:" + Root + "/2", keys);
+    }
+
+    [Fact]
+    public void VW32_Gantt_StepWithOnlyChildPlan_Kept()
+    {
+        var root = NestedRows(Nested(Card("1-A-x", plan: Child, step: "1")));
+
+        var step = Find(root, "plan:" + Root + "/1");
+        Assert.Equal(["plan:" + Child], step.Children.Select(c => c.Key));
+        Assert.Null(FindOrNull(root, "plan:" + Root + "/2"));
+    }
+
+    [Fact]
+    public void VW32_Gantt_PlanWithNoOwnCards_KeptForItsChildren()
+    {
+        var root = NestedRows(Nested(Card("1-A-x", plan: Child, step: "1")));
+
+        Assert.Equal(["Root"], root.Children.Select(c => c.Label));
+        Assert.Equal(1, root.Children[0].Total);
+    }
+
+    [Fact]
+    public void VW32_Gantt_UnplacedPlan_TopLevel()
+    {
+        var snap = ViewsSnapshot.Build(
+            "p",
+            [Card("1-A-x", plan: Child, step: "1"), Card("2-A-y", plan: Root, step: "1")],
+            [new ViewPlan { Path = Root, Kind = PlanKind.Plans, Title = "Root" }, new ViewPlan { Path = Child, Kind = PlanKind.Plans, Title = "Kid" }],
+            new Dictionary<string, string>
+            {
+                [Root] = "# Root\n\n## 1. One\n",
+                [Child] = "# Kid\n\nParent: jobs/plans/gone_plan.md, step 1\n\n## 1. Inner\n",
+            },
+            [Run("1-A-x", 0, 1), Run("2-A-y", 1, 2)]);
+
+        var root = NestedRows(snap);
+
+        Assert.Equal(2, root.Children.Count);
+        Assert.Equal("plan:" + Root, root.Children[0].Key);
+        Assert.Equal("plan:" + Child, root.Children[1].Key);
+        Assert.Contains("parent not found", root.Children[1].Label);
+    }
+
+    [Fact]
+    public void VW32_Gantt_SummaryCoversChildPlans()
+    {
+        var root = NestedRows(Nested(Card("1-A-x", plan: Child, step: "1"), Card("2-A-y", plan: Root, step: "2")));
+
+        var p = Find(root, "plan:" + Root);
+        Assert.Equal(2, p.Total);
+        Assert.Equal(2, p.Done);
+        Assert.Equal(1, Find(root, "plan:" + Root + "/1").Total);
+        Assert.NotNull(Find(root, "plan:" + Root + "/1").Summary);
+        Assert.Equal(T0, p.Summary!.Start);
+        Assert.Equal(T0.AddHours(2), p.Summary.End);
     }
 }

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Views;
 
 namespace Scheduler.Core.WebContract;
@@ -28,9 +30,6 @@ public sealed record ProjectViews
 
     /// <summary>The paths on main a card's <c>Plan:</c> may resolve to (VW-12): the jobs folder's files and the plan documents read.</summary>
     public IReadOnlySet<string> OnMain { get; init; } = new HashSet<string>(StringComparer.Ordinal);
-
-    /// <summary>VW-13: a plan document's path to the roadmap item its <c>Roadmap: item n</c> line names.</summary>
-    public IReadOnlyDictionary<string, int> RoadmapItemOf { get; init; } = new Dictionary<string, int>(StringComparer.Ordinal);
 
     /// <summary>Whether the done and archive headers are in the snapshot (VW-21).</summary>
     public bool DoneLoaded { get; init; }

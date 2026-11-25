@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text;
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Locks;
@@ -12,7 +14,7 @@ namespace Scheduler.Host.Locks;
 /// main the card reader makes (<see cref="CardReader.MainSeen"/>): when main has moved past the table's last
 /// audited commit, it reads the new commits (in process since 1065-B, else <c>git log --name-status</c>; each with its <c>Card:</c> trailer), checks
 /// them with <see cref="MainAudit"/>, keeps the new last audited commit in the table and logs each stray. A card
-/// with a stray keeps it for this run of the scheduler: its waiting finish request in the moves folder, To: done,
+/// with a stray keeps it, in a file beside the lock table too, so a restart still knows it (1216-B): its waiting finish request in the moves folder, To: done,
 /// is turned into To: review (<see cref="CardMoves.Stray"/>) before the move step applies it. It never reverts
 /// anything.
 /// </summary>
@@ -24,12 +26,17 @@ public sealed class AuditRunner
     private readonly Func<LockTable> _read;
     private readonly Action<LockTable> _save;
     private readonly string _moves;
-    private readonly Func<IReadOnlyList<string>> _addOnly;
+    private readonly Func<IReadOnlyList<string>?> _addOnly;
     private readonly IClock _clock;
     private readonly ISchedulerLog? _log;
     private readonly Dictionary<string, string> _strays = new(StringComparer.OrdinalIgnoreCase);
+    private readonly string _straysFile;
     private MainObjects? _objects;
     private bool _opened;
+    private bool _waitLogged;
+
+    /// <summary>The most strays kept in the file: the newest ones.</summary>
+    public const int MaxStrays = 500;
 
     /// <summary>The audit of <paramref name="repo"/>'s main, kept in the table <paramref name="read"/> and <paramref name="save"/> give.</summary>
     /// <param name="git">Runs git.</param>
@@ -37,11 +44,11 @@ public sealed class AuditRunner
     /// <param name="read">Reads the lock table.</param>
     /// <param name="save">Writes the lock table.</param>
     /// <param name="moves">The moves folder, where finish requests wait.</param>
-    /// <param name="addOnly">categories.json's shared add-only paths (DL-15 a).</param>
+    /// <param name="addOnly">categories.json's shared add-only paths (DL-15 a); null while they are not known, and the audit waits (1274-B).</param>
     /// <param name="clock">The clock: a commit lands when the scheduler sees it.</param>
     /// <param name="log">The scheduler's log.</param>
     public AuditRunner(GitRunner git, string repo, Func<LockTable> read, Action<LockTable> save, string moves,
-        Func<IReadOnlyList<string>> addOnly, IClock clock, ISchedulerLog? log)
+        Func<IReadOnlyList<string>?> addOnly, IClock clock, ISchedulerLog? log)
     {
         _git = git;
         _repo = repo;
@@ -51,6 +58,98 @@ public sealed class AuditRunner
         _addOnly = addOnly;
         _clock = clock;
         _log = log;
+        var logDir = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(moves)) ?? "";
+        _straysFile = Path.ChangeExtension(Scheduler.Core.Locks.LockTableText.PathIn(logDir, repo), ".strays.log");
+        Load();
+    }
+
+    /// <summary>
+    /// The add-only paths (DL-15 a) the audit checks with (1274-B): the registry's when the tick has read
+    /// categories.json (<paramref name="current"/>), else categories.json read from main now
+    /// (<paramref name="readCategories"/>), because the tick reads main's cards, and so runs the audit, before it
+    /// reads the categories: on the first tick after a start the registry has none yet. No categories file on main
+    /// (or one with no categories) has no add-only paths, as the registry reads it. Null when main's file is not
+    /// valid JSON, so the list cannot be known: the audit then waits.
+    /// </summary>
+    public static IReadOnlyList<string>? AddOnlyOf(CategoriesFile? current, Func<string?> readCategories)
+    {
+        if (current is not null)
+        {
+            return current.AddOnly;
+        }
+
+        var text = readCategories();
+        if (Scheduler.Core.Categories.CategoriesEdit.Parse(text) is { } file)
+        {
+            return file.AddOnly;
+        }
+
+        try
+        {
+            using var _ = string.IsNullOrWhiteSpace(text) ? null : System.Text.Json.JsonDocument.Parse(text);
+            return [];
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The file the strays are kept in, beside the lock table (1216-B): one <c>card TAB path</c> per line, oldest first.</summary>
+    public string StraysPath => _straysFile;
+
+    private void Load()
+    {
+        try
+        {
+            if (!File.Exists(_straysFile))
+            {
+                return;
+            }
+
+            var bad = 0;
+            foreach (var line in File.ReadAllLines(_straysFile, Utf8))
+            {
+                var t = line.Split('	');
+                if (t.Length == 2 && t[0].Length > 0)
+                {
+                    _strays[t[0]] = t[1];
+                }
+                else if (line.Trim().Length > 0)
+                {
+                    bad++;
+                }
+            }
+
+            if (bad > 0)
+            {
+                _log?.Write($"locks: the strays file {_straysFile} has {bad} unreadable line(s); they are ignored");
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _strays.Clear();
+            _log?.Write($"locks: the strays file {_straysFile} could not be read ({e.Message}); starting with none");
+        }
+    }
+
+    private void Persist()
+    {
+        try
+        {
+            var rows = _strays.Select(kv => $"{kv.Key}	{kv.Value}").ToList();
+            if (rows.Count > MaxStrays)
+            {
+                rows = rows.GetRange(rows.Count - MaxStrays, MaxStrays);
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(_straysFile)!);
+            File.WriteAllLines(_straysFile, rows, Utf8);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _log?.Write($"locks: the strays file {_straysFile} could not be written ({e.Message})");
+        }
     }
 
     /// <summary>The first stray path of each card found this run ("" for a commit with no card).</summary>
@@ -92,6 +191,22 @@ public sealed class AuditRunner
             return [];
         }
 
+        // 1274-B: never with an empty list standing for one not read yet (a version bump would be a stray), and
+        // never skipping: the last audited commit stays, and a later run audits the same commits.
+        var addOnly = _addOnly();
+        if (addOnly is null)
+        {
+            if (!_waitLogged)
+            {
+                _log?.Write($"locks: audit of main waits at {Short(from)}: the shared add-only files are not known yet");
+                _waitLogged = true;
+            }
+
+            return [];
+        }
+
+        _waitLogged = false;
+
         // 1065-B (MM-14): the new commits are read in process; git only when the reader cannot answer exactly.
         var commits = ReadInProcess(from, head);
         if (commits is null)
@@ -109,8 +224,9 @@ public sealed class AuditRunner
             commits = Parse(log.Stdout, _clock.Now);
         }
 
-        var result = MainAudit.Check(table, commits, _addOnly());
+        var result = MainAudit.Check(table, commits, addOnly);
         _save(_read() with { AuditedCommit = result.Table.AuditedCommit });
+        var added = false;
         foreach (var s in result.Strays)
         {
             _log?.Write(s.Card.Length > 0
@@ -119,7 +235,18 @@ public sealed class AuditRunner
             if (s.Card.Length > 0 && !_strays.ContainsKey(s.Card))
             {
                 _strays[s.Card] = s.Path;
+                added = true;
             }
+        }
+
+        if (added)
+        {
+            while (_strays.Count > MaxStrays)
+            {
+                _strays.Remove(_strays.Keys.First());
+            }
+
+            Persist();
         }
 
         return result.Strays;

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Accounting;
 using Scheduler.Core.Contracts;
 
@@ -56,6 +58,9 @@ public sealed record PageSnapshot
 
     /// <summary>The categories file's shared add-only list, for the Categories panel (992-B).</summary>
     public IReadOnlyList<string> SharedAddOnly { get; init; } = [];
+
+    /// <summary>1180-C: this project's own <c>limits.maxMinutes</c> (TIME-1), which the Gantt's estimates fall back to; 0 = not given.</summary>
+    public int MaxMinutes { get; init; }
 
     /// <summary>The queue in dispatch order, with notes (PAGE-6).</summary>
     public IReadOnlyList<PageQueueItem> Queue { get; init; } = [];

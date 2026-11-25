@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text;
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Locks;
@@ -130,8 +132,18 @@ public sealed class LockRequestStep
     private static string Reply(LockDecision d) =>
         LockReply.Text(d.GivesUpAt is { } at ? d with { GivesUpAt = at.ToLocalTime() } : d);
 
+    /// <summary>Where each answer is recorded for the page's day counts (DL-26); null records none.</summary>
+    public LockEventLog? Events { get; set; }
+
     private void Write(LockDecision d, string why)
     {
+        Events?.Add(d.Answer switch
+        {
+            LockAnswer.Granted => Scheduler.Core.PageModel.LockEventKind.Grant,
+            LockAnswer.Waiting => Scheduler.Core.PageModel.LockEventKind.Wait,
+            LockAnswer.Yield => Scheduler.Core.PageModel.LockEventKind.Yield,
+            _ => Scheduler.Core.PageModel.LockEventKind.Refusal,
+        }, _clock.Now);
         var card = d.Card.Length > 0 ? d.Card : "?";
         var reason = why.Length > 0 ? $" ({why})" : "";
         _log?.Write($"locks: {card} {d.FileName}: {Reply(d)}{reason}");   // DL-26

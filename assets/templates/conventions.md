@@ -21,12 +21,11 @@ project/
 │   ├── src/         # The application, one folder per module (see Application code)
 │   └── tools/       # Source for custom tools (output goes to bin/)
 ├── docs/
-│   ├── ai/          # New plans, not yet turned into job cards
 │   ├── design/      # gdd/ (intent) and tdd/ (architecture and technical specs)
 │   └── reference/   # Technical reference material
 ├── extern/
 │   └── bin/         # Prebuilt third-party binaries, SDKs, middleware
-├── jobs/            # The job queue: queue/ active/ review/ done/ plans/ archive/ requests/
+├── jobs/            # The job queue: queue/ active/ review/ done/ plans/ archive/ requests/ attachments/
 ├── out/             # Built packages and final results, one folder per platform; git-ignored
 └── test/
     ├── unit/        # Unit tests, one file per module under test, mirroring the code/ paths

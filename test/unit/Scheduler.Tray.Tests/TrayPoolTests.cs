@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Tray.Tests;
 
 /// <summary>Card 1000-B: the tray in pool mode (design multi-project.md MP-H9).</summary>
@@ -44,16 +46,16 @@ public class TrayPoolTests
     {
         var text = TrayTooltip.ForPool(SchedulerState.Running, 2, "last", [("AmigaX", "running"), ("ProjectToolkit", "paused-red")]);
 
-        Assert.Equal("pool scheduler: AmigaX running, ProjectToolkit paused-red; 2 workers", text);
-        Assert.Equal("pool scheduler: AmigaX running; no workers busy", TrayTooltip.ForPool(SchedulerState.Running, 0, "", [("AmigaX", "running")]));
+        Assert.Equal("Switchyard: AmigaX running, ProjectToolkit paused-red; 2 workers", text);
+        Assert.Equal("Switchyard: AmigaX running; no workers busy", TrayTooltip.ForPool(SchedulerState.Running, 0, "", [("AmigaX", "running")]));
     }
 
     // MP-H9: without a status yet, or not running, it reads as a scheduler for the project "pool".
     [Fact]
     public void MP_H9_TrayPoolTooltip_NoStatusOrNotRunning_ReadsAsPool()
     {
-        Assert.Equal("pool scheduler: running, 1 worker", TrayTooltip.ForPool(SchedulerState.Running, 1, "", []));
-        Assert.Equal("pool scheduler: stopping, waiting for the workers", TrayTooltip.ForPool(SchedulerState.Stopping, 1, "", [("A", "running")]));
+        Assert.Equal("Switchyard: running, 1 worker", TrayTooltip.ForPool(SchedulerState.Running, 1, "", []));
+        Assert.Equal("Switchyard: stopping, waiting for the workers", TrayTooltip.ForPool(SchedulerState.Stopping, 1, "", [("A", "running")]));
         Assert.True(TrayTooltip.ForPool(SchedulerState.Running, 1, "", [("A", new string('x', 300))]).Length <= TrayTooltip.MaxLength);
     }
 

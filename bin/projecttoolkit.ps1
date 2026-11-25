@@ -10,16 +10,18 @@
          (assets/templates/, docs/workflow.md, docs/agent-lessons.md).
       2. The job queue system that AI agents work: jobs/, its protocol, templates and config.
       3. The scheduler, the application that runs a queue: code\src\Scheduler.Host (scheduler-next.exe). It is run from the
-         kit and is never copied into a project. Publish the runnable folder once with
+         kit and is never copied into a project. In a clone of the kit, publish the runnable folder once with
          `dotnet publish code\src\Scheduler.Host -c Release -o out\windows\scheduler` and start
          `out\windows\scheduler\scheduler-tray.exe <project folder>`; the page's firewall rule is bound to that exe path.
+         An installed kit (its folder has no code\src) came with that folder already built and put a Switchyard
+         shortcut in the Start menu: start Switchyard from the Start menu instead, there is nothing to publish.
 
     This script is the entry point for the two setup actions. Each is independent; the first does the
     second as part of standing up a project.
 
       -Action new-project   A new project. Lays down the canonical layout (assets/, bin/,
                             code/{extern,lib,src,tools}/, extern/bin/, out/,
-                            test/{unit,integration,data}/, docs/{ai,design,reference}/)
+                            test/{unit,integration,data}/, docs/{design,reference}/)
                             with README.md, .gitignore, .gitattributes, docs/conventions.md and the
                             two design documents, then sets up the job queue. This is what starts a
                             project.
@@ -27,13 +29,13 @@
       -Action jobs          The job queue system on its own, in a repository that is already there:
                             jobs/ (the queue folders, the generic README, project.md, categories.json,
                             models.json, scheduler.json, the card and plan templates, the requests
-                            folder), docs/ai/ and docs/known_gaps.md, then joins the project to the
+                            folder) and docs/known_gaps.md, then joins the project to the
                             scheduler pool (%LOCALAPPDATA%\ProjectToolkit\pool.json; -NoPool skips). Use it to put a
                             queue into an existing repository, and with -Update to pull kit
                             improvements into a project that already has one.
 
     Nothing already in the repository is overwritten unless -Force is given. -Update refreshes only
-    the text the kit owns (the jobs README, the card, plan and request templates, docs/ai/README.md,
+    the text the kit owns (the jobs README, the card, plan and request templates,
     .gitattributes) and fills in any folder or file the project is missing. README.md, .gitignore,
     docs/conventions.md, docs/design/ and the queue's project.md, categories.json (or an older lanes.json), an old
     workers.json and scheduler.json become the project's own and are left alone.
@@ -56,7 +58,8 @@
     adds { name, repo, weight 50 } to %LOCALAPPDATA%\ProjectToolkit\pool.json if the project is not in it.
     The join is skipped (with the reason printed) inside a worker (a *_JOBS variable or PTK_CARD is set), for a
     repository under the temp folder or under any out\test-tmp\ folder (a test's scratch root, card 1088-B), or
-    without jobs/scheduler.json; -JoinPool forces it past the first two.
+    without jobs/scheduler.json; -JoinPool forces it past the worker, temp-folder and out	est-tmp skips, but not past
+    a missing jobs/scheduler.json.
 
 .PARAMETER Modules
     Comma-separated module folder names to create under code/src/ (app, platform, graphics, ...). The
@@ -75,6 +78,10 @@
 .EXAMPLE
     .\bin\projecttoolkit.ps1 -Action jobs -Repo C:\Projects\Foo -Update   # pull kit improvements in
 #>
+
+# Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+# Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
+
 param(
     [Parameter(Mandatory)][ValidateSet('new-project', 'jobs')][string]$Action,
     [Parameter(Mandatory)][string]$Repo,
@@ -83,8 +90,8 @@ param(
     [string]$Modules = '',
     [int]$Slots = 0,
     [string[]]$Gate = @(),
-    [string]$Model = 'spark',
-    [string]$Endpoint = 'http://spark.local:18400/v1',
+    [string]$Model = '',
+    [string]$Endpoint = '',
     [string]$JobsEnvVar = 'AGENT_JOBS',
     [switch]$Force,
     [switch]$Update,
@@ -137,7 +144,8 @@ function Put([string]$rel, [string]$text, [bool]$generic = $false) {
 function Template([string]$rel) { return [System.IO.File]::ReadAllText((Join-Path $T $rel)) }
 
 # A folder with no files does not survive in git, so a kept folder gets a .gitkeep, removed once real
-# files land in it (except under out/, which is git-ignored wholesale and so always keeps it).
+# files land in it. Under out/ the platform folders (out/windows) keep theirs: the template gitignore commits
+# out/<platform>/.gitkeep and ignores everything else there.
 function Keep([string]$rel) {
     $dir = Join-Path $Repo ($rel.TrimEnd('/') -replace '/', '\')
     if (-not (Test-Path $dir)) { $null = New-Item -ItemType Directory -Force -Path $dir }
@@ -157,7 +165,7 @@ $script:Kept = [ordered]@{}
 function Q([string]$s) { return '"' + (($s -replace '\\', '\\') -replace '"', '\"') + '"' }
 function QList($a) { return '[' + ((@($a) | Where-Object { $_ } | ForEach-Object { Q $_ }) -join ', ') + ']' }
 function Categories-Json($cats) {
-    $about = 'The categories of this project''s job queue: what each is for and which files it owns. One worker per category at a time, and categories own different files, so two workers never edit the same file. A path ending in / is a folder and everything under it; * matches any characters. The scheduler reads this file from main; a category redefined while it has cards in queue/ or active/ is held until the developer accepts the change on the scheduler page.'
+    $about = 'The categories of this project''s job queue: what each is for and which files it owns. One worker per category at a time, and categories own different files, so two workers never edit the same file. A path ending in / is a folder and everything under it; * matches any characters. The scheduler reads this file from main; a change to a category applies at the next read of main.'
     $out = @('{', "  `"about`": $(Q $about),", '  "categories": {')
     $keys = @($cats.Keys)
     for ($i = 0; $i -lt $keys.Count; $i++) {
@@ -223,10 +231,10 @@ function Join-Pool {
             '  "pool": {',
             '    "maxWorkers": 8,',
             '    "types": {',
-            '      "Spark":  { "max": 6, "agent": "", "premium": false },',
-            '      "Sonnet": { "max": 6, "agent": "claude", "model": "claude-sonnet-5-5", "premium": true },',
-            '      "Opus":   { "max": 6, "agent": "claude", "model": "claude-opus-5-5",   "premium": true }',
-            '    }',
+            '      "Copilot": { "max": 2, "agent": "" },',
+            '      "Claude":  { "max": 2, "agent": "claude", "model": "claude-sonnet-5-5" }',
+            '    },',
+            '    "defaultWorker": "Copilot"',
             '  }',
             '}', '')
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -294,7 +302,6 @@ function Install-JobQueue {
     # The queue's folders (its README.md's table says what each holds) and the gaps list.  Done
     # before -Update returns, so a project that lost a folder gets it back.
     foreach ($d in 'queue', 'active', 'review', 'done', 'plans', 'archive', 'requests') { Keep "$Q/$d" }
-    Keep 'docs/ai'
     Put 'docs/known_gaps.md' "# Known gaps`n`nKnown differences from the specification, and assumptions made where it is silent.`n"
 
     # The generic files: refreshed by -Update.
@@ -305,7 +312,8 @@ function Install-JobQueue {
     Put "$Q/card-template-bug.md"     (Template 'jobs/card-template-bug.md') $true
     Put "$Q/attachments/README.md"    (Template 'jobs/attachments/README.md') $true
     Put "$Q/requests/README.md"   (Template 'jobs/requests/README.md') $true
-    Put 'docs/ai/README.md'              (Template 'ai/README.md') $true
+    # docs/ai/ is no longer created or refreshed: a plan starts in jobs/plans/ as a draft.  A project that
+    # already has a docs/ai folder keeps it; nothing here deletes anything in a project.
 
     if ($Update) {
         # A project with neither categories.json nor the older lanes.json: make categories.json once
@@ -341,6 +349,7 @@ function Install-JobQueue {
     Put "$Q/project.md" $proj
 
     $envObj = [ordered]@{}
+    # No endpoint: Copilot uses GitHub's own models. -Endpoint (and -Model) point it at a local OpenAI-compatible server.
     if ($Endpoint) { $envObj['COPILOT_PROVIDER_BASE_URL'] = '{endpoint}'; $envObj['COPILOT_PROVIDER_TYPE'] = 'openai'; $envObj['COPILOT_MODEL'] = '{model}' }
     $cfg = [ordered]@{
         project = $Project
@@ -348,7 +357,7 @@ function Install-JobQueue {
         planner = [ordered]@{ outbox = "$Q\.planner-outbox" }
         jobsEnvVar = $JobsEnvVar; workerWindow = 'Hidden'
         worker = [ordered]@{
-            cli = 'copilot'; args = @('-p', '{prompt}', '--allow-all', '--no-ask-user', '--output-format=json', '--model={model}')
+            cli = 'copilot'; args = @(@('-p', '{prompt}', '--allow-all', '--no-ask-user', '--output-format=json') + $(if ($Model) { '--model={model}' }))
             model = $Model; endpoint = $Endpoint; env = $envObj
             quotaPatterns = @('exceeded your (monthly )?quota', 'quota exceeded', 'rate limit') }
         agents = [ordered]@{
@@ -385,7 +394,7 @@ if (-not $NoPool) {
 Write-Host ''
 if ($Update) {
     Write-Host "Refreshed the kit's own text in $Repo (the jobs README, the card, plan and request"
-    Write-Host 'templates, docs/ai/README.md, .gitattributes) and filled in any folder or file it was missing.'
+    Write-Host 'templates and the attachments README) and filled in any folder or file it was missing.'
     Write-Host 'Left alone, because they are the project''s own now: README.md, .gitignore, docs/conventions.md,'
     Write-Host 'docs/design/, jobs/{project,categories,lanes,workers,scheduler}.json.'
     return
@@ -399,13 +408,14 @@ if ($Action -eq 'new-project') {
     Write-Host '     -Action new-project -Modules "app,platform,systems,..." to create code/src/<module>/ folders.'
     $n = 3
 } else {
-    Write-Host "The job queue is set up in $Repo (jobs/, docs/ai/). It does not touch anything else"
+    Write-Host "The job queue is set up in $Repo (jobs/). It does not touch anything else"
     Write-Host 'in the repository; a project with no layout yet can be given one with -Action new-project.'
     Write-Host 'Next:'
     $n = 1
 }
 Write-Host "  $n. Fill in jobs/categories.json with the planner: each category's purpose, what it owns and its exceptions, and the shared files."
 Write-Host "  $($n + 1). Fill in jobs/project.md (gates, locations, briefs). In jobs/scheduler.json set project (it must equal the name in the pool file) and health.command (the gates, joined with &&)."
-Write-Host "  $($n + 2). Write the first plan in docs/ai/ and card it into jobs/queue/."
-Write-Host "  $($n + 3). Commit and push to main. The pool joins the project at its next tick; there is no scheduler to start for it."
+Write-Host "  $($n + 2). Have a planner write the project's plan in jobs/plans/ (from jobs/plan-template.md) from the design; the brief is docs/planner-brief.md."
+Write-Host "  $($n + 3). Commit and push to main. Set up the worker types in the pool file and start Switchyard; the pool joins the project at its next tick."
+Write-Host "  $($n + 4). Ask the planner to card the plan's first step into jobs/queue/."
 if ($NoPool) { Write-Host "     (-NoPool was given: add $Project to %LOCALAPPDATA%\ProjectToolkit\pool.json by hand to join the pool.)" }

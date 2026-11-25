@@ -8,7 +8,7 @@ cases, like the spec's. Once the cards land, `spec.md` takes these rules over (c
 pool's `defaultWorker` type; any other type must be named; `Worker: premium` is no longer special and a type may be
 named Premium. Text below that still says premium is marked *superseded*; it is kept as history.
 
-Sources: roadmap item 9 (`docs/design/gdd/scheduler-roadmap.md`); spec A3 (DISP-*), A5 (WRK-*), A6
+Sources: roadmap item 9 (`jobs/plans/scheduler-roadmap_plan.md`); spec A3 (DISP-*), A5 (WRK-*), A6
 (TIME-10, TIME-12, TIME-15), A9 (ADOPT-*), B1 (MP-*) and B3 questions 4, 11, 13, 14 with the
 developer's answers on cards 300-A, 310-A and 330-B; the code in `Scheduler.Core/Dispatch/`,
 `Scheduler.Core/Categories/WorkerSelection.cs`, `Scheduler.Core/Pool/`, `Scheduler.Host/Pool/`,
@@ -28,6 +28,8 @@ developer's answers on cards 300-A, 310-A and 330-B; the code in `Scheduler.Core
   and take only categories A, B and C; slot 3 (Sonnet) and slot 4 (Opus) are premium with no category limit.
   So today a design card (category D) without a `Worker:` line is never started: no non-premium worker
   takes category D. The migration (WT-C10) keeps that, and Q2 asks whether to keep it.
+  *(superseded 2026-11-22: the premium flag is gone, 1146-A. A card with no `Worker:` line now goes to the
+  pool's `defaultWorker` type, whatever that type is (WT-C3a); a type takes other cards only when a card names it.)*
 - **The slot number is everywhere**: worktree folder `slotN` and its branch, `stop-slotN`,
   `warn-slotN`, `msg-slotN.txt`, the prompt, running.json, accounting.csv's `slot` column, the live
   feed and the page's `?slot=` URLs. This design keeps the number as *the worker's folder number*
@@ -67,6 +69,7 @@ section 6), then the pool dispatcher rewritten over types (card 7), so that wiri
   type whose old `premium` was not true, else the first type; a name that is no type -> logged, and the same fallback.
   Save writes it after `maxWorkers`, and never writes `premium`. Renaming the default type renames the setting; a Save whose
   default names no row is refused. The slots form takes its default the same way (first slot not marked premium).
+  `premium` here is only the key of an old file: it sets nothing, decides nothing but this fallback, and is never written (1146-A).
 - **WT-C4** A type's effective worker (endpoint, model, metrics, agent, cli) is `Effective-Worker`
   (WRK-4) with the type in place of the worker definition. Nothing else about agents changes.
 - **WT-C5** The order of `types` in the file is meaningful: when several types could take a card,
@@ -107,7 +110,7 @@ section 6), then the pool dispatcher rewritten over types (card 7), so that wiri
   that Save nothing is written: an existing project keeps working with no change to its files.
 - **WT-C12** This project's workers.json migrates to: `maxWorkers` 4; `worker` (spark through the
   default agent, max 2); `Sonnet` (claude, claude-sonnet-5-5, max 1); `Opus`
-  (claude, claude-opus-5-5, max 1); `defaultWorker` `worker` (it was the non-premium type). `Worker: Opus` on a card picks the Opus type by its
+  (claude, claude-opus-5-5, max 1); `defaultWorker` `worker` (the type that takes cards with no `Worker:` line, WT-C3a). `Worker: Opus` on a card picks the Opus type by its
   name, as it picks slot 4 by its name today.
 
 ## 2. Dispatch
@@ -234,7 +237,7 @@ retries (310-A Q4), and the meaning of a `Worker:` line (310-A Q3; but see Q3 on
     the save, so a restart adopts it likewise).
   - **Removal**: a type left out of the list is refused, with nothing committed, when open cards name it
     (the notice names the cards) or when one of its workers is still running (the notice names the type
-    and each slot with its card: "type Sonnet has slot 2 (952-B-premium) running: stop it or keep the
+    and each slot with its card: "type Sonnet has slot 2 (952-B-gaps) running: stop it or keep the
     type"). A type no card names and with nothing running is removed.
   - **Cap 0 is "off"**: always allowed, even with workers running (they finish; no new one starts).
   - **A cap-only change** (no rename, add or removal) touches only workers.json: no card is rewritten.

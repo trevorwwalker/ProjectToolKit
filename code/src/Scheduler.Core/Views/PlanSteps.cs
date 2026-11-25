@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -73,8 +75,10 @@ public static class PlanSteps
     }
 
     /// <summary>
-    /// The steps of a plan document: each <c>##</c> heading in order is step n (a heading that starts "n." keeps that n,
-    /// as the roadmap's items do), each <c>###</c> under it is n.m.
+    /// The steps of a plan document (VW-24). A <c>##</c> heading is numbered when its title starts "n." or "n)" with no
+    /// sub-number. In a plan with a numbered <c>##</c> heading only those are steps (each keeps its n, and the <c>###</c>
+    /// headings under it are n.m); an unnumbered <c>##</c> and the <c>###</c> under it are not steps. A plan with none
+    /// keeps the older rule: each <c>##</c> in order is step n, each <c>###</c> under it n.m.
     /// </summary>
     public static IReadOnlyList<PlanStep> Of(string? text)
     {
@@ -91,11 +95,20 @@ public static class PlanSteps
             }
         }
 
-        foreach (var h in Headings(text))
+        var headings = Headings(text);
+        var numberedPlan = headings.Any(h => h.Level == 2 && IsNumbered(h.Title));
+
+        foreach (var h in headings)
         {
             if (h.Level == 2)
             {
                 Close();
+                current = null;
+                if (numberedPlan && !IsNumbered(h.Title))
+                {
+                    continue;
+                }
+
                 var lead = LeadingNumber.Match(h.Title);
                 number = lead.Success && !lead.Groups[2].Success ? Parse(lead.Groups[1].Value) : number + 1;
                 sub = 0;
@@ -142,6 +155,12 @@ public static class PlanSteps
         s = s.Replace("`", "").Replace("**", "").Replace("__", "");
         s = Regex.Replace(s, @"(?<![\w*])\*([^*]+)\*(?![\w*])", "$1");
         return s.Trim();
+    }
+
+    private static bool IsNumbered(string title)
+    {
+        var lead = LeadingNumber.Match(title);
+        return lead.Success && !lead.Groups[2].Success;
     }
 
     private static int Parse(string digits) =>

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 namespace Scheduler.Core.Contracts;
 
 /// <summary>One choice of a card question; a choice ending <c>-&gt; done|queue|active</c> moves the card there (CARD-12).</summary>

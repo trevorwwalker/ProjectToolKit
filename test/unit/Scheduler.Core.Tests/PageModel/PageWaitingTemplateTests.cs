@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Core.PageModel;
 using Scheduler.Core.WebContract;
@@ -61,19 +63,18 @@ public class PageWaitingTemplateTests
             window.Select(i => i.Note).ToList());
     }
 
-    // PAGE-5: the window still reads held categories first, then the edited copies, then the cards.
+    // PAGE-5: the window reads the edited copies first, then the cards.
     [Fact]
-    public void Waiting_HeldCategoriesLead_ThenEditedCopies_ThenCards()
+    public void Waiting_EditedCopiesLead_ThenCards()
     {
         var stuck = new[] { Card("070-A") };
         var window = PageWaiting.Window(
             [],
             stuck,
-            new Dictionary<string, string> { ["B"] = "lane B's definition changed" },
             editedTemplates: [Edit("ptk", "jobs/README.md")]);
 
         Assert.Equal(
-            [PageWaitingKind.HeldCategory, PageWaitingKind.TemplateEdited, PageWaitingKind.Stuck],
+            [PageWaitingKind.TemplateEdited, PageWaitingKind.Stuck],
             window.Select(i => i.Kind).ToList());
     }
 

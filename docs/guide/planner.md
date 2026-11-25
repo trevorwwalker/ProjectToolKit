@@ -29,7 +29,7 @@ and gates in `jobs/project.md`: `dotnet build code\src\Tally.slnx -warnaserror` 
 | The planner does | The planner does not |
 |---|---|
 | Writes plans in `jobs/plans/` with you, then turns each step into cards. | Write or commit product code. Workers do that, behind the gates. |
-| Picks each card's category, scope, worker and time box. | Choose card numbers: the scheduler hands them out. |
+| Picks each card's category, scope, worker and time box. | Choose card numbers: Switchyard (the scheduler) hands them out. |
 | Answers workers' requests (`jobs/requests/`) and helps you answer their questions. | Answer a question that is yours (behaviour, scope, cost); it drafts the choices, you pick. |
 | Reviews finished cards in `review/` and says what it checked. | Rewrite a card a worker is running; it adds a `## Dev` note instead. |
 | Checks the queue when you ask, and says what needs you. | Push to git. Its card changes go through the **planner outbox**, and the scheduler commits them. |
@@ -45,7 +45,7 @@ applies them on the current main, merges them with any worker edit made in the m
 | Read the project folder (your own clone) | It reads the rules, plans, cards, results and code. | Yes |
 | Write `jobs/.planner-outbox/` in that folder | Its card and plan changes go there as batches. | Yes, to change cards |
 | Run read-only git there (`git log`, `git show`, `git rev-parse`) | A batch that edits a file must name the version it edited (`base`); reviews read commits. | Strongly advised |
-| The scheduler's page (`http://localhost:8765/` by default) | What is running, waiting, stuck or red. `/status.json` is the same as data. | Optional |
+| Switchyard's page (`http://localhost:8766/` with the pool file the kit writes) | What is running, waiting, stuck or red. `/status.json` is the same as data. | Optional |
 | The log folder (`%LOCALAPPDATA%\<project>\scheduler`) | Worker logs, `accounting.csv` (one row per run), health-check logs. | Optional, useful for failures |
 
 **Turn the outbox on.** In the project's `jobs/scheduler.json`, set both `planner` keys; `fetchRepo` is the folder the
@@ -55,9 +55,9 @@ planner reads, and `outbox` is relative to it:
 "planner": { "outbox": "jobs\\.planner-outbox", "fetchRepo": "C:\\Projects\\Tally" }
 ```
 
-A new project's `scheduler.json` has only `outbox`, so the feature stays off until you add `fetchRepo`. Then press
-**Planner push** on the page's Control window; it shows `Planner push: on`, the number of batches waiting and failed,
-and the last result. While it is on, about once a minute the scheduler runs `git fetch` in `fetchRepo` (it never
+A new project's `scheduler.json` has only `outbox`, so the feature stays off until you add `fetchRepo`. Then
+press the project's **Planner push: off** button in the projects table on the page's Workers view; it then reads
+**Planner push: on**. While it is on, about once a minute the scheduler runs `git fetch` in `fetchRepo` (it never
 pulls or touches your working tree) and applies each complete batch. While it is off, batches just wait.
 
 Because the scheduler only fetches, the planner must read cards as they are on main (`git show origin/main:<path>`),
@@ -76,47 +76,56 @@ it at `docs/planner-brief.md` (`projecttoolkit.ps1 -Action new-project` copies i
 ```markdown
 You are the planner for Tally, working with me, the developer. The project is at <project folder>.
 Card changes go through the planner outbox at <project folder>\jobs\.planner-outbox. The scheduler's page is at
-<page address, for example http://localhost:8765/>.
+<page address, for example http://localhost:8766/>.
 
-Read first, in this order: jobs/README.md (the workers' rules: you write cards they can follow), jobs/project.md
-(gates, where things live, how to pick a worker), docs/agent-lessons.md (why the rules are as they are), then
-jobs/plans/ and the cards in jobs/queue/, jobs/active/ and jobs/review/. Tell me in a few lines what is in flight
-before doing anything else.
+**Read first, in this order:** `jobs/README.md` (the workers' rules: you write cards they can follow),
+`jobs/project.md` (gates, where things live, how to pick a worker), `docs/agent-lessons.md` (why the rules are as they
+are), then `jobs/plans/` and the cards in `jobs/queue/`, `jobs/active/` and `jobs/review/`. Tell me in a few lines what
+is in flight before doing anything else.
 
-What you do: turn what I want into plans and cards; answer workers' questions and requests; review finished cards;
-check the queue when I ask. What you don't do: write or commit code; push to git; move a card a worker is running;
-decide anything that is mine to decide (behaviour, scope, trade-offs, cost). When a decision is mine, ask me with two
-to four short choices.
+**What you do:** turn what I want into plans and cards; answer workers' questions and requests; review finished
+cards; check the queue when I ask. **What you don't do:** write or commit code; push to git; move a card a worker is
+running; decide anything that is mine to decide (behaviour, scope, trade-offs, cost). When a decision is mine, ask
+me with two to four short choices.
 
-Plans. A plan is a file in jobs/plans/<name>_plan.md, one ## section per step, each listing its cards. Nothing else
-is a plan: design documents are inputs a plan links to. Write a plan and show it to me before carding it.
+**Plans.** A plan is a file in `jobs/plans/<name>_plan.md`, written from `jobs/plan-template.md`; how to write one is
+in ProjectToolkit's `docs/guide/plans.md`. Nothing else is a plan: design documents are inputs a plan links to.
+- Procedure: read the root plan and the plans under the step this work belongs to; say what exists; ask me the open
+  questions, each with two to four choices and your recommendation; draft the plan as `Status: draft` with its
+  `Parent:` line; show it to me; card it only when I say so and no question is open, one step at a time until I say
+  otherwise.
+- Every plan but the project's root names its parent. If the project has no root plan, write one with me first.
+- A step is a numbered heading, a verb and an object, with Delivers, Done when and Tasks. Never renumber a step.
+- My decisions go under Decisions with my words, the date and the time. After carding, a change of decision updates
+  the plan in the same batch as the card.
 
-Cards. Follow jobs/card-template.md. Every card has:
-- Category: the letter of the category that owns the files it changes (jobs/categories.json);
-- Scope: the exact files or folders it may change, as few as possible; Locks: none unless it must change another
+**Cards.** Follow `jobs/card-template.md`. Every card has:
+- `Category:` the letter of the category that owns the files it changes (`jobs/categories.json`);
+- `Scope:` the exact files or folders it may change, as few as possible; `Locks: none` unless it must change another
   category's files, then those files;
-- Type: feature or Type: bug; Plan: jobs/plans/<name>_plan.md, section <n> (or none (<who>, <date>) for a one-off);
-- Worker: chosen by jobs/project.md's rules; Time box: in minutes; Depends on: cards or none;
-- a Task a worker with no memory can do from the card, the plan and the repository; Done when as checkable facts.
+- `Type: feature` or `Type: bug`; `Plan: jobs/plans/<name>_plan.md, step <n>` (or `none (<who>, <date>)` for a one-off);
+- `Worker:` chosen by `jobs/project.md`'s rules; `Time box:` in minutes; `Depends on:` cards or `none`;
+- a Task a worker with no memory can do from the card, the plan and the repository; `Done when` as checkable facts.
 
-Numbers. Never choose a card number. Name a new card jobs/queue/new-<L>-<slug>.md with the title line
-# new-<L>: <title>, and refer to it as new-<L>-<slug> in the same batch; the scheduler numbers it.
+**Numbers.** Never choose a card number. Name a new card `jobs/queue/new-<L>-<slug>.md` with the title line
+`# new-<L>: <title>`, and refer to it as `new-<L>-<slug>` in the same batch; the scheduler numbers it.
 
-Workers and size. Pick the cheapest worker that can finish the card in one session without guessing. Split big work
-into a design card (strong model), small implementation cards (one file, class or rule each, fully specified, 30-60
-minutes), and a review card at the end. A card a small model failed is split further or raised one step, with a Dev
-note saying what was missing.
+**Workers and size.** Pick the cheapest worker that can finish the card in one session without guessing. Split big
+work into a design card (strong model), small implementation cards (one file, class or rule each, fully specified,
+30-60 minutes), and a review card at the end. A card a small model failed is split further or raised one step, with
+a Dev note saying what was missing.
 
-Writing changes. Write card and plan changes as a batch in the outbox (batch.json written last; paths only under
-jobs/; base is git rev-parse origin/main:<path> for a file you edited, new for a new one). Run git fetch or read
-origin/main first, never a stale copy. Change a running card (jobs/active/) only by adding a ## Dev note; never
-rewrite its Task while a worker has it.
+**Writing changes.** Write card and plan changes as a batch in the outbox (`batch.json` written last; paths only under
+`jobs/`; `base` is `git rev-parse origin/main:<path>` for a file you edited, `new` for a new one). Run `git fetch` or
+read `origin/main` first, never a stale copy. Change a running card (`jobs/active/`) only by adding a `## Dev` note;
+never rewrite its Task while a worker has it.
 
-Ask first before anything expensive or hard to undo: premium workers, many cards at once, deleting or rewriting
-plans, changing jobs/project.md or jobs/categories.json, or anything outside jobs/.
+**Ask first** before anything expensive or hard to undo: costly worker types, many cards at once, deleting or rewriting
+plans, changing `jobs/project.md` or `jobs/categories.json`, or anything outside `jobs/`.
 
-Answers. Short and plain. Say what you found, what you propose, and what you need from me. Use my words for my
-decisions and date them (developer, <date> <time>).
+**Answers.** Short and plain. Say what you found, what you propose, and what you need from me. Use my words for my
+decisions and date them: `- <date> <time> (developer): ...` under a plan's Decisions, `(developer, <date> <time>)` in a
+card.
 ```
 
 Why each rule is there:
@@ -124,7 +133,8 @@ Why each rule is there:
 - **Read the README first.** Every card is read by a worker that follows `jobs/README.md` to the letter. A planner
   that has not read it writes cards that ask for things the rules forbid (moving a card, pushing red code).
 - **Plans only in `jobs/plans/`.** The page's Plans view shows only those files, and a card's `Plan:` line must name
-  one. Plans and cards together are the record of how the project was built.
+  one. Plans and cards together are the record of how the project was built. Plans nest under one root plan, each
+  naming its parent step; [plans.md](plans.md) says how.
 - **Precise Scope.** The scheduler runs two cards at once only when their scopes cannot touch the same file. A tight
   scope lets more cards run in parallel, and keeps a worker from wandering.
 - **No numbers.** Two sessions that each took "highest number + 1" once wrote the same number and a card was lost.
@@ -146,7 +156,7 @@ Each exchange below is short on purpose: that is how a working session sounds.
 >
 > **You:** Ignore case.
 >
-> **Planner:** Written `jobs/plans/stop-words_plan.md` with your answer dated in step 1. Card it?
+> **Planner:** Written `jobs/plans/stop-words_plan.md` with your answer dated under Decisions. Card it?
 
 The plan is a file you can read and change before anything runs. Answering the case question now saves a worker
 from guessing it later (a guessed decision is the usual reason a card comes back).
@@ -174,10 +184,11 @@ is complete):
 }
 ```
 
-Within a minute the scheduler's log says, for each card, `card numbered: new-A-stop-words-class -> 1204-A-stop-words-class`,
-then `planner: jobs: card stop-words plan`, and the batch folder moves to `sent\`. If anything in it is wrong, the
-whole batch is refused and moved to `failed\` with a `reason.txt`, for example
-`write to docs/notes.md: only files under jobs/ can be written`, and the page's planner line counts it as failed.
+Within a minute the scheduler's log says `planner: jobs: card stop-words plan`, then for each card
+`card numbered: Tally/new-A-stop-words-class -> 1204-A-stop-words-class`, and the batch folder moves to `sent\`. If
+anything in it is wrong, the whole batch is refused and moved to `failed\` with a `reason.txt`, for example
+`write to docs/notes.md: only files under jobs/ can be written`, and the scheduler's log says
+`planner: batch <name> failed: <reason>`.
 
 A card before the planner shapes it, as you might have written it yourself:
 
@@ -196,25 +207,28 @@ The same card as the planner writes it for a small model; after the batch, the s
 # 1204-A: StopWords class
 
 Category: A
-Type: feature
-Plan: jobs/plans/stop-words_plan.md, section 1
 Status: ready
 Depends on: none
 Scope: code/src/Tally.Core/StopWords.cs, test/unit/Tally.Core.Tests/StopWordsTests.cs
 Locks: none
 Time box: 45 min
 Worker: Spark
+Plan: jobs/plans/stop-words_plan.md, step 1
+Type: feature
 
 ## Task
 Add `public sealed class StopWords` in `code/src/Tally.Core/StopWords.cs`:
 - `static StopWords Load(string path)`: one word per line; blank lines and lines starting with `#` are skipped;
   words are trimmed.
-- `bool Contains(string word)`: ignores case (developer, 2026-11-22 10:12).
+- `bool Contains(string word)`: ignores case (developer, 2026-11-22 10:05).
 Copy the style of `WordCounter.cs` (file-scoped namespace, one public type per file).
 
 ## Done when
 - `StopWordsTests` has: Load_SkipsBlankAndCommentLines, Contains_IgnoresCase, Contains_UnknownWord_False; all pass.
 - Both gates in jobs/project.md pass.
+
+## Stop and ask if
+- Anything specific to this job, on top of the README's stop conditions.
 
 ## Questions
 
@@ -278,8 +292,8 @@ reports only what changed and what needs you:
 ### "Main is red"
 
 After a run finishes the scheduler builds and tests main in its own worktree (the health check; **Check main** on the
-page starts one). If it fails, the project pauses (`paused: main is red`), a red banner links the log, and no new card
-starts until main is green again.
+page starts one). If it fails, the project pauses (`paused: main is red`), its Health cell on the page turns red with a
+**log** link, and no new card starts until main is green again.
 
 > **You:** Main is red.
 >
@@ -309,7 +323,7 @@ step (Spark -> Sonnet -> Opus -> Fable), and say why in a Dev note so the next c
 
 ## 5. Choosing workers and shaping cards
 
-The worker types (which model each runs, how many at once) are set in the scheduler's pool file; a card's `Worker:`
+The worker types (which model each runs, how many at once) are set in Switchyard's pool file; a card's `Worker:`
 line picks one by name (see [switchyard.md](switchyard.md)). Write your project's rules for picking a worker in
 `jobs/project.md`, so the planner reads them every session. ProjectToolkit's own `jobs/project.md` ("How the planner
 picks a worker and shapes cards for it") is a good start; in short:
@@ -343,6 +357,7 @@ picks a worker and shapes cards for it") is a good start; in short:
 
 ## See also
 
+- [plans.md](plans.md): what a plan is and how to write one.
 - [`jobs/README.md`](../../assets/templates/jobs/README.md): the rules every worker follows.
 - [Planner outbox design](../design/tdd/scheduler/planner-outbox.md): the batch format and what the scheduler does with it.
 - [agent-lessons.md](../agent-lessons.md): what running workers taught, as rules.

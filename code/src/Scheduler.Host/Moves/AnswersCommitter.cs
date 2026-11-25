@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text;
 using Scheduler.Core.Contracts;
 using Scheduler.Core.MainModel;
@@ -110,6 +112,56 @@ public sealed class AnswersCommitter : IJobsCommitter
         return AnswersDir;
     }
 
+    /// <summary>The clock for the line CM-24 adds to a held card's Result.</summary>
+    public Func<DateTimeOffset> Now { get; set; } = () => DateTimeOffset.Now;
+
+    /// <summary>
+    /// CM-24 (card 1300-B; the developer: "cards that haven't pushed to main can't be done"): an edit that moves the
+    /// card <paramref name="name"/> into done/ - an answer from the page whose choice ends <c>-&gt; done</c>, the Done
+    /// button on a review card, a move request - while a <c>wip/</c> branch of the card holds work main lacks goes to
+    /// queue/ instead, as <c>waiting: planner (finished, but its work is not on main: &lt;branches&gt;)</c>, with a line in
+    /// its Result saying who asked for done. Its other changes (the answer written after the question) are kept. Git
+    /// is asked only for a move to done/; when it cannot say, the edit is applied as asked, with a log line.
+    /// </summary>
+    private CardEdit Hold(string name, CardEdit edit)
+    {
+        if (edit.Folder != CardFolder.Done || !edit.Moves)
+        {
+            return edit;
+        }
+
+        var where = new UnpushedWork(_git, _remote, _branch).Wip(AnswersDir, name);
+        if (where is null)
+        {
+            _log?.Write($"{name}: could not tell whether its wip branches are on {_branch}; moved to done/ as asked");
+            return edit;
+        }
+
+        if (where.Length == 0)
+        {
+            return edit;
+        }
+
+        var who = edit.Message.StartsWith("jobs: answer ", StringComparison.Ordinal) ? "an answer from the page"
+            : edit.Message.EndsWith("(reviewed from the page)", StringComparison.Ordinal) ? "the Done button"
+            : "a move request";
+        var reason = UnpushedWork.Words(_branch, where);
+        var status = UnpushedWork.Waiting(reason);
+        var at = edit.NewPath.LastIndexOf("/done/", StringComparison.Ordinal);
+        var newPath = edit.NewPath[..at] + "/queue/" + edit.NewPath[(at + "/done/".Length)..];
+        var line = $"{who} asked for done/, but its work is not on {_branch}: {where}; it waits on the planner (CM-24).";
+        return edit with
+        {
+            NewPath = newPath,
+            Folder = CardFolder.Queue,
+            Status = status,
+            Text = UnpushedWork.Journal(CardText.SetStatus(edit.Text, status), line, Now()),
+            Message = $"jobs: wait {name} ({who} asked for done; its work is not on {_branch})",
+            Log = $"{name}: {who} asked for done/, but its work is not on {_branch}: {where}; it goes to queue/ to wait on the planner (CM-24)",
+            ClearsRetries = false,
+        };
+    }
+
     /// <summary>MOVE-1: <paramref name="change"/> as one commit on main, as it is, tried up to three times.</summary>
     public CommitResult Apply(JobsChange change)
     {
@@ -159,14 +211,61 @@ public sealed class AnswersCommitter : IJobsCommitter
     /// False for a change that does not replay the developer's edits: Answer-Card (L1076) resets
     /// the answers worktree and commits without them.
     /// </param>
-    public CommitResult UpdateCard(string path, Func<string, CardEdit> edit, bool replayLocalEdits = true)
+    /// <param name="made">
+    /// Card 1300-B: told of the edit as it is committed, after CM-24 may have turned a move to done/ into a wait on the
+    /// planner; null when the caller does not need it.
+    /// </param>
+    public CommitResult UpdateCard(string path, Func<string, CardEdit> edit, bool replayLocalEdits = true, Action<CardEdit>? made = null)
     {
-        var name = Path.GetFileNameWithoutExtension(path);
+        var job = CardJob(new CardUpdate(Path.GetFileNameWithoutExtension(path), () => path, edit, replayLocalEdits, made));
+        Run("update " + Path.GetFileName(path), StepOf(job));
+        return job.Result!;
+    }
+
+    /// <summary>
+    /// 1190-B (MM-13): card changes ready together, as <see cref="UpdateCard"/> does each, one commit each in their
+    /// order and one push for all. Each update's path is found on the answers worktree as its turn comes, so one may
+    /// move a card an earlier one moved. A rejected push redoes them one by one from the new main; each has its own
+    /// result, in the order given, so a failed one never loses the others. On the writer it is one turn.
+    /// </summary>
+    public IReadOnlyList<CommitResult> UpdateCards(IReadOnlyList<CardUpdate> updates)
+    {
+        if (updates.Count == 0)
+        {
+            return [];
+        }
+
+        var jobs = updates.Select(CardJob).ToList();
+        var steps = jobs.Select(StepOf).ToList();
+        if (Writer is { } writer)
+        {
+            writer.Run("updates: " + updates[0].Name, () => GitWriter.RunGroup(steps));
+        }
+        else
+        {
+            GitWriter.RunGroup(steps);
+        }
+
+        return [.. jobs.Select(j => j.Result!)];
+    }
+
+    private Job CardJob(CardUpdate update)
+    {
+        var name = update.Name;
+        var edit = update.Edit;
+        var replayLocalEdits = update.ReplayLocalEdits;
+        string? path = null;
         List<LocalEdit>? patches = null;
         CardEdit? last = null;
         var job = new Job(name, null) { PlainName = true };
         job.Prepare = () =>
         {
+            path = update.Path();
+            if (path is null)
+            {
+                return Failed($"{name} is not on {_branch}");
+            }
+
             patches ??= replayLocalEdits ? LocalEdits(path) : [];
             foreach (var p in patches)
             {
@@ -189,6 +288,9 @@ public sealed class AnswersCommitter : IJobsCommitter
                 return Failed(last.Error);
             }
 
+            last = Hold(name, last);
+            update.Made?.Invoke(last);
+
             job.Change = last.Change;
             return null;
         };
@@ -196,14 +298,13 @@ public sealed class AnswersCommitter : IJobsCommitter
         {
             foreach (var _ in patches!.Where(p => p.Dir == _repo))
             {
-                _git.Run(_repo, "checkout", "--", path);
+                _git.Run(_repo, "checkout", "--", path!);
             }
 
             var line = last!.Log.Length > 0 ? last.Log : last.Message;
             _log?.Write(line + (patches!.Count > 0 ? " (with your edit to the card)" : ""));
         };
-        Run("update " + Path.GetFileName(path), StepOf(job));
-        return job.Result!;
+        return job;
     }
 
     private void Run(string key, GitWriter.PushStep step)
@@ -253,7 +354,7 @@ public sealed class AnswersCommitter : IJobsCommitter
             {
                 job.Result = new CommitResult { Ok = true, Sha = job.Sha };
                 Pushed(job.Sha, job.Parent, job.Paths);
-                CleanWipBranches(AnswersDir, job.Change!);
+                CleanWipBranches(AnswersDir, job.Change!, planner: !job.PlainName);
                 job.AfterPushed?.Invoke();
             }
             else if (outcome == PushOutcome.PushFailed)
@@ -453,7 +554,11 @@ public sealed class AnswersCommitter : IJobsCommitter
     /// 1049-B: cards this change moved into <c>done/</c> lose their <c>wip/</c> branch on the remote when its work is
     /// on main; one that still holds work main lacks is kept and named in the card's Result. Never fails the commit.
     /// </summary>
-    private void CleanWipBranches(string dir, JobsChange change)
+    /// <param name="planner">
+    /// Card 1300-B: the change came through <see cref="Apply"/>, whose only move into done/ is a planner batch's (the
+    /// planner's evaluation, applied as it is); a card it moved there with work not on main is logged.
+    /// </param>
+    private void CleanWipBranches(string dir, JobsChange change, bool planner)
     {
         try
         {
@@ -468,6 +573,11 @@ public sealed class AnswersCommitter : IJobsCommitter
             var kept = new WipBranches(_git, _remote, _branch, _log).Clean(dir, done.Keys);
             foreach (var (card, files) in kept)
             {
+                if (planner)
+                {
+                    _log?.Write($"planner: {card} moved to done with work not on {_branch}: {WipBranches.BranchOf(card)}");
+                }
+
                 NoteKept(dir, done[card], WipBranches.BranchOf(card), files);
             }
         }
@@ -500,3 +610,15 @@ public sealed class AnswersCommitter : IJobsCommitter
 
     private static CommitResult Failed(string error) => new() { Ok = false, Error = error };
 }
+
+/// <summary>
+/// 1190-B: one card change for <see cref="AnswersCommitter.UpdateCards"/>: its name (for the log and a rejected push),
+/// the card's path on the answers worktree as its turn comes (null when it is not on main), and the edit of main's text.
+/// </summary>
+/// <param name="Name">The card's name, as <c>010-A-x</c>.</param>
+/// <param name="Path">Finds the card's path, as <c>jobs/active/010-A-x.md</c>, or null.</param>
+/// <param name="Edit">Works the change out from main's text.</param>
+/// <param name="ReplayLocalEdits">True to replay the developer's uncommitted edits to the card first (MOVE-4).</param>
+/// <param name="Made">Card 1300-B: told of the edit as it is committed (after CM-24), or null.</param>
+public sealed record CardUpdate(string Name, Func<string?> Path, Func<string, CardEdit> Edit, bool ReplayLocalEdits = true,
+    Action<CardEdit>? Made = null);

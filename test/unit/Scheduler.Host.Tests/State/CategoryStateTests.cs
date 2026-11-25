@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Globalization;
 using System.Text.Json;
 using Scheduler.Core.Contracts;
@@ -32,7 +34,6 @@ public class CategoryStateTests
         // categories.json adds category E; categories-accepted.json has never seen it.
         registry.Read(Categories("A", "B", "E"), [CardOf("060-B-done", CardFolder.Done)]);
 
-        Assert.Empty(registry.Held);
 
         // It is stored in the log folder, and a fresh Host reader reads it back.
         using var doc = JsonDocument.Parse(new StateFiles(dir.Path).Read(StateFile.CategoriesAccepted)!);
@@ -60,7 +61,6 @@ public class CategoryStateTests
             "category A redefined in docs/jobs/lanes.json with no cards pending: accepted",
             log.Lines,
             StringComparer.Ordinal);
-        Assert.Empty(registry.Held);
         var stored = new StateFiles(dir.Path).Read(StateFile.CategoriesAccepted)!;
         Assert.Contains("docs/extra/", stored, StringComparison.Ordinal);
     }

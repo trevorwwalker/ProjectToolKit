@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Locks;
 using Scheduler.Core.Moves;
@@ -106,6 +108,51 @@ public sealed class AuditRunnerTests : IDisposable
     {
         _fx.Dispose();
         _log.Dispose();
+    }
+
+    private AuditRunner Again() =>
+        new(new GitRunner(), _fx.Seed, _table.Read, _table.Save, _moves, () => ["docs/known_gaps.md"], _clock, _lines);
+
+    private void PushStray() =>
+        _fx.Push($"change b\n\nCard: {Card}", new Dictionary<string, string?> { ["src/other/b.txt"] = Guid.NewGuid().ToString() });
+
+    [Fact]
+    public void Strays_survive_a_new_runner_over_the_same_folder()
+    {
+        PushStray();
+        _audit.Run(Head());
+        var again = Again();
+        Assert.Equal("src/other/b.txt", Assert.Single(again.Strays).Value);
+        Assert.Equal(Card, Assert.Single(again.Strays).Key);
+    }
+
+    [Fact]
+    public void The_strays_file_keeps_only_the_newest_entries()
+    {
+        File.WriteAllLines(_audit.StraysPath, Enumerable.Range(0, AuditRunner.MaxStrays).Select(i => $"old-{i}	p{i}"));
+        var again = Again();
+        PushStray();
+        again.Run(Head());
+        var lines = File.ReadAllLines(again.StraysPath);
+        Assert.Equal(AuditRunner.MaxStrays, lines.Length);
+        Assert.DoesNotContain(lines, l => l.StartsWith("old-0	", StringComparison.Ordinal));
+        Assert.StartsWith(Card + "	", lines[^1], StringComparison.Ordinal);
+        Assert.Equal(AuditRunner.MaxStrays, Again().Strays.Count);
+    }
+
+    [Fact]
+    public void A_missing_file_gives_none()
+    {
+        Assert.Empty(Again().Strays);
+    }
+
+    [Fact]
+    public void A_broken_file_gives_none_and_a_log_line()
+    {
+        File.WriteAllText(_audit.StraysPath, "not a stray list{{{");
+        var again = Again();
+        Assert.Empty(again.Strays);
+        Assert.Contains(_lines.Lines, l => l.Contains("strays file", StringComparison.Ordinal));
     }
 
     private string Head() => GitFixture.Git(_fx.Seed, "rev-parse", "HEAD");

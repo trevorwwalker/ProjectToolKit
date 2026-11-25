@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Diagnostics;
 using Scheduler.Host.Config;
 using Scheduler.Core.Tick;
@@ -82,7 +84,7 @@ public class PoolParallelStartTests
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested)
             {
-                // 1026-B: the runner's wait ends a cancelled run this way (as in ObserveRunTests); whether the
+                // 1026-B: the runner's wait ends a cancelled run this way; whether the
                 // test's stop lands in a tick or in that wait is down to timing, so a loaded PC failed it.
             }
             catch (Exception e)
@@ -98,7 +100,8 @@ public class PoolParallelStartTests
             Assert.Null(failed);
             Assert.Equal([rig.A, rig.B], startingAtFirst);
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-            var url = $"http://localhost:{pool!.Config.Port}/";
+            // 1279-B: "starting..." and the project rows are the Workers view's; since 3.4.28 (1269-C) a bare "/" is Plans.
+            var url = $"http://localhost:{PoolCompositionTests.PoolRig.PagePort(pool!, () => failed)}/?view=workers";
             var page = Get(http, url, html => html.Contains("starting...", StringComparison.Ordinal));
             Assert.Contains($"data-project='{rig.A}' data-starting='1'", page, StringComparison.Ordinal);
             Assert.Contains($"data-project='{rig.B}' data-starting='1'", page, StringComparison.Ordinal);
@@ -246,10 +249,10 @@ public class PoolParallelStartTests
         {
             if (step == TickStep.WriteStatus && seen is null)
             {
-                seen = new CombinedPageRenderer().Render(pool.PageData.PoolSnapshot(), remote: false, controlsAllowed: true);
+                seen = new CombinedPageRenderer().Render(pool.PageData.PoolSnapshot(), remote: false, controlsAllowed: true, "workers");
             }
         };
-        Assert.DoesNotContain(TickRig.CardName, new CombinedPageRenderer().Render(pool.PageData.PoolSnapshot(), false, true), StringComparison.Ordinal);
+        Assert.DoesNotContain(TickRig.CardName, new CombinedPageRenderer().Render(pool.PageData.PoolSnapshot(), false, true, "workers"), StringComparison.Ordinal);
 
         pool.RunTick(TickWake.Click);
 

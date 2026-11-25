@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Diagnostics;
 using Scheduler.Core.Contracts;
 using Scheduler.Host.Git;
@@ -31,7 +33,10 @@ public class GitNeverOpensEditorTests
         File.WriteAllText(script, string.Join("\r\n",
             "@echo off",
             $"\"{git}\" -c user.name=t -c user.email=t@t commit > \"{outFile}\" 2>&1",
-            $"echo %errorlevel% > \"{exitFile}\"",
+            // cmd creates the redirect target before it writes and closes it, so the test must never see a half-written
+            // exit.txt: write the code beside it and rename it into place, which is atomic.
+            $"echo %errorlevel% > \"{exitFile}.tmp\"",
+            $"move /y \"{exitFile}.tmp\" \"{exitFile}\" > nul",
             ""));
         var line = $"\"{script}\"";
         var hostile = "ping -n 120 127.0.0.1";

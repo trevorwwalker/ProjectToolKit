@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Globalization;
 using System.Text;
 using Scheduler.Core.Accounting;
@@ -47,7 +49,7 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
     /// <summary>The pool page from a pool snapshot: its projects' pages plus the pool part (section 4).</summary>
     public string Render(PoolPageSnapshot pool, bool remote, bool controlsAllowed) => Render(pool, remote, controlsAllowed, null);
 
-    /// <summary>VW-2: the pool page in <paramref name="view"/> (a name of <see cref="ViewList"/>; no or an unknown view is the first of them).</summary>
+    /// <summary>VW-2: the pool page in <paramref name="view"/> (a name of <see cref="ViewList"/>; no or an unknown view is the default of them, <see cref="DefaultView"/>).</summary>
     public string Render(PoolPageSnapshot pool, bool remote, bool controlsAllowed, string? view)
     {
         ArgumentNullException.ThrowIfNull(pool);
@@ -62,7 +64,7 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
     /// <param name="remote">Whether the reader is on another PC.</param>
     /// <param name="controlsAllowed">Whether this reader's buttons work; when not, they are disabled with the reason.</param>
     public string Render(IReadOnlyList<PageSnapshot> snapshots, string theme, bool remote, bool controlsAllowed) =>
-        Render(snapshots, theme, remote, controlsAllowed, null, DefaultView);
+        Render(snapshots, theme, remote, controlsAllowed, null, WorkersViewName);   // no address here: the Workers drawing, as before 1269-C. By name, since 1301-C made Plans the list's first.
 
     private string Render(IReadOnlyList<PageSnapshot> snapshots, string theme, bool remote, bool controlsAllowed, PoolPageSnapshot? pool, string view, string? address = null)
     {
@@ -98,10 +100,9 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
         {
             // 1114-C: the Plans view shows only its own window under the title bar (no Waiting on you, no Projects
             // table), and no HTML of the other view.
-            // 1127-C: unfinished plans on the left, completed ones on the right (below it on a narrow screen).
+            // 1256-C (VW-34): one Plans window at full width; finished child plans and steps hide with its Hide completed toggle.
             sb.Append("<div class='plans-pair'>");
-            Window(sb, "Plans", PlansView.Html(pool?.Views ?? [], projects, names), "", "id='w-plans' data-view='plans'");
-            Window(sb, "Completed plans", PlansView.Html(pool?.Views ?? [], projects, names, completed: true), "", "id='w-plans-completed' data-view='plans-completed'");
+            Window(sb, "Plans", PlansView.Html(pool?.Views ?? [], projects, names), PlansView.Bar("w-plans"), "id='w-plans' data-view='plans'");
             sb.Append("</div></div></div>").Append(PageScript.Html).Append("</body></html>");
             return sb.ToString();
         }
@@ -109,21 +110,20 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
         if (gantt)
         {
             // 1132-C: two windows side by side under the title bar, the timeline wide and the Details narrow
-            // (wrapping below it on a narrow screen); one range and one grouping, from the address.
+            // (wrapping below it on a narrow screen); one range, from the address; always grouped by plan, a group= in an old address is ignored.
             var views = pool?.Views ?? [];
             var range = GanttView.RangeKey(Option(address, "range"));
-            var groupBy = GanttView.GroupBy(Option(address, "group"));
             var now = pool?.Built ?? (projects.Count == 0 ? DateTimeOffset.Now : projects.Max(p => p.Built));
-            var groupName = groupBy == GanttGroupBy.Plan ? GanttView.PlanGroup : GanttView.CategoryGroup;
             sb.Append("<div class='gantt-pair'>");
-            Window(sb, "Gantt", GanttView.Html(views, projects, names, range, groupBy, now), GanttView.Bar(range, groupBy),
-                "id='w-gantt' data-view='gantt' data-range='" + range + "' data-group='" + groupName + "'");
-            Window(sb, "Details", GanttView.DetailsHtml(views, projects, names, range, groupBy, now), "", "id='w-gantt-details' data-view='gantt-details'");
+            Window(sb, "Gantt", GanttView.Html(views, projects, names, range, now), GanttView.Bar(range),
+                "id='w-gantt' data-view='gantt' data-range='" + range + "'");
+            Window(sb, "Details", GanttView.DetailsHtml(views, projects, names, range, now), "", "id='w-gantt-details' data-view='gantt-details'");
             sb.Append("</div></div></div>").Append(PageScript.Html).Append("</body></html>");
             return sb.ToString();
         }
 
         AppendWaiting(sb, projects, names, controlsAllowed);
+        AppendRequests(sb, projects, names);
         AppendWorkerWindows(sb, projects, names, controlsAllowed);
         sb.Append("</div><div class='col' id='col-side'><div class='col' id='col-queue'>");
         AppendQueue(sb, projects, names, pool);
@@ -193,13 +193,13 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
 
     private static readonly (string Name, string Label, string Title)[] ViewList =
     [
+        (PlansViewName, "Plans", "Plans: each plan, its steps and cards"),   // 1301-C: Plans leads, the most important element of the page.
         (WorkersViewName, "Workers", "Workers: the running workers and the queue"),
-        (PlansViewName, "Plans", "Plans: each plan, its steps and cards"),
         (GanttViewName, "Gantt", "Gantt: the past and running work on a timeline, with Details"),
     ];
 
-    // The view of a bare address with nothing remembered: the first of the list.
-    private static string DefaultView => ViewList[0].Name;
+    // The view of a bare address with nothing remembered, and of an unknown name: Plans (1269-C), named here rather than taken from the list.
+    private static string DefaultView => PlansViewName;
 
     // The address's view, matched against the list; no or an unknown view is the default (VW-2).
     private static string SelectedView(string? view)
@@ -349,6 +349,18 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
             rows.Add((project, row.ToString()));
         }
 
+        // 1198-B: a project left out of the pool (MP-H1) has a row with the reason, so it is not just missing.
+        foreach (var left in pool?.LeftOut ?? [])
+        {
+            if (rows.Any(r => string.Equals(r.Name, left.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            rows.Add((left.Name, "<tr data-project='" + Enc(left.Name) + "' data-leftout='1'><td class='nw'>" + ProjectCell(left.Name, names)
+                + "</td><td class='wrap' colspan='" + (workspaces ? 8 : 7) + "'><span class='mute'>not in the pool: " + Enc(left.Why) + "</span></td></tr>"));
+        }
+
         foreach (var (_, html) in rows.OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase))
         {
             table.Append(html);
@@ -482,13 +494,80 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
         }
 
         var table = new StringBuilder("<table class='waiting'>");
-        table.Append("<tr><th></th><th>Project</th><th>Card</th><th>Actions</th><th>Notes</th></tr>");
+        table.Append("<tr><th></th><th class='projcol'>Project</th><th>Card</th><th>Actions</th><th>Notes</th></tr>");
         foreach (var row in rows)
         {
             table.Append(row);
         }
 
         Window(sb, "Waiting on you", table.Append("</table>").ToString(), "", "id='w-waiting' data-view='waiting'");
+    }
+
+    // 1207-C: Requests to the planner across the pool, as the single page draws them: one row per open
+    // request of every project (newest number first, the project's chip, the title linking to /request
+    // with project=, its For line), then each project's cards waiting on the planner. No window when
+    // nothing is open or waiting (520-A item 5).
+    private static void AppendRequests(StringBuilder sb, IReadOnlyList<PageSnapshot> projects, IReadOnlyList<string> names)
+    {
+        var open = projects
+            .SelectMany(snapshot => snapshot.Planner.OpenRequests.Where(request => request.Open).Select(request => (project: snapshot.Project, request)))
+            .OrderByDescending(item => RequestNumber(item.request.Name))
+            .ToList();
+        var waiting = projects.SelectMany(snapshot => snapshot.Planner.WaitingCards.Select(card => (snapshot, card))).ToList();
+        if (open.Count == 0 && waiting.Count == 0)
+        {
+            return;
+        }
+
+        var table = new StringBuilder("<table class='rq-open'>");
+        if (open.Count == 0)
+        {
+            table.Append("<tr><td class='mute'>None open.</td></tr>");
+        }
+        else
+        {
+            table.Append("<tr><th class='projcol'>Project</th><th>Request</th><th>For</th></tr>");
+            foreach (var (project, request) in open)
+            {
+                table.Append("<tr data-project='").Append(Enc(project)).Append("'><td class='nw projcol'>").Append(ProjectCell(project, names))
+                     .Append("</td><td><a href='/request?name=").Append(Url(request.Name)).Append("&project=").Append(Url(project)).Append("'>")
+                     .Append(Enc(string.IsNullOrEmpty(request.Title) ? request.Name : request.Title)).Append("</a></td><td>")
+                     .Append(Enc(request.For)).Append("</td></tr>");
+            }
+        }
+
+        table.Append("</table>");
+
+        if (waiting.Count > 0)
+        {
+            table.Append("<table class='rq-waiting' style='margin-top:8px'><tr><th class='projcol'>Project</th><th>Card waiting on the planner</th><th>For</th></tr>");
+            foreach (var (snapshot, card) in waiting)
+            {
+                var planner = snapshot.Planner;
+                var perCard = planner.WaitingDepends.Count > 0 || planner.WaitingReady.Count > 0;
+                var ready = perCard ? planner.WaitingReady.Contains(card, StringComparer.OrdinalIgnoreCase) : planner.AllDone;
+                table.Append("<tr data-project='").Append(Enc(snapshot.Project)).Append("' data-card='").Append(Enc(CardId(card))).Append("'><td class='nw projcol'>")
+                     .Append(ProjectCell(snapshot.Project, names)).Append("</td><td>").Append(CardLink(card, snapshot.Project)).Append("</td><td>")
+                     .Append(ready ? "<span class='warn'>all done: the planner can act now</span>" : "<span class='mute'>waiting</span>")
+                     .Append("</td></tr>");
+            }
+
+            table.Append("</table>");
+        }
+
+        // 1255-C: the project filter (applyFilters) hides a table whose rows are all hidden, shows the
+        // empty line when both are, and recounts the tag for the chosen project.
+        table.Append("<p class='mute rq-none' hidden></p>");
+        Window(sb, "Requests to the planner", table.ToString(),
+            $"<span class='tag rq-tag'>{open.Count} open{(waiting.Count > 0 ? $", {waiting.Count} {(waiting.Count == 1 ? "card" : "cards")}" : "")}</span>",
+            "id='w-requests' data-view='waiting'");
+    }
+
+    // A request's number: its file name's leading digits (0 when it has none), for newest-first order.
+    private static long RequestNumber(string name)
+    {
+        var digits = new string(name.TakeWhile(char.IsAsciiDigit).ToArray());
+        return long.TryParse(digits, out var number) ? number : 0;
     }
 
     // A project's waiting rows, whole. Each card's row carries data-card and data-project, and each
@@ -512,7 +591,6 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
 
             var (word, tone) = item.Kind switch
             {
-                PageWaitingKind.HeldCategory => ("held category", "bad"),
                 PageWaitingKind.Stuck => ("stuck", "bad"),
                 PageWaitingKind.Question => ("question", "bad"),
                 PageWaitingKind.Waiting => ("waiting", "warn"),
@@ -520,14 +598,17 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
                 _ => ("review", "warn"),
             };
 
-            // An edited template copy is not a card, so it is not linked (580-A).
-            var isCard = item.Kind is not (PageWaitingKind.TemplateEdited or PageWaitingKind.HeldCategory);
-            var name = isCard ? CardLink(item.Name, project) : Enc(item.Name);
+            // An edited template copy is not a card, so it is not linked (580-A). A review card opens
+            // the review panel, as Plans and Gantt do (VW-5); 1199-C brings that to the pool's rows.
+            var isCard = item.Kind is not PageWaitingKind.TemplateEdited;
+            var name = !isCard
+                ? Enc(item.Name)
+                : item.Kind == PageWaitingKind.Review ? ReviewLink(item.Name, project) : CardLink(item.Name, project);
             var row = new StringBuilder("<tr data-project='").Append(Enc(project)).Append('\'')
                 .Append(isCard ? " data-card='" + Enc(CardId(item.Name)) + "'" : "").Append('>')
                 // 968-C: the status word, project and actions are short; the card ellipsises; the notes wrap.
                 .Append("<td class='nw'><span class='").Append(tone).Append("'>").Append(word).Append("</span></td>")
-                .Append("<td class='nw'>").Append(ProjectCell(project, names)).Append("</td>")
+                .Append("<td class='nw projcol'>").Append(ProjectCell(project, names)).Append("</td>")
                 .Append("<td class='card'>").Append(name).Append("</td>")
                 .Append("<td class='nw'>").Append(WaitingActions(item, project, controlsAllowed)).Append("</td>")
                 .Append("<td class='wrap'>").Append(Enc(item.Note)).Append("</td></tr>");
@@ -554,7 +635,7 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
                 // The marks the page's pending mask reads to hide this question once it is answered.
                 var noteForm = $"<span class='q'><input type='hidden' name='card' value='{Enc(item.Name)}'><input type='hidden' name='q' value='{question.Number}'>"
                              + $"{Enc(question.Text)}</span>";
-                yield return "<tr class='qrow' data-project='" + Enc(project) + "'><td></td><td class='nw'>" + ProjectCell(project, names) + "</td>"
+                yield return "<tr class='qrow' data-project='" + Enc(project) + "'><td></td><td class='nw projcol'>" + ProjectCell(project, names) + "</td>"
                            + $"<td class='mute nw'>Q{question.Number}</td><td colspan='2' class='wrap'>{noteForm}<div class='qchoices'>{choices.ToString().TrimEnd()}</div></td></tr>";
             }
         }
@@ -572,10 +653,6 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
         var note = NoteId(project, item.Name);
         var actions = item.Kind switch
         {
-            // A held category does not happen in a pool: categories are accepted at once (AREA-2), so
-            // /accept-lane is not carried over (MP-P8); the categories file can still be opened.
-            PageWaitingKind.HeldCategory =>
-                Post("/open-lanes", [("project", project)], "Open", "Open the categories file in the editor.", controlsAllowed),
             // Roadmap item 1 (580-A): Overwrite takes the toolkit's template; Keep leaves the project's
             // copy and stops asking until the toolkit's template changes again.
             PageWaitingKind.TemplateEdited =>
@@ -598,7 +675,7 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
                 + NoteButton(note, "/done", "Done", "Reviewed: mark this card done and move it to done/. The note, if any, goes into the card's ## Dev section.", controlsAllowed)
                 + NoteButton(note, "/resume-card", "Send back", "Not finished: back to active/, ready. The note, if any, goes into the card's ## Dev section.", controlsAllowed),
         };
-        return item.Kind is PageWaitingKind.HeldCategory or PageWaitingKind.TemplateEdited
+        return item.Kind is PageWaitingKind.TemplateEdited
             ? actions
             : actions + NoteBox(note, project, item.Name, controlsAllowed);
     }
@@ -986,7 +1063,7 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
             // 968-C: the project is short and never broken; the card ellipsises with the whole name
             // in its tooltip; the title and the note are the columns that wrap.
             table.Append("<tr data-project='").Append(Enc(snapshot.Project)).Append("' data-card='").Append(Enc(CardId(item.Name))).Append("'>")
-                 .Append("<td class='nw'>").Append(ProjectCell(snapshot.Project, names)).Append("</td>")
+                 .Append("<td class='nw projcol'>").Append(ProjectCell(snapshot.Project, names)).Append("</td>")
                  .Append("<td class='card'>").Append(CardLink(item.Name, snapshot.Project, CardTip(item.Name, snapshot.Project))).Append("</td>")
                  .Append("<td class='wrap'>").Append(Enc(item.Title)).Append("</td>")
                  .Append("<td class='mute wrap'>").Append(Enc(item.Note));
@@ -1070,7 +1147,7 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
             // event that is not a run keeps its line of text.
             table.Append("<tr data-project='").Append(Enc(project)).Append("'>")
                  .Append("<td class='mute nw'>").Append(entry.Time.ToString("HH:mm:ss")).Append("</td>")
-                 .Append("<td class='nw'>").Append(ProjectCell(project, names)).Append("</td>");
+                 .Append("<td class='nw projcol'>").Append(ProjectCell(project, names)).Append("</td>");
             if (string.IsNullOrEmpty(entry.Card))
             {
                 table.Append("<td class='").Append(Tone(entry.Tone)).Append(" wrap' colspan='4'>").Append(Enc(entry.Text)).Append("</td></tr>");
@@ -1231,6 +1308,7 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
     internal static string ProjectChipStyle() =>
         "<style data-projchip-rules>"
         + "body[data-projsel]:not([data-projsel='all']) .projchip { display: none; } "
+        + "body[data-projsel]:not([data-projsel='all']) .projcol { display: none; } "
         + "body[data-projsel]:not([data-projsel='all']) table.projects .projchip { display: inline-block; }"
         + "</style>";
 
@@ -1267,7 +1345,8 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
         .plan summary { cursor: pointer; } .plan-card { list-style: none; margin: 0.15em 0; }
         @media (min-width: 1400px) { .desk.wide-desk { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "main"; } }
         .plans-pair, .gantt-pair { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
-        #w-gantt, #w-plans { flex: 3 1 640px; min-width: 0; } #w-gantt-details, #w-plans-completed { flex: 1 1 300px; min-width: 0; }
+        #w-gantt { flex: 3 1 640px; min-width: 0; } #w-plans { flex: 1 1 100%; min-width: 0; } #w-gantt-details { flex: 1 1 300px; min-width: 0; }
+        #w-plans.plans-hide-done [data-complete] { display: none; }
         .gantt .grow { display: flex; align-items: center; min-height: 1.5em; border-bottom: 1px solid var(--line); cursor: pointer; }
         .gantt .glabel { flex: 0 0 34%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 6px; }
         .gantt .gtrack { flex: 1 1 auto; position: relative; height: 1.2em; min-width: 0; } .gantt .gsvg { width: 100%; height: 100%; display: block; }
@@ -1275,7 +1354,7 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
         .gantt .gtick { color: var(--muted); } .gantt .gnowtag { color: var(--bad); }
         .gantt .gaxis { cursor: default; position: sticky; top: 0; background: var(--panel, inherit); z-index: 1; }
         .gantt details > details, .gantt details > .gcard { margin-left: 1em; } .gantt summary { list-style: none; } .gantt summary::-webkit-details-marker { display: none; }
-        .gantt summary .glabel::before { content: 'B8  '; } .gantt details[open] > summary .glabel::before { content: 'BE  '; }
+        .gantt summary .glabel::before { content: '\25B8  '; } .gantt details[open] > summary .glabel::before { content: '\25BE  '; }
         .gantt details[open] > summary .gsum rect { display: none; }
         .gantt .gplan { font-size: 0.8em; border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; margin-left: 4px; }
         .gantt .gsel { outline: 1px solid var(--accent); }
@@ -1284,12 +1363,13 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
         // VW-2 (1129-C): the browser remembers the last view for a bare address; the address names it
         // otherwise. The names are the renderer's one list of views, so a new view needs no change here.
         var viewNames = {{ViewNames}};
-        function knownView(v) { v = String(v == null ? '' : v).toLowerCase(); for (var i = 0; i < viewNames.length; i++) { if (viewNames[i] === v) return v; } return viewNames[0]; }
+        var defaultView = '{{DefaultView}}';
+        function knownView(v) { v = String(v == null ? '' : v).toLowerCase(); for (var i = 0; i < viewNames.length; i++) { if (viewNames[i] === v) return v; } return defaultView; }
         (function () {
           try {
             var m = /[?&]view=([^&]*)/.exec(location.search);
             if (m) localStorage.setItem('ptk-view', knownView(decodeURIComponent(m[1])));
-            else if (location.pathname === '/' && !location.search) { var p = knownView(localStorage.getItem('ptk-view')); if (p !== viewNames[0]) location.replace('/?view=' + p); }
+            else if (location.pathname === '/' && !location.search) { var p = knownView(localStorage.getItem('ptk-view')); if (p !== defaultView) location.replace('/?view=' + p); }
           } catch (x) {}
         })();
         var projKey = 'ptk-project';
@@ -1307,7 +1387,42 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
           }
           var fields = document.querySelectorAll('input.projsel-in');
           for (var k = 0; k < fields.length; k++) fields[k].value = v === 'all' ? '' : v;
+          applyRequests(v);
+          applyWaiting(v);
           applyRange();
+        }
+        // 1255-C: the Requests window reflects the chosen project only: a table with no visible row goes
+        // with its header, the tag counts the visible rows, and an empty window says so in one line.
+        function applyRequests(v) {
+          var win = document.getElementById('w-requests');
+          if (!win) return;
+          var counts = {};
+          ['open', 'waiting'].forEach(function (k) {
+            var t = win.querySelector('table.rq-' + k);
+            if (!t) { counts[k] = 0; return; }
+            var n = 0, rs = t.querySelectorAll('tr[data-project]');
+            for (var i = 0; i < rs.length; i++) if (!rs[i].classList.contains('projhide')) n++;
+            counts[k] = n;
+            t.classList.toggle('projhide', v !== 'all' && n === 0);
+          });
+          var tag = win.querySelector('.rq-tag');
+          if (tag) tag.textContent = counts.open + ' open' + (counts.waiting > 0 ? ', ' + counts.waiting + (counts.waiting === 1 ? ' card' : ' cards') : '');
+          var none = win.querySelector('.rq-none');
+          if (none) {
+            var empty = v !== 'all' && counts.open === 0 && counts.waiting === 0;
+            none.textContent = empty ? 'Nothing for the planner in ' + v + '.' : '';
+            none.hidden = !empty;
+          }
+          // 1257-C: with a project chosen, a window with nothing of that project's is not shown at all.
+          win.classList.toggle('projhide', v !== 'all' && counts.open === 0 && counts.waiting === 0);
+        }
+        // 1257-C: the waiting window is hidden whole when no row of the chosen project is in it.
+        function applyWaiting(v) {
+          var win = document.getElementById('w-waiting');
+          if (!win) return;
+          var n = 0, rs = win.querySelectorAll('tr[data-project]');
+          for (var i = 0; i < rs.length; i++) if (!rs[i].classList.contains('projhide')) n++;
+          win.classList.toggle('projhide', v !== 'all' && n === 0);
         }
         // 1095-C: the time range of the summary and the Trends chart, one choice for the page, kept in the
         // browser as the project is; the style above shows the elements of the chosen range alone.
@@ -1353,6 +1468,11 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
     // carries the whole name.
     private static string CardLink(string name, string project, string title = "") =>
         $"<a href='/card?project={Url(project)}&name={Url(name)}'{(string.IsNullOrEmpty(title) ? "" : $" title='{Enc(title)}'")}>{Enc(name)}</a>";
+
+    // 1199-C (request #027 item 3): the pool's Waiting on you review row opens the review panel, as the
+    // Plans and Gantt views do (VW-5); the /review route takes the card by card= or id=, and the project by project=.
+    private static string ReviewLink(string name, string project) =>
+        $"<a href='/review?project={Url(project)}&card={Url(name)}' title='Open the review panel: commits, files, Result.'>{Enc(name)}</a>";
 
     // 968-C: the whole card name, after what the cell leads with (the project here, the title on the
     // single page), so an ellipsised name is still readable in full.

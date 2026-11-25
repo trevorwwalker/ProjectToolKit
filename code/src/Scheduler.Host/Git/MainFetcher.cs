@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
+// Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Core.MainModel;
 using Scheduler.Core.Tick;
@@ -49,6 +51,8 @@ public sealed class MainFetcher
     private readonly TimeSpan _interval;
     private TickWake? _wake;
     private bool _asked = true;   // the first read always fetches
+    private bool _ended;          // 1309-B: a worker ended and no fetch since its end has completed
+    private long? _need;          // 1309-B: the background fetch run whose success makes the read fresh again
     private DateTimeOffset? _last;
 
     /// <summary>A fetcher over <paramref name="repo"/>; <paramref name="interval"/> is the poll interval.</summary>
@@ -69,10 +73,18 @@ public sealed class MainFetcher
     public void Ask()
     {
         _asked = true;
-        Feed?.Gate.WorkerEnded();
+        _ended = true;
+        if (Feed is { } feed)
+        {
+            _need ??= BackgroundFetch.For(feed).NextRun;   // a run that started before the end may not have seen it
+            feed.Gate.WorkerEnded();
+        }
     }
 
-    /// <summary>Fetches when this tick needs it; false only when a fetch was made and failed (CARD-3).</summary>
+    /// <summary>
+    /// Fetches when this tick needs it; false when a fetch was made and failed (CARD-3), and, 1309-B, when a worker
+    /// ended and no fetch that started after its end has completed (the read is then older than the run's end).
+    /// </summary>
     public bool Fetch()
     {
         var wake = _wake;
@@ -97,6 +109,7 @@ public sealed class MainFetcher
         }
 
         _asked = false;
+        _ended = false;
         _last = now;
         return true;
     }
@@ -114,12 +127,34 @@ public sealed class MainFetcher
 
     private bool FromGate(IMainFeed feed, TickWake? wake)
     {
-        if (wake == TickWake.WorkerExit || _asked)
+        var ended = _ended || wake == TickWake.WorkerExit;
+        if (ended || _asked)
         {
             feed.Gate.WorkerEnded();   // as before: a worker's exit, or the first read, fetches
         }
 
         _asked = false;
+        if (ended)
+        {
+            // 1309-B: what a worker pushed reaches the tracking ref only through a fetch when its own update of the
+            // ref was lost, so until a fetch that started after the worker's end has completed the read is not fresh:
+            // the tick keeps its cards and does not plan (SchedulerTick, DISP-8). Only such a tick waits, for that
+            // fetch alone and at most one fetch interval (never for a fetch from before the end, 1124-B); a fetch that
+            // completes later wakes a tick (Moved). A click still never fetches nor waits.
+            var background = BackgroundFetch.For(feed);
+            var need = _need ??= background.NextRun;
+            var fetch = AskFor(wake) is not (FetchAsk.Click or FetchAsk.MoveRequest);
+            var fresh = background.FreshSince(need, fetch ? _interval : TimeSpan.Zero);
+            _ = feed.Tick();
+            if (fresh)
+            {
+                _ended = false;
+                _need = null;
+            }
+
+            return fresh;
+        }
+
         // 1124-B: the gate's fetch runs on the repository's background fetcher; the tick never waits for it and
         // reads the model as it stands (MM-8: the last completed fetch, and what the writer pushed).
         var ok = BackgroundFetch.For(feed).Start(AskFor(wake));
@@ -150,6 +185,9 @@ public sealed class BackgroundFetch
     private readonly Lock _lock = new();
     private Task _running = Task.CompletedTask;
     private bool _failed;
+    private long _runs;                    // 1309-B: runs started, numbered from 1
+    private long _fresh;                   // 1309-B: the highest run that completed without failing
+    private long _wakeAt = long.MaxValue;  // 1309-B: a reader waits for this run or a later one
 
     private BackgroundFetch(IMainFeed feed) => _feed = feed;
 
@@ -183,14 +221,76 @@ public sealed class BackgroundFetch
             _failed = false;
             if (why is not (FetchAsk.Click or FetchAsk.MoveRequest) && _running.IsCompleted)
             {
-                _running = Task.Run(() => Run(why));
+                StartLocked(why);
             }
 
             return !failed;
         }
     }
 
-    private void Run(FetchAsk why)
+    /// <summary>1309-B: the number the next run will have; a run with it or a later one starts after this call.</summary>
+    public long NextRun
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _runs + 1;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 1309-B: true when a run numbered <paramref name="run"/> or later has completed without failing (it fetched, or
+    /// shared a fetch the gate made after <see cref="FetchGate.WorkerEnded"/>). Otherwise, when <paramref name="wait"/>
+    /// is above zero, starts a poll's fetch unless one is in flight, and waits up to <paramref name="wait"/> for it when
+    /// it is such a run (never for a run from before). Still not fresh: the success of such a run raises
+    /// <see cref="Moved"/> even when main did not move, so the reader's next tick comes at once.
+    /// </summary>
+    public bool FreshSince(long run, TimeSpan wait)
+    {
+        Task? mine = null;
+        lock (_lock)
+        {
+            if (_fresh >= run)
+            {
+                return true;
+            }
+
+            if (wait > TimeSpan.Zero)
+            {
+                if (_running.IsCompleted)
+                {
+                    StartLocked(FetchAsk.Poll);
+                }
+
+                if (_runs >= run)
+                {
+                    mine = _running;   // the run in flight started after the caller's point
+                }
+            }
+        }
+
+        _ = mine?.Wait(wait);
+        lock (_lock)
+        {
+            if (_fresh >= run)
+            {
+                return true;
+            }
+
+            _wakeAt = Math.Min(_wakeAt, run);   // a completion after this wakes a tick
+            return false;
+        }
+    }
+
+    private void StartLocked(FetchAsk why)
+    {
+        var run = ++_runs;
+        _running = Task.Run(() => Run(why, run));
+    }
+
+    private void Run(FetchAsk why, long run)
     {
         FetchAnswer answer;
         try
@@ -212,11 +312,22 @@ public sealed class BackgroundFetch
             return;
         }
 
+        bool wanted;
+        lock (_lock)
+        {
+            _fresh = Math.Max(_fresh, run);
+            wanted = run >= _wakeAt;
+            if (wanted)
+            {
+                _wakeAt = long.MaxValue;
+            }
+        }
+
         try
         {
-            if (answer == FetchAnswer.Fetched && _feed.Tick())
+            if ((answer == FetchAnswer.Fetched && _feed.Tick()) || wanted)
             {
-                Moved?.Invoke();
+                Moved?.Invoke();   // 1309-B: also when a reader waits for this run, moved or not
             }
         }
         catch (Exception e) when (e is not OutOfMemoryException)
