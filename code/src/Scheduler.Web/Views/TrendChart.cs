@@ -56,6 +56,15 @@ public static class TrendChart
     private static readonly string[] FreeTypeNames = ["worker", "default", "free"];
 
     /// <summary>
+    /// 1327-C: the chart's frame with one muted line in place of bars, for a range in which the
+    /// project finished nothing (for example the last hour when the last card finished two hours ago).
+    /// </summary>
+    /// <param name="rangeLabel">The range as the window names it, such as "1 hour".</param>
+    public static string EmptyHtml(string rangeLabel) =>
+        "<div class='trend'><div class='mute trendempty'>nothing finished in the last " +
+        System.Net.WebUtility.HtmlEncode(rangeLabel) + "</div></div>";
+
+    /// <summary>
     /// The chart and its legend, or "" when there is nothing to draw. A day that finished nothing
     /// gets no bar - the bars are cards done - but its slot stays open rather than closing up, so the
     /// idle days show, and its runs still mark the line.

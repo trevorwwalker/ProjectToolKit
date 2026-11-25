@@ -68,6 +68,12 @@ public sealed class HostPageData(SchedulerConfig config, IClock clock, Scheduler
     /// <inheritdoc />
     public string StatusJson() => files.Read(StateFile.Running) ?? "{}";
 
+    /// <summary>The estimates file of the project, which keeps the last report in memory (EST-31); null for a data with none.</summary>
+    public State.EstimatesFile? Estimates { get; set; }
+
+    /// <inheritdoc />
+    public string? EstimatesJson() => Estimates?.Json;
+
     /// <inheritdoc />
     /// <remarks>
     /// 964-B: the live feed asks for this on each build, only while a page is polling (PAGE-3). First

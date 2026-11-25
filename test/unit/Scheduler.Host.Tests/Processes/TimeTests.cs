@@ -52,7 +52,7 @@ public class TimeTests
         var rows = File.ReadAllLines(accounting.FilePath);
         Assert.Equal(AccountingCsv.Header, rows[0]);
         Assert.Equal(13, rows.Length); // header, 11 earlier rows, this one
-        Assert.EndsWith(",010-A-card,A,2,done,12,4096,\"over the 90 min limit\",m1,,,", rows[^1], StringComparison.Ordinal);
+        Assert.EndsWith(",010-A-card,A,2,done,12,4096,\"over the 90 min limit\",m1,,,,", rows[^1], StringComparison.Ordinal);
         Assert.True(health.Wanted);
         Assert.Equal(10, accounting.Recent.Count);
         Assert.Equal("010-A-card", accounting.Recent[0].Card);

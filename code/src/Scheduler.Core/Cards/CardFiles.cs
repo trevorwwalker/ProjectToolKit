@@ -61,17 +61,17 @@ public static class CardFiles
     /// CARD-4..CARD-11: the card at <paramref name="path"/> as <paramref name="text"/> says.
     /// A done/ card is not opened (CARD-5): its text is ignored. Null when the path is not a card.
     /// </summary>
-    public static Card? Parse(string jobsDir, string path, string text)
+    public static Card? Parse(string jobsDir, string path, string text, IReadOnlyList<string>? kinds = null)
     {
         var card = FromPath(jobsDir, path);
-        return card is null || card.Folder == CardFolder.Done ? card : ParseText(card, text);
+        return card is null || card.Folder == CardFolder.Done ? card : ParseText(card, text, kinds);
     }
 
     /// <summary>
     /// Read one card: match the path (CARD-4) and, unless it is in done/, take its text through
     /// <paramref name="readText"/> - which CARD-5 keeps uncalled for a done/ card.
     /// </summary>
-    public static Card? Read(string jobsDir, string path, Func<string, string> readText)
+    public static Card? Read(string jobsDir, string path, Func<string, string> readText, IReadOnlyList<string>? kinds = null)
     {
         var card = FromPath(jobsDir, path);
         if (card is null || card.Folder == CardFolder.Done)
@@ -79,7 +79,7 @@ public static class CardFiles
             return card;
         }
 
-        return ParseText(card, readText(path));
+        return ParseText(card, readText(path), kinds);
     }
 
     /// <summary>
@@ -88,8 +88,15 @@ public static class CardFiles
     /// (760-A) - and the last of each field there wins; questions and journal lines come from
     /// their own sections (CARD-12, CARD-14).
     /// </summary>
-    public static Card ParseText(Card card, string text)
+    public static Card ParseText(Card card, string text) => ParseText(card, text, null);
+
+    /// <summary>As above, reading <c>Kind:</c> against <paramref name="kinds"/> (EST-2); null or empty is the default list.</summary>
+    public static Card ParseText(Card card, string text, IReadOnlyList<string>? kinds)
     {
+        kinds = kinds is { Count: > 0 } ? kinds : SchedulerConfig.DefaultCardKinds;
+        var kind = "";
+        var kindWord = "";
+        var kindSeen = false;
         var title = "";
         var status = "";
         var prio = 1;
@@ -203,6 +210,16 @@ public static class CardFiles
                 cardType = ty.Groups[1].Value.ToLowerInvariant();
             }
 
+            // EST-1..EST-3: Kind is a header field read like Type: the first line wins, its first word is matched
+            // against the project's list ignoring case and kept lower case; unknown, empty or missing is "".
+            if (!kindSeen && Text.Match(line, @"^Kind:[ \t]*(\S*)") is { Success: true } ki)
+            {
+                kindSeen = true;
+                kindWord = ki.Groups[1].Value;
+                var known = kinds.FirstOrDefault(k => Text.Same(k, kindWord));
+                kind = known is null || kindWord.Length == 0 ? "" : known.ToLowerInvariant();
+            }
+
             if (version == "" && Text.Match(line, @"^Version:\s*(\S.*?)\s*$") is { Success: true } ve)
             {
                 version = ve.Groups[1].Value;
@@ -247,6 +264,9 @@ public static class CardFiles
             LocksLine = locksLine,
             HeaderCategory = headerCategory,
             CardType = cardType,
+            Kind = kind,
+            UnknownKind = kind == "" ? kindWord : "",
+            KindList = kinds,
             Version = version,
             PlanPath = planPath,
             PlanStep = planStep,
@@ -272,5 +292,25 @@ public static class CardFiles
 
         var m = Text.Match(value, @"^(\S+?)[,;:]?(?:\s+(.*))?$");
         return (m.Groups[1].Value, m.Groups[2].Success ? m.Groups[2].Value.Trim() : "");
+    }
+}
+
+/// <summary>
+/// EST-3: says that a card's <c>Kind:</c> word is not on the project's list once per card and blob, not on every
+/// tick that reads the card again.
+/// </summary>
+public sealed class UnknownKindLog
+{
+    private readonly HashSet<string> _said = new(StringComparer.Ordinal);
+
+    /// <summary>The line to log for <paramref name="card"/> read from blob <paramref name="blobId"/>, or null when it has none or was said already.</summary>
+    public string? Once(Card card, string blobId)
+    {
+        if (card.UnknownKind.Length == 0 || !_said.Add(card.Name + "|" + blobId))
+        {
+            return null;
+        }
+
+        return $"card {card.Name}: Kind: {card.UnknownKind} is not one of {string.Join(", ", card.KindList)}";
     }
 }

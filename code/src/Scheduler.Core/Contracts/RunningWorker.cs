@@ -29,6 +29,9 @@ public sealed record RunningWorker
     /// <summary>1030-A: the card's <c>Version:</c> header, for the accounting row.</summary>
     public string CardVersion { get; init; } = "";
 
+    /// <summary>EST-6: the card's kind when the run started, kept across a restart, for the accounting row.</summary>
+    public string Kind { get; init; } = "";
+
     /// <summary>The card's id.</summary>
     public required string Id { get; init; }
 

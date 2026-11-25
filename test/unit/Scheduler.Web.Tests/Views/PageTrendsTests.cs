@@ -279,19 +279,18 @@ public sealed class PageTrendsTests
         Assert.Equal(14, points.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
     }
 
-    // Hidden when there is less than one day of data: today's runs alone are not a trend.
+    // 1327-C: today's runs alone are a trend; nothing counted is not.
     [Fact]
-    public void Trends_Window_HiddenWhenThereIsLessThanOneDayOfData()
+    public void Trends_Window_ShownForOneDayOfData_HiddenForNone()
     {
         var todayOnly = Render(WithTrends(
             Run("010-A", "done", 30, "opus", Built.AddHours(-1)),
             Run("020-B", "done", 20, "opus", Built.AddHours(-2))));
-        Assert.DoesNotContain("id='w-trends'", todayOnly, StringComparison.Ordinal);
+        Assert.Contains("id='w-trends'", todayOnly, StringComparison.Ordinal);
 
         // Nothing at all in the accounting is hidden too, and so is a page that was given no days.
         Assert.DoesNotContain("id='w-trends'", Render(ViewsFixture.Full() with { Trends = [] }), StringComparison.Ordinal);
         var excluded = Render(WithTrends(
-            Run("010-A", "done", 30, "opus", Built.AddHours(-1)),
             Run("020-B", "no log", 20, "opus", Built.AddDays(-1))));
         Assert.DoesNotContain("id='w-trends'", excluded, StringComparison.Ordinal);
     }
@@ -322,11 +321,11 @@ public sealed class PageTrendsTests
             "Trends follows Recent events on the pool page too");
     }
 
-    // A pool where no project has a day before today shows no Trends window at all.
+    // A pool where no project has a counted run shows no Trends window at all.
     [Fact]
     public void Trends_CombinedPage_HiddenWhenNoProjectHasData()
     {
-        var thin = ViewsFixture.Full() with { Trends = Days(Run("010-A", "done", 10, "opus", Built.AddHours(-1))) };
+        var thin = ViewsFixture.Full() with { Trends = Days(Run("010-A", "no log", 10, "opus", Built.AddHours(-1))) };
         var empty = ViewsFixture.Full() with { Project = "Beta", Trends = [] };
         var html = new CombinedPageRenderer().Render([thin, empty], "", remote: false, controlsAllowed: true);
 

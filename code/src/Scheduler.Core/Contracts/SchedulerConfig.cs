@@ -103,6 +103,12 @@ public sealed record SchedulerConfig
     /// </summary>
     public int HealthWarnMinutes { get; init; } = 5;
 
+    /// <summary>EST-2: the kinds a card's <c>Kind:</c> may name when <c>cardKinds</c> is missing or empty.</summary>
+    public static IReadOnlyList<string> DefaultCardKinds { get; } = ["design", "implementation", "docs", "check"];
+
+    /// <summary>EST-2: <c>cardKinds</c>, the project's kind words; the default four when missing, empty or not an array of words.</summary>
+    public IReadOnlyList<string> CardKinds { get; init; } = DefaultCardKinds;
+
     /// <summary>Text added to every worker prompt (WRK-10).</summary>
     public string PromptExtra { get; init; } = "";
 

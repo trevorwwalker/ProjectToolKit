@@ -9,6 +9,7 @@ Time box: 120 min (set by the planner; most cards finish well inside 150)
 Worker: one worker type by name or model (optional; blank = the pool's default type)
 Plan: jobs/plans/<name>_plan.md, step <n> (or "none (<who>, <date>)" for a one-off)
 Type: feature | bug (optional; read from the header only; a card with none is untyped)
+Kind: design | implementation | docs | check (set by the planner; the project's list is scheduler.json's cardKinds)
 Version: <the version a bug was seen in; bug cards only>
 
 <!-- Type: feature or bug. A person filing a card by hand copies card-template-feature.md or

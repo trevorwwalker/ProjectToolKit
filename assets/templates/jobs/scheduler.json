@@ -3,6 +3,7 @@
   "jobsDir": "jobs",
   "remote": "origin",
   "branch": "main",
+  "cardKinds": ["design", "implementation", "docs", "check"],
   "port": 8765,
   "listen": "localhost",
   "remoteControl": false,

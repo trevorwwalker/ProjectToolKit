@@ -32,14 +32,34 @@ internal static class GanttView
     /// <summary>The range key the address names, or the page's default when it names none or an unknown one.</summary>
     public static string RangeKey(string? key) => CardStats.RangeOf(key ?? "")?.Key ?? CardStats.DefaultRangeKey;
 
+    /// <summary>The tick step for a window of this width: the smallest step that gives at most <see cref="MaxTicks"/> ticks.</summary>
+    public static TimeSpan StepFor(TimeSpan width)
+    {
+        var step = Steps.FirstOrDefault(s => width.Ticks / s.Ticks <= MaxTicks);
+        return step == default ? Steps[^1] : step;
+    }
+
     /// <summary>
-    /// The shown window for a range: the range back from now, and an eighth of it ahead, so a running card's
-    /// time-box end has room to be drawn.
+    /// The shown window for a range: the range back from now, and ahead of now to the first tick boundary at or after
+    /// an eighth of the range, so a running card's time-box end has room to be drawn and the axis ends on a tick.
     /// </summary>
     public static (DateTimeOffset From, DateTimeOffset To) Window(string rangeKey, DateTimeOffset now)
     {
+        var (from, to, _) = WindowAndStep(rangeKey, now);
+        return (from, to);
+    }
+
+    private static (DateTimeOffset From, DateTimeOffset To, TimeSpan Step) WindowAndStep(string rangeKey, DateTimeOffset now)
+    {
         var span = CardStats.RangeOf(RangeKey(rangeKey))!.Window;
-        return (now - span, now + (span / 8));
+        var from = now - span;
+        var rawTo = now + (span / 8);
+        var step = StepFor(rawTo - from);
+        var local = from.ToOffset(now.Offset);
+        var tick = new DateTimeOffset(local.Year, local.Month, local.Day, 0, 0, 0, now.Offset);
+        // The ticks are the day's midnight plus whole steps (AppendAxis); the edge is the first one at or after rawTo.
+        var n = (long)Math.Ceiling((rawTo - tick).Ticks / (double)step.Ticks);
+        return (from, tick + (step * n), step);
     }
 
     /// <summary>Where a moment sits across the window, in percent of its width, held inside 0..100.</summary>
@@ -53,11 +73,11 @@ internal static class GanttView
     /// <summary>The Gantt window's body: the toolbar's choices are in <see cref="Bar"/>.</summary>
     public static string Html(IReadOnlyList<ProjectViews> views, IReadOnlyList<PageSnapshot> pages, IReadOnlyList<string> names, string rangeKey, DateTimeOffset now)
     {
-        var (from, to) = Window(rangeKey, now);
+        var (from, to, step) = WindowAndStep(rangeKey, now);
         var ordered = views.OrderBy(v => v.Project, StringComparer.OrdinalIgnoreCase).ToList();
         var aheads = ordered.Select(v => Ahead.Of(v, PageOf(pages, v.Project), now)).ToList();
         var sb = new StringBuilder("<div class='gantt'>").Append(HatchDefs);
-        AppendAxis(sb, from, to, now, aheads.Select(a => a.LastEnd).DefaultIfEmpty(null).Max());
+        AppendAxis(sb, from, to, now, step);
         if (views.Count == 0)
         {
             sb.Append("<p class='mute'>Nothing to draw yet: the scheduler has not read any project's cards.</p>");
@@ -117,7 +137,7 @@ internal static class GanttView
             var ahead = Ahead.Of(view, page, now);
             var root = GanttRows.Of(view.Snapshot, from, to, now, ahead.Listed);
             var members = Members(view);
-            AppendDetails(sb, view, page, ahead, root, categories, names, members);
+            AppendDetails(sb, view, page, ahead, root, categories, names, members, GanttRows.ShownNumbers(view.Snapshot));
         }
 
         return sb.Append("</div>").ToString();
@@ -127,14 +147,8 @@ internal static class GanttView
     public static string GroupKey(string project, string rowKey) =>
         project + "|" + PlanGroup + "|" + rowKey;
 
-    private static void AppendAxis(StringBuilder sb, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now, DateTimeOffset? lastEnd)
+    private static void AppendAxis(StringBuilder sb, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now, TimeSpan step)
     {
-        var step = Steps.FirstOrDefault(s => (to - from).Ticks / s.Ticks <= MaxTicks);
-        if (step == default)
-        {
-            step = Steps[^1];
-        }
-
         sb.Append("<div class='grow gaxis'><span class='glabel'></span><div class='gtrack gcal'>");
         var local = from.ToOffset(now.Offset);
         var first = new DateTimeOffset(local.Year, local.Month, local.Day, 0, 0, 0, now.Offset);
@@ -148,40 +162,38 @@ internal static class GanttView
             var label = step >= TimeSpan.FromDays(1)
                 ? t.ToString("ddd d MMM", CultureInfo.InvariantCulture)
                 : t.Hour == 0 && t.Minute == 0 ? t.ToString("ddd HH:mm", CultureInfo.InvariantCulture) : t.ToString("HH:mm", CultureInfo.InvariantCulture);
-            sb.Append("<span class='gtick' style='left: ").Append(N(X(t, from, to))).Append("%'>").Append(label).Append("</span>");
+            // The tick on the right edge is written to end there, so its label is not cut off.
+            sb.Append("<span class='gtick").Append(t >= to ? " gtickend" : "").Append("' style='left: ").Append(N(X(t, from, to))).Append("%'>").Append(label).Append("</span>");
         }
 
         sb.Append("<span class='gnowtag' style='left: ").Append(N(X(now, from, to))).Append("%' title='now, ")
           .Append(now.ToString("HH:mm", CultureInfo.InvariantCulture)).Append("'>now</span>");
-        if (lastEnd is { } last && last > to)
-        {
-            // VW-19: the range stays as chosen; the schedule ahead goes on past its right edge.
-            sb.Append("<span class='gmore' style='position: absolute; right: 0; top: 0; font-size: 0.8em; white-space: nowrap; color: var(--muted); background: var(--panel, inherit)' title='the last estimated finish is ")
-              .Append(Stamp(last.ToOffset(now.Offset))).Append("'>more ahead -&gt; ").Append(Stamp(last.ToOffset(now.Offset))).Append("</span>");
-        }
-
         sb.Append("</div></div>");
     }
 
-    private static void AppendRow(StringBuilder sb, ProjectViews view, Ahead ahead, GanttRow row, IReadOnlyList<PageCategory> categories, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now)
+    // A nested row is indented inside its own label column, never on the row or the track, so every track
+    // starts at the same place and one moment is one vertical line down the chart.
+    private static string Indent(int depth) => depth == 0 ? "" : " style='padding-left: " + depth + "em'";
+
+    private static void AppendRow(StringBuilder sb, ProjectViews view, Ahead ahead, GanttRow row, IReadOnlyList<PageCategory> categories, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now, int depth = 0)
     {
         var key = GroupKey(view.Project, row.Key);
         if (row.Kind == GanttRowKind.Card && row.Card is { } card)
         {
-            var (svg, labels) = AheadMarks(ahead, card, row.Bars, from, to, now);
-            sb.Append("<div class='grow gcard' data-gd='").Append(Enc(key)).Append("'><span class='glabel'>")
+            var (svg, labels, aheadMarks) = AheadMarks(ahead, card, row.Bars, from, to, now);
+            sb.Append("<div class='grow gcard' data-gd='").Append(Enc(key)).Append("'><span class='glabel'").Append(Indent(depth)).Append('>')
               .Append(CategoryChip.Html(categories, card.Category)).Append(' ').Append(CardLink(view.Project, card))
-              .Append(PlanTag(view, card)).Append("</span>").Append(Track(row.Bars, from, to, now, "", svg, labels)).Append("</div>");
+              .Append(PlanTag(view, card)).Append("</span>").Append(Track(row.Bars, from, to, now, "", svg, labels, aheadMarks)).Append("</div>");
             return;
         }
 
         // A group folds like a Plans node (1123-C remembers it under data-key); folded, its summary span shows.
-        sb.Append("<details class='ggroup' open data-key='").Append(Enc("g|" + key)).Append("'><summary class='grow' data-gd='").Append(Enc(key)).Append("'><span class='glabel'>")
+        sb.Append("<details class='ggroup' open data-key='").Append(Enc("g|" + key)).Append("'><summary class='grow' data-gd='").Append(Enc(key)).Append("'><span class='glabel'").Append(Indent(depth)).Append('>')
           .Append(Enc(row.Label)).Append(Count(row.Done, row.Total))
           .Append("</span>").Append(Track(row.Summary is { } s ? [s] : [], from, to, now, "gsum")).Append("</summary>");
         foreach (var child in row.Children)
         {
-            AppendRow(sb, view, ahead, child, categories, from, to, now);
+            AppendRow(sb, view, ahead, child, categories, from, to, now, depth + 1);
         }
 
         sb.Append("</details>");
@@ -190,13 +202,15 @@ internal static class GanttView
     // The schedule ahead on one card row (VW-19): its estimated bar or waiting stub, and an arrow from each of its
     // dependencies' last bar (or estimate) to its own first bar, or a stub with the dependency's id when that is
     // outside the window. SVG marks go inside the row's SVG; the text labels are HTML over the track.
-    private static (string Svg, string Labels) AheadMarks(Ahead ahead, ViewCard card, IReadOnlyList<GanttBar> bars, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now)
+    private static (string Svg, string Labels, bool Ahead) AheadMarks(Ahead ahead, ViewCard card, IReadOnlyList<GanttBar> bars, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now)
     {
         var svg = new StringBuilder();
         var labels = new StringBuilder();
         var est = ahead.Estimates.GetValueOrDefault(card.Id);
+        var past = false;
         if (est is { Waiting: true })
         {
+            past = true;
             var nx = X(now, from, to);
             var text = WaitingText(est, card);
             svg.Append("<rect class='gest gwait' x='").Append(N(Math.Min(nx, 98.5))).Append("' y='2.5' width='1.5' height='5' fill='url(#ghatch)' stroke='var(--warn)' stroke-dasharray='2 2' vector-effect='non-scaling-stroke'>")
@@ -205,6 +219,7 @@ internal static class GanttView
         }
         else if (est is { Start: { } start, End: { } end } && end > from && start < to)
         {
+            past = past || end > now;
             var x = X(start, from, to);
             var w = Math.Max(X(end, from, to) - x, 0.15);
             var model = ModelOf(est, card);
@@ -217,10 +232,11 @@ internal static class GanttView
         var first = bars.Select(b => (DateTimeOffset?)b.Start).Append(est?.Start).Where(t => t is not null).DefaultIfEmpty(null).Min();
         if (first is not { } sxAt || sxAt < from || sxAt > to)
         {
-            return (svg.ToString(), labels.ToString());
+            return (svg.ToString(), labels.ToString(), past);
         }
 
         var sx = X(sxAt, from, to);
+        past = past || (sxAt > now && card.DependsOn.Count > 0);
         foreach (var dep in card.DependsOn)
         {
             var depEnd = ahead.Ends.GetValueOrDefault(dep);
@@ -247,7 +263,7 @@ internal static class GanttView
             }
         }
 
-        return (svg.ToString(), labels.ToString());
+        return (svg.ToString(), labels.ToString(), past);
 
         static string Head(double x) =>
             "<polygon points='" + N(Math.Max(x - 0.6, 0)) + ",3.2 " + N(x) + ",5 " + N(Math.Max(x - 0.6, 0)) + ",6.8' fill='var(--muted)'/>";
@@ -275,9 +291,10 @@ internal static class GanttView
     }
 
     // One row's strip: an SVG across the window, in percent, with its bars, a running bar's time-box end and the now line.
-    private static string Track(IEnumerable<GanttBar> bars, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now, string extra = "", string svgExtra = "", string labels = "")
+    private static string Track(IEnumerable<GanttBar> bars, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now, string extra = "", string svgExtra = "", string labels = "", bool aheadMarks = false)
     {
         var sb = new StringBuilder("<div class='gtrack").Append(extra.Length == 0 ? "" : " " + extra).Append("'><svg class='gsvg' viewBox='0 0 100 10' preserveAspectRatio='none'>");
+        bars = bars.ToList();
         foreach (var bar in bars)
         {
             var x = X(bar.Start, from, to);
@@ -299,8 +316,13 @@ internal static class GanttView
         }
 
         sb.Append(svgExtra);
-        var nx = N(X(now, from, to));
-        sb.Append("<line class='gnow' x1='").Append(nx).Append("' x2='").Append(nx).Append("' y1='0' y2='10' stroke='var(--bad)' stroke-width='1' vector-effect='non-scaling-stroke'/>");
+        if (aheadMarks || bars.Any(b => b.End > now || (b.Running && b.TimeBoxEnd > now)))
+        {
+            // The red now line is only on a row with something drawn to the right of now.
+            var nx = N(X(now, from, to));
+            sb.Append("<line class='gnow' x1='").Append(nx).Append("' x2='").Append(nx).Append("' y1='0' y2='10' stroke='var(--bad)' stroke-width='1' vector-effect='non-scaling-stroke'/>");
+        }
+
         return sb.Append("</svg>").Append(labels).Append("</div>").ToString();
     }
 
@@ -329,13 +351,13 @@ internal static class GanttView
         _ => "var(--bad)",
     };
 
-    private static void AppendDetails(StringBuilder sb, ProjectViews view, PageSnapshot? page, Ahead ahead, GanttRow row, IReadOnlyList<PageCategory> categories, IReadOnlyList<string> names, IReadOnlyDictionary<string, List<ViewCard>> members)
+    private static void AppendDetails(StringBuilder sb, ProjectViews view, PageSnapshot? page, Ahead ahead, GanttRow row, IReadOnlyList<PageCategory> categories, IReadOnlyList<string> names, IReadOnlyDictionary<string, List<ViewCard>> members, IReadOnlyDictionary<(string Plan, string Label), string> shown)
     {
         var key = GroupKey(view.Project, row.Key);
         sb.Append("<div class='gdet' data-gdet='").Append(Enc(key)).Append("'>");
         if (row.Kind == GanttRowKind.Card && row.Card is { } card)
         {
-            CardDetails(sb, view, page, ahead, card, categories, names);
+            CardDetails(sb, view, page, ahead, card, categories, names, shown);
         }
         else
         {
@@ -345,11 +367,11 @@ internal static class GanttView
         sb.Append("</div>");
         foreach (var child in row.Children)
         {
-            AppendDetails(sb, view, page, ahead, child, categories, names, members);
+            AppendDetails(sb, view, page, ahead, child, categories, names, members, shown);
         }
     }
 
-    private static void CardDetails(StringBuilder sb, ProjectViews view, PageSnapshot? page, Ahead ahead, ViewCard card, IReadOnlyList<PageCategory> categories, IReadOnlyList<string> names)
+    private static void CardDetails(StringBuilder sb, ProjectViews view, PageSnapshot? page, Ahead ahead, ViewCard card, IReadOnlyList<PageCategory> categories, IReadOnlyList<string> names, IReadOnlyDictionary<(string Plan, string Label), string> shown)
     {
         var chip = names.Count < 2 ? "" : ProjectChip.Html(view.Project, names) + " ";
         sb.Append("<div class='gdtitle'>").Append(chip).Append(CardLink(view.Project, card)).Append("</div><table class='gdtab'>");
@@ -363,7 +385,7 @@ internal static class GanttView
             var html = "<a href='" + PlanHref(view.Project, plan.Path, "") + "'>" + Enc(plan.Path) + "</a>";
             if (step is not null)
             {
-                html += " &nbsp;<a href='" + PlanHref(view.Project, plan.Path, step.Anchor) + "'>" + Enc(step.Title.StartsWith(step.Label, StringComparison.Ordinal) ? step.Title : step.Label + ". " + step.Title) + "</a>";
+                html += " &nbsp;<a href='" + PlanHref(view.Project, plan.Path, step.Anchor) + "'>" + Enc(shown.GetValueOrDefault((plan.Path, step.Label), step.Label) + ". " + PlanLabels.StepTitle(step.Label, step.Title)) + "</a>";
             }
             else if (card.PlanStep.Length > 0)
             {
@@ -549,7 +571,7 @@ internal static class GanttView
     {
         // VW-5: a review card opens its review panel, any other its text.
         var path = card.Folder == ViewFolder.Review ? "/review" : "/card";
-        return "<a href='" + path + "?project=" + Url(project) + "&id=" + Url(card.Id) + "'>" + Enc(card.Id) + (card.Title.Length == 0 ? "" : " " + Enc(card.Title)) + "</a>";
+        return "<a href='" + path + "?project=" + Url(project) + "&id=" + Url(card.Id) + "'>" + Enc(PlanLabels.CardText(card.Id, card.Title)) + "</a>";
     }
 
     private static string PlanTag(ProjectViews view, ViewCard card)

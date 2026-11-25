@@ -225,54 +225,23 @@ public static class Trends
 
         var first = DateOf(now, zone).AddDays(-(days - 1));
         var runs = new List<RunStat>();
-        string[]? columns = null; // 1030-A: the header's names, when the file has one
-        foreach (var line in lines)
+        foreach (var row in AccountingRows.Parse(lines).Rows)
         {
-            // ACCT-1: nine fields, the stop reason quoted and the model last. A line of 8 is from
-            // before the model column (ACCT-4); fewer is not a row. A stop reason holding a comma
-            // makes more fields, which is why the model is taken from the end.
-            var fields = line.Split(',');
-            if (fields[0] == "finished")
-            {
-                columns = fields;
-                continue;
-            }
-
-            if (fields.Length < 8 || fields[0].Length == 0 || fields[0][0] < '0' || fields[0][0] > '9')
+            if (DateOf(row.Finished, zone) < first)
             {
                 continue;
             }
 
-            if (!DateTimeOffset.TryParse(
-                    fields[0], CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var finished))
-            {
-                continue;
-            }
-
-            if (DateOf(finished, zone) < first)
-            {
-                continue;
-            }
-
-            // 1030-A: a row shorter than the header is an older one: its columns that are there read
-            // by name, the rest as empty. A longer one has a comma in the stop reason; by name is a guess.
-            string? Named(string name)
-            {
-                var at = columns is null ? -1 : Array.IndexOf(columns, name);
-                return at < 0 ? null : fields.Length > columns!.Length ? null : at < fields.Length ? fields[at] : "";
-            }
-
+            // EST-8: every column by its name; a column an older row lacks reads as "".
             runs.Add(new RunStat
             {
-                Finished = finished,
-                Card = CardId(fields[1]),
-                Result = fields[4],
-                Minutes = int.TryParse(fields[5], NumberStyles.Integer, CultureInfo.InvariantCulture, out var minutes)
-                    ? minutes
-                    : 0,
-                Model = Named("model") ?? (fields.Length > 8 ? fields[^1] : ""),
-                CardType = Named("card_type") ?? "",
-                Version = Named("version") ?? "",
+                Finished = row.Finished,
+                Card = CardId(row["card"]),
+                Result = row["result"],
+                Minutes = row.Minutes,
+                Model = row["model"],
+                CardType = row["card_type"],
+                Version = row["version"],
             });
         }
 
@@ -306,8 +275,8 @@ public static class Trends
     private static string CardId(string card) => CardIdPattern.Match(card) is { Success: true } m ? m.Value : card;
 
     /// <summary>
-    /// Whether there is enough to chart. A single day of bars is not a trend, so the window is
-    /// hidden while the accounting holds less than one day of data before today (630-A).
+    /// Whether there is anything to chart: one day with a counted run is enough (1327-C; the
+    /// two-days rule of 630-A went, so a project has its chart on its first day).
     /// </summary>
     public static bool HasTrend(IReadOnlyList<RunStat> runs, DateTimeOffset now, TimeZoneInfo? zone = null) =>
         HasTrend(Daily(runs, now, WindowDays, models: null, zone));
@@ -320,10 +289,9 @@ public static class Trends
     {
         ArgumentNullException.ThrowIfNull(days);
 
-        var withData = 0;
         foreach (var day in days)
         {
-            if (day.HasData && ++withData >= 2)
+            if (day.HasData)
             {
                 return true;
             }

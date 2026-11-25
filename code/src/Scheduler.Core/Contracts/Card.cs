@@ -65,6 +65,15 @@ public sealed record Card
     /// <summary>1030-A: the header's <c>Type:</c>, lower case: <c>feature</c>, <c>bug</c>, or "" (untyped).</summary>
     public string CardType { get; init; } = "";
 
+    /// <summary>EST-1: the header's <c>Kind:</c>, lower case, when it is on the project's list (EST-2); "" otherwise (EST-3).</summary>
+    public string Kind { get; init; } = "";
+
+    /// <summary>EST-3: the word of a <c>Kind:</c> line that is not on the list, "" when there is none or it is known.</summary>
+    public string UnknownKind { get; init; } = "";
+
+    /// <summary>EST-3: the kind list the card was read against, for the log line.</summary>
+    public IReadOnlyList<string> KindList { get; init; } = [];
+
     /// <summary>1030-A: the header's <c>Version:</c> (bug cards), "" when none.</summary>
     public string Version { get; init; } = "";
 

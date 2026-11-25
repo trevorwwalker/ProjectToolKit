@@ -61,10 +61,10 @@ public class GanttRowsTests
 
         Assert.Equal(["The plan", "Bugs", "Requests"], root.Children.Select(c => c.Label));
         var p = root.Children[0];
-        Assert.Equal(["1 One", "2 Two", "Other cards"], p.Children.Select(c => c.Label));
-        Assert.Equal("1-A-x t1-A-x", p.Children[0].Children[0].Label);
-        Assert.Equal(["4-A-bug t4-A-bug"], root.Children[1].Children.Select(c => c.Label));
-        Assert.Equal(["5-A-req t5-A-req"], root.Children[2].Children.Select(c => c.Label));
+        Assert.Equal(["1. One", "2. Two", "Other cards"], p.Children.Select(c => c.Label));
+        Assert.Equal("1-A-x: t1-A-x", p.Children[0].Children[0].Label);
+        Assert.Equal(["4-A-bug: t4-A-bug"], root.Children[1].Children.Select(c => c.Label));
+        Assert.Equal(["5-A-req: t5-A-req"], root.Children[2].Children.Select(c => c.Label));
         Assert.Equal(3, p.Total);
     }
 
@@ -184,9 +184,9 @@ public class GanttRowsTests
         var root = NestedRows(Nested(Card("1-A-x", plan: Child, step: "1"), Card("2-A-y", plan: Root, step: "1")));
 
         var step = Find(root, "plan:" + Root + "/1");
-        Assert.Equal(["2-A-y t2-A-y", "Kid"], step.Children.Select(c => c.Label));
+        Assert.Equal(["2-A-y: t2-A-y", "Kid"], step.Children.Select(c => c.Label));
         Assert.Equal(GanttRowKind.Plan, step.Children[1].Kind);
-        Assert.Equal("1-A-x t1-A-x", Find(root, "plan:" + Child + "/1").Children[0].Label);
+        Assert.Equal("1-A-x: t1-A-x", Find(root, "plan:" + Child + "/1").Children[0].Label);
         Assert.Equal(["Root"], root.Children.Select(c => c.Label));
     }
 
@@ -195,7 +195,7 @@ public class GanttRowsTests
     {
         var root = NestedRows(Nested(Card("1-A-x", plan: Child, step: "1"), Card("2-A-y", plan: Root, step: "2"), Card("3-A-z", plan: Child)));
 
-        var keys = All(root).Select(r => r.Key).ToList();
+        var keys = AllRows(root).Select(r => r.Key).ToList();
         Assert.Equal(keys.Count, keys.Distinct(StringComparer.Ordinal).Count());
         Assert.Contains("plan:" + Child, keys);
         Assert.Contains("plan:" + Child + "/1", keys);
@@ -256,5 +256,109 @@ public class GanttRowsTests
         Assert.NotNull(Find(root, "plan:" + Root + "/1").Summary);
         Assert.Equal(T0, p.Summary!.Start);
         Assert.Equal(T0.AddHours(2), p.Summary.End);
+    }
+
+    // 1318-A: the Gantt rows number steps and cards as the Plans view does.
+    private const string PA = "jobs/plans/a_plan.md";
+    private const string PB = "jobs/plans/b_plan.md";
+    private const string PC = "jobs/plans/c_plan.md";
+    private const string PD = "jobs/plans/d_plan.md";
+
+    private static GanttRow Numbered(Dictionary<string, string> texts, params ViewCard[] cards)
+    {
+        var snap = ViewsSnapshot.Build(
+            "p",
+            cards,
+            texts.Keys.Select(k => new ViewPlan { Path = k, Kind = PlanKind.Plans, Title = k }).ToList(),
+            texts,
+            cards.Select(c => Run(c.Id, 0, 1)).ToList());
+        return GanttRows.Of(snap, T0, T0.AddHours(8), Now);
+    }
+
+    private static IEnumerable<GanttRow> AllRows(GanttRow r) => new[] { r }.Concat(r.Children.SelectMany(AllRows));
+
+    [Fact]
+    public void Numbered_RootStep_ShowsItsNumberOnce_AndKeepsItsKey()
+    {
+        var root = Numbered(new() { [PA] = "# A\n\n## 1. Design\n\n## 2. Build the job system\n" }, Card("1-A-x", plan: PA, step: "2"));
+
+        var step = Find(root, "plan:" + PA + "/2");
+        Assert.Equal("2. Build the job system", step.Label);
+    }
+
+    [Fact]
+    public void Numbered_ChildPlanStep_ShowsThePath_AndKeepsItsKey()
+    {
+        var texts = new Dictionary<string, string>
+        {
+            [PA] = "# A\n\n## 1. One\n\n## 2. Two\n",
+            [PB] = "# B\nParent: " + PA + ", step 2\n\n## 7. Seven\n\n### 7.1 Sub\n",
+        };
+        var root = Numbered(texts, Card("1-A-x", plan: PB, step: "7"), Card("2-A-y", plan: PB, step: "7.1"));
+
+        Assert.Equal("2.7. Seven", Find(root, "plan:" + PB + "/7").Label);
+        var keys = AllRows(root).Select(r => r.Key).ToList();
+        Assert.Contains("plan:" + PA + "/2", keys);
+        Assert.Contains("plan:" + PB, keys);
+        Assert.Contains("plan:" + PB + "/7/7.1", keys);
+        Assert.Equal("2.7.1. Sub", Find(root, "plan:" + PB + "/7/7.1").Label);
+    }
+
+    [Fact]
+    public void Numbered_ThirdLevel_ShowsTheWholePath()
+    {
+        var texts = new Dictionary<string, string>
+        {
+            [PA] = "# A\n\n## 2. Two\n",
+            [PB] = "# B\nParent: " + PA + ", step 2\n\n## 10. Ten\n",
+            [PC] = "# C\nParent: " + PB + ", step 10\n\n## 8. Eight\n",
+        };
+        var root = Numbered(texts, Card("1-A-x", plan: PC, step: "8"));
+
+        Assert.Equal("2.10.8. Eight", Find(root, "plan:" + PC + "/8").Label);
+    }
+
+    [Fact]
+    public void Numbered_TwoChildPlansUnderOneStep_BothNumberFromTheParent()
+    {
+        var texts = new Dictionary<string, string>
+        {
+            [PA] = "# A\n\n## 2. Two\n",
+            [PB] = "# B\nParent: " + PA + ", step 2\n\n## 1. First\n",
+            [PD] = "# D\nParent: " + PA + ", step 2\n\n## 1. Other first\n",
+        };
+        var root = Numbered(texts, Card("1-A-x", plan: PB, step: "1"), Card("2-A-y", plan: PD, step: "1"));
+
+        Assert.Equal("2.1. First", Find(root, "plan:" + PB + "/1").Label);
+        Assert.Equal("2.1. Other first", Find(root, "plan:" + PD + "/1").Label);
+    }
+
+    [Fact]
+    public void Numbered_CardRow_ShowsItsIdOnce()
+    {
+        var plain = Card("1-A-x");
+        var titled = Card("1312-D", ViewFolder.Done) with { Title = "1312-D: Design the build layout" };
+        var bare = Card("1313-B", ViewFolder.Done) with { Title = "1313-B" };
+        var root = Numbered([], plain, titled, bare);
+
+        Assert.Equal("1312-D: Design the build layout", Find(root, "card:1312-D").Label);
+        Assert.Equal("1313-B", Find(root, "card:1313-B").Label);
+        Assert.Equal("1-A-x: t1-A-x", Find(root, "card:1-A-x").Label);
+    }
+
+    [Fact]
+    public void ShownNumbers_GivesEachStepItsPath()
+    {
+        var texts = new Dictionary<string, string>
+        {
+            [PA] = "# A\n\n## 2. Two\n",
+            [PB] = "# B\nParent: " + PA + ", step 2\n\n## 7. Seven\n",
+        };
+        var snap = ViewsSnapshot.Build("p", [], texts.Keys.Select(k => new ViewPlan { Path = k, Kind = PlanKind.Plans, Title = k }).ToList(), texts, []);
+
+        var shown = GanttRows.ShownNumbers(snap);
+
+        Assert.Equal("2", shown[(PA, "2")]);
+        Assert.Equal("2.7", shown[(PB, "7")]);
     }
 }

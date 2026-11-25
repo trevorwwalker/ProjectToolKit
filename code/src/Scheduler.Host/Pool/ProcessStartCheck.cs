@@ -11,17 +11,23 @@ namespace Scheduler.Host.Pool;
 /// (never inside a tick): <see cref="Loops"/> <c>cmd.exe</c> processes at once, each starting its share of <c>whoami.exe</c>. The loops are
 /// processes, not threads or tasks: .NET starts processes one at a time within a process (about 50 a second on any PC),
 /// so loops inside this process would measure that queue and not Windows (1106-B). One line to the pool log,
-/// <c>process starts: &lt;n&gt;/s</c>; under <see cref="WarnBelow"/> the line says so and <see cref="Warning"/> holds
-/// the text the pool's status line shows. A healthy PC of this size starts about 470 a second; on 2026-11-22 it
-/// started 30 and everything that starts processes ran 6 to 25 times slower.
+/// <c>process starts: &lt;n&gt;/s</c>, with the live token count after it; at or above <see cref="WarnTokensAt"/> tokens the line
+/// ends with a warning and <see cref="Warning"/> holds the text the pool's status line shows (1311-B). A healthy quiet PC of this
+/// size starts about 450 a second; on 2026-11-22 it started 30 and everything that starts processes ran 6 to 25 times slower.
 /// </summary>
 public sealed class ProcessStartCheck
 {
     /// <summary>How long after a check the next one runs.</summary>
     public static readonly TimeSpan Every = TimeSpan.FromHours(1);
 
-    /// <summary>Warn below this many starts a second: the developer's value (2026-11-22), a degenerate PC (25 at its worst).</summary>
-    public const double WarnBelow = 25;
+    /// <summary>
+    /// 1311-B: warn when the live token count (pool tag <c>Toke</c>) is at or above this. The figures behind it (pool log,
+    /// 2026-11-24, 22 hours after a Restart, heavy use, with the 1161-B workaround on): under 12,000 tokens at the Restart,
+    /// 20,170 at 13 h, 46,749 at 22 h, growing about ten times slower than before the workaround. Before it, 108,000 tokens went
+    /// with 230-300 starts a second and several hundred thousand with under 200. The rate is no warning of its own: readings
+    /// ran from 85 to 456 a second in one day, low while workers ran and back to about 450 when the PC was quiet.
+    /// </summary>
+    public const long WarnTokensAt = 250_000;
 
     /// <summary>How many processes one check starts.</summary>
     public const int Starts = 400;
@@ -56,7 +62,7 @@ public sealed class ProcessStartCheck
     /// <summary>The thread the last check ran on, or null before one ran; tests compare it with the tick's.</summary>
     public int? ThreadId { get; private set; }
 
-    /// <summary>The text for the pool's status line while the last rate was under <see cref="WarnBelow"/>; null otherwise.</summary>
+    /// <summary>The text for the pool's status line while the last live token count was at or above <see cref="WarnTokensAt"/>; null otherwise (also when the count could not be read).</summary>
     public string? Warning
     {
         get
@@ -97,6 +103,10 @@ public sealed class ProcessStartCheck
         }
     }
 
+    /// <summary>The plain-words text for the status line and the log: what leaked, why it matters, what clears it.</summary>
+    public static string WarningText(long tokens) =>
+        $"Windows has leaked {tokens.ToString("N0", CultureInfo.InvariantCulture)} process tokens; process starts get slower as they pile up, and a Restart (not Shut down) clears them";
+
     private void Run()
     {
         try
@@ -107,15 +117,15 @@ public sealed class ProcessStartCheck
             var tokens = live is { } t ? $", tokens: {t.ToString("0", CultureInfo.InvariantCulture)} live" : "";
             var rate = _rate(Starts);
             var n = rate.ToString("0", CultureInfo.InvariantCulture);
-            var slow = rate < WarnBelow;
+            var warning = live is { } l && l >= WarnTokensAt ? WarningText(l) : null;
             lock (_lock)
             {
-                _warning = slow ? $"process starts slow: {n}/s (under {WarnBelow.ToString("0", CultureInfo.InvariantCulture)}/s)" : null;
+                _warning = warning;
             }
 
-            _log.Write(slow
-                ? $"process starts: {n}/s - warning: under {WarnBelow.ToString("0", CultureInfo.InvariantCulture)}/s, everything that starts processes runs slowly{tokens}"
-                : $"process starts: {n}/s{tokens}");
+            _log.Write(warning is null
+                ? $"process starts: {n}/s{tokens}"
+                : $"process starts: {n}/s{tokens} - warning: {warning}");
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {

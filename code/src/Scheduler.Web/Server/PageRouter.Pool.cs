@@ -57,6 +57,10 @@ public sealed partial class PageRouter
 
         return (isGet, request.Path) switch
         {
+            // EST-31: the project's report, or the pool's with no project.
+            (true, "/estimates.json") => (name is null ? pool.Data.EstimatesJson() : pool.Data.For(name)?.EstimatesJson()) is { } estimates
+                ? PageResponse.Json(estimates)
+                : PageResponse.NotFound("no estimates yet"),
             (true, "/") => PageResponse.Html(pool.Renderer.Render(
                 pool.Data.PoolSnapshot(),
                 remote: !request.IsLocal,

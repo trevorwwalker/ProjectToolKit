@@ -180,10 +180,9 @@ public sealed class TrendsTests
         Assert.Equal(2, Trends.Daily(runs, Now, days: 2, zone: TimeZoneInfo.Utc).Sum(day => day.Runs));
     }
 
-    // Hidden when there is less than one day of data: the chart needs a day before today, so runs
-    // from today alone are not a trend however many there are.
+    // 1327-C: one day with a counted run is a trend (the two-days rule is gone); no data is none.
     [Fact]
-    public void Trends_HasTrend_NeedsADayBeforeToday()
+    public void Trends_HasTrend_OneDayWithDataIsEnough()
     {
         var todayOnly = new[]
         {
@@ -191,15 +190,15 @@ public sealed class TrendsTests
             Run("020-B", "done", 30, "opus", Now.AddHours(-2)),
             Run("030-C", "review", 30, "opus", Now.AddHours(-3)),
         };
-        Assert.False(Trends.HasTrend(todayOnly, Now, TimeZoneInfo.Utc));
-        Assert.False(Trends.HasTrend(Daily(todayOnly)));
+        Assert.True(Trends.HasTrend(todayOnly, Now, TimeZoneInfo.Utc));
+        Assert.True(Trends.HasTrend(Daily(todayOnly)));
 
         var twoDays = todayOnly.Append(Run("040-D", "done", 30, "opus", Now.AddDays(-1))).ToArray();
         Assert.True(Trends.HasTrend(twoDays, Now, TimeZoneInfo.Utc));
         Assert.True(Trends.HasTrend(Daily(twoDays)));
 
-        // A previous day whose every run was excluded is as good as no previous day.
-        var quiet = todayOnly.Append(Run("050-E", "no log", 1, "opus", Now.AddDays(-1))).ToArray();
+        // Runs that are all excluded are no data.
+        var quiet = new[] { Run("050-E", "no log", 1, "opus", Now.AddHours(-1)) };
         Assert.False(Trends.HasTrend(quiet, Now, TimeZoneInfo.Utc));
         Assert.False(Trends.HasTrend(Daily(quiet)));
 

@@ -69,6 +69,12 @@ public sealed class PoolPageData(IClock clock, string logDir, Func<IReadOnlyList
         return text.Append('}').ToString();
     }
 
+    /// <summary>The pool's own estimates report (EST-31); null until it is built or when the pool has none.</summary>
+    public State.EstimatesPool? Estimates { get; init; }
+
+    /// <inheritdoc />
+    public string? EstimatesJson() => Estimates?.Json;
+
     /// <summary>Every project's running workers, each marked with its project (WT-W3).</summary>
     public IReadOnlyList<LiveWorker> RunningWorkers() =>
         [.. projects().SelectMany(p => p.Data.RunningWorkers().Select(w => w with { Project = p.Name }))];

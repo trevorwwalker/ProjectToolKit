@@ -71,6 +71,7 @@ public static class SchedulerConfigLoader
 
             // -NoHealthCheck empties the health command (L192).
             HealthCommand = options.NoHealthCheck ? "" : Cfg.Value(ConfigJson.GetString(health, "command"), ""),
+            CardKinds = ReadCardKinds(cfg),
             PromptExtra = Cfg.Value(ConfigJson.GetString(cfg, "promptExtra"), ""),
 
             WorkerCli = Cfg.Value(ConfigJson.GetString(worker, "cli"), "copilot"),
@@ -183,6 +184,18 @@ public static class SchedulerConfigLoader
         }
 
         return agents;
+    }
+
+    /// <summary>EST-2: <c>cardKinds</c> when it is an array with at least one word, else the default list.</summary>
+    private static IReadOnlyList<string> ReadCardKinds(JsonObject? cfg)
+    {
+        if (cfg?["cardKinds"] is not JsonArray)
+        {
+            return SchedulerConfig.DefaultCardKinds;
+        }
+
+        var words = ConfigJson.GetStringList(cfg, "cardKinds", dropEmpty: true) ?? [];
+        return words.Count > 0 ? [.. words.Select(w => w.Trim().ToLowerInvariant())] : SchedulerConfig.DefaultCardKinds;
     }
 
     /// <summary>The folder a repository path names (L156).</summary>

@@ -177,7 +177,7 @@ public sealed class GanttViewPageTests
         Assert.Contains("data-key='g|AmigaX|plan|requests'", html, StringComparison.Ordinal);
         Assert.DoesNotContain("|category:", html, StringComparison.Ordinal);
         // Card rows: chip, the number and title as a link, and the plan tag.
-        Assert.Contains("href='/card?project=AmigaX&id=1-A'>1-A Title of 1-A</a>", html, StringComparison.Ordinal);
+        Assert.Contains("href='/card?project=AmigaX&id=1-A'>1-A: Title of 1-A</a>", html, StringComparison.Ordinal);
         Assert.Contains("class='gplan' href='/plan?project=AmigaX&path=jobs%2Fplans%2Fgantt_plan.md'", html, StringComparison.Ordinal);
         Assert.Contains("data-gd='AmigaX|plan|card:1-A'", html, StringComparison.Ordinal);
     }
@@ -215,17 +215,33 @@ public sealed class GanttViewPageTests
         Assert.Contains("<line class='gtbend' x1='92.593'", html, StringComparison.Ordinal);
     }
 
-    // The now line crosses every row at 24 of the window's 27 hours, and the calendar marks it.
+    // 1328-C: the now line is only in a row with something ahead of now (here the running card's time box), and the tag marks it.
     [Fact]
-    public void NowLine_InEveryRow_AndOnTheCalendar()
+    public void NowLine_OnlyWhereSomethingIsAhead_AndTheTagMarksIt()
     {
         var html = Render("gantt");
 
-        var rows = System.Text.RegularExpressions.Regex.Matches(html, "class='grow").Count;
         var lines = System.Text.RegularExpressions.Regex.Matches(html, "<line class='gnow' x1='88.889' x2='88.889'").Count;
-        Assert.True(lines > 3, "a now line in each row");
-        Assert.Equal(rows - 1, lines); // every row but the calendar's own
+        Assert.True(lines >= 1, "the running card's row has one");
+        Assert.True(lines < System.Text.RegularExpressions.Regex.Matches(html, "class='grow").Count - 1, "not in every row");
+        var past = html[html.IndexOf("data-gd='AmigaX|plan|card:1-A'", StringComparison.Ordinal)..];
+        Assert.DoesNotContain("class='gnow'", past[..past.IndexOf("class='grow", 10, StringComparison.Ordinal)], StringComparison.Ordinal);
+        var running = html[html.IndexOf("data-gd='AmigaX|plan|card:2-A'", StringComparison.Ordinal)..];
+        Assert.Contains("<line class='gnow'", running[..running.IndexOf("</div></div>", StringComparison.Ordinal)], StringComparison.Ordinal);
         Assert.Contains("<span class='gnowtag' style='left: 88.889%'", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("more ahead", html, StringComparison.Ordinal);
+    }
+
+    // 1328-C: a row's depth indents its label only: no margin or padding on the row or its track, so the tracks line up.
+    [Fact]
+    public void Tracks_OfEveryDepth_StartAndEndTogether()
+    {
+        var html = Render("gantt");
+
+        Assert.Contains("<span class='glabel' style='padding-left: 2em'>", html, StringComparison.Ordinal);
+        Assert.DoesNotMatch("<div class='(grow|gtrack)[^']*' style=", html);
+        Assert.DoesNotMatch("<summary class='grow'[^>]* style=", html);
+        Assert.DoesNotContain("margin-left: 1em", html, StringComparison.Ordinal);
     }
 
     // The range zooms the calendar: hours for a day, ten minutes for an hour, days for two weeks.
@@ -247,7 +263,7 @@ public sealed class GanttViewPageTests
     {
         var block = Details(Render("gantt"), "AmigaX|plan|card:2-A");
 
-        Assert.Contains("href='/card?project=AmigaX&id=2-A'>2-A Title of 2-A</a>", block, StringComparison.Ordinal);
+        Assert.Contains("href='/card?project=AmigaX&id=2-A'>2-A: Title of 2-A</a>", block, StringComparison.Ordinal);
         Assert.Contains("path=jobs%2Fplans%2Fgantt_plan.md'>jobs/plans/gantt_plan.md</a>", block, StringComparison.Ordinal);
         Assert.Contains("#2-rows-and-bars'>2. Rows and bars</a>", block, StringComparison.Ordinal);
         Assert.Contains("Opus", block, StringComparison.Ordinal);
@@ -327,5 +343,57 @@ public sealed class GanttViewPageTests
         Assert.Contains("id=2-A'", step, StringComparison.Ordinal);
         Assert.Contains("id=3-A'", step, StringComparison.Ordinal);
         Assert.Contains("done 0 of 2", Details(html, "AmigaX|plan|plan:" + Mid), StringComparison.Ordinal);
+    }
+
+    // 1318-A: the page shows each step number and card id once, and a step's whole path.
+    [Fact]
+    public void Numbers_RowsAndDetails_ShowEachNumberAndIdOnce()
+    {
+        const string Root = "jobs/plans/p_plan.md";
+        const string Mid = "jobs/plans/m_plan.md";
+        var views = new ProjectViews
+        {
+            Project = "AmigaX",
+            Snapshot = ViewsSnapshot.Build(
+                "AmigaX",
+                [
+                    Card("1-A", ViewFolder.Active, Root, "2") with { Title = "1-A: Design the layout" },
+                    Card("2-A", ViewFolder.Active, Mid, "1") with { Title = "2-A: Write the project" },
+                ],
+                [
+                    new ViewPlan { Path = Root, Kind = PlanKind.Plans, Title = "Root" },
+                    new ViewPlan { Path = Mid, Kind = PlanKind.Plans, Title = "Mid" },
+                ],
+                new Dictionary<string, string>
+                {
+                    [Root] = "# Root\n\n## 1. One\n\n## 2. Build the build system\n",
+                    [Mid] = "# Mid\n\nParent: jobs/plans/p_plan.md, step 2\n\n## 1. Write the CMake project\n",
+                },
+                []),
+            OnMain = new HashSet<string>([Root, Mid], StringComparer.Ordinal),
+            DoneLoaded = true,
+        };
+        var pool = new PoolPageSnapshot
+        {
+            Built = Now,
+            MaxWorkers = 4,
+            Projects = [new PoolProjectView { Name = "AmigaX", Weight = 1 }],
+            Pages = [Page("AmigaX")],
+            Views = [views],
+        };
+
+        var html = new CombinedPageRenderer(theme: "slate").Render(pool, remote: false, controlsAllowed: true, "gantt?group=plan");
+
+        Assert.Contains("2. Build the build system", html, StringComparison.Ordinal);
+        Assert.Contains("2.1. Write the CMake project", html, StringComparison.Ordinal);
+        Assert.Contains("1-A: Design the layout", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("2 2. ", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("1 1. ", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("1-A 1-A", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("2-A 2-A", html, StringComparison.Ordinal);
+        var card = Details(html, "AmigaX|plan|card:2-A");
+        Assert.Contains(">2-A: Write the project</a>", card, StringComparison.Ordinal);
+        Assert.Contains(">2.1. Write the CMake project</a>", card, StringComparison.Ordinal);
+        Assert.Contains(">2. Build the build system</a>", Details(html, "AmigaX|plan|card:1-A"), StringComparison.Ordinal);
     }
 }

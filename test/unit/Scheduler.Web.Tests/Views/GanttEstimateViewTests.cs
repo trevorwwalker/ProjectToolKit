@@ -145,17 +145,73 @@ public sealed class GanttEstimateViewTests
         Assert.DoesNotContain("<rect class='gest' ", Row(html, "5-B"), StringComparison.Ordinal);
     }
 
+    // 1328-C: no "more ahead" text, whether or not the schedule runs past the window.
+    [Theory]
+    [InlineData("24h")]
+    [InlineData("1w")]
+    public void NoMoreAheadText_WhateverTheScheduleAhead(string range)
+    {
+        var html = Gantt(range);
+
+        Assert.DoesNotContain("more ahead", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("gmore", html, StringComparison.Ordinal);
+    }
+
+    // 1328-C: the window's right edge is a tick, one step after the one before, and after now.
+    [Theory]
+    [InlineData("1h")]
+    [InlineData("6h")]
+    [InlineData("2w")]
+    public void AxisEndsOnARegularTick_AfterNow(string range)
+    {
+        var html = Gantt(range);
+        var ticks = System.Text.RegularExpressions.Regex.Matches(html, "<span class='gtick( gtickend)?' style='left: ([0-9.]+)%'>")
+            .Select(m => (End: m.Groups[1].Success, X: double.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture))).ToList();
+        var nowX = double.Parse(System.Text.RegularExpressions.Regex.Match(html, "<span class='gnowtag' style='left: ([0-9.]+)%'").Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+
+        Assert.True(ticks.Count >= 3);
+        Assert.Equal(100.0, ticks[^1].X, 2);
+        Assert.True(ticks[^1].End);
+        Assert.True(ticks[^1].X > nowX, "the last tick is after now");
+        var gap = ticks[^1].X - ticks[^2].X;
+        for (var i = 1; i < ticks.Count; i++)
+        {
+            Assert.Equal(gap, ticks[i].X - ticks[i - 1].X, 1);
+        }
+
+        // The edge is the first tick at or after now + range / 8: the stretch ahead of now is at least that, and less than a step more.
+        var ahead = 100 - nowX;
+        Assert.True(ahead >= nowX / 8 - 0.01, "at least an eighth of the range ahead");
+        Assert.True(ahead < nowX / 8 + gap, "less than a step more than that");
+    }
+
+    // 1328-C: the red now line is only on a row with something drawn to the right of now.
     [Fact]
-    public void EstimatesPastTheRange_KeepTheRange_AndShowMoreAhead()
+    public void NowLine_OnlyOnRowsWithSomethingAhead()
     {
         var html = Gantt();
 
-        // 3-A ends at now + 5 h, past the window's now + 3 h.
-        Assert.Contains("class='gmore'", html, StringComparison.Ordinal);
-        Assert.Contains(">more ahead -&gt; Sun 17:00</span>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("class='gnow'", Row(html, "1-A"), StringComparison.Ordinal);
+        Assert.DoesNotContain("class='gnow'", Row(html, "7-C"), StringComparison.Ordinal);
+        foreach (var id in new[] { "2-A", "3-A", "4-B", "5-B" })
+        {
+            Assert.Single(System.Text.RegularExpressions.Regex.Matches(Row(html, id), "class='gnow'"));
+        }
+    }
 
-        // The week's range ends most of a day after it: no marker.
-        Assert.DoesNotContain("class='gmore'", Gantt("1w"), StringComparison.Ordinal);
+    // 1328-C: forty finished rows and two with something ahead give exactly two now lines.
+    [Fact]
+    public void FortyFinishedRows_AndTwoAhead_HaveTwoNowLines()
+    {
+        var cards = Enumerable.Range(10, 40).Select(i => Card(i + "-A", ViewFolder.Done)).Append(Card("60-B", ViewFolder.Queue, "ready", 30)).Append(Card("61-B", ViewFolder.Queue, "needs-human: which?")).ToArray();
+        var runs = Enumerable.Range(10, 40).Select(i => Run(i + "-A", -5, -4)).ToArray();
+        var pool = Sample() with
+        {
+            Views = [new ProjectViews { Project = "AmigaX", Snapshot = ViewsSnapshot.Build("AmigaX", cards, [], runs: runs), DoneLoaded = true }],
+        };
+        var html = new CombinedPageRenderer(theme: "slate").Render(pool, remote: false, controlsAllowed: true, "gantt?range=24h");
+
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(html, "class='gnow'").Count);
     }
 
     [Fact]

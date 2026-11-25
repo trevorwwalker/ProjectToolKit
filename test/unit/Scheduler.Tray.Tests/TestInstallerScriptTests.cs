@@ -81,6 +81,57 @@ public class TestInstallerScriptTests
     }
 
     [Fact]
+    public void The_survivors_failure_names_the_missing_process_with_its_command_line()
+    {
+        var before = "201,2026-11-24T10:00:00.0000000Z,C:/kit/scheduler-next.exe,\"C:/kit/scheduler-next.exe\" pool --port 1234";
+
+        var (code, output) = Run("-SelfTest", "-SelfTestBefore", before, "-SelfTestAfter", "");
+
+        Assert.Equal(1, code);
+        Assert.Contains("201 C:/kit/scheduler-next.exe [\"C:/kit/scheduler-next.exe\" pool --port 1234]", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Short_calls_that_are_gone_afterwards_were_never_recorded_and_pass()
+    {
+        const string exe = "C:/kit/scheduler-next.exe";
+        var before = string.Join('|',
+            $"301,2026-11-24T10:00:00.0000000Z,{exe},\"{exe}\" lock src/a.cs --why x",
+            $"302,2026-11-24T10:00:01.0000000Z,{exe},{exe} check-push",
+            $"303,2026-11-24T10:00:02.0000000Z,{exe},\"{exe}\" --deliver-message claude",
+            $"304,2026-11-24T10:00:03.0000000Z,{exe},\"{exe}\" --version",
+            "305,,,");
+
+        var (code, output) = Run("-SelfTest", "-SelfTestBefore", before, "-SelfTestAfter", "");
+
+        Assert.Equal(0, code);
+        Assert.Contains("is still running: 0 process(es)", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_scheduler_and_a_tray_are_recorded_and_pass_when_still_running()
+    {
+        const string exe = "C:/kit/scheduler-next.exe";
+        var list = $"401,2026-11-24T10:00:00.0000000Z,{exe},\"{exe}\" pool|402,2026-11-24T10:00:01.0000000Z,C:/kit/scheduler-tray.exe,\"C:/kit/scheduler-tray.exe\"";
+
+        var (code, output) = Run("-SelfTest", "-SelfTestBefore", list, "-SelfTestAfter", list);
+
+        Assert.Equal(0, code);
+        Assert.Contains("is still running: 2 process(es)", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_scheduler_with_an_unknown_command_line_is_recorded()
+    {
+        var before = "501,2026-11-24T10:00:00.0000000Z,C:/kit/scheduler-next.exe,";
+
+        var (code, output) = Run("-SelfTest", "-SelfTestBefore", before, "-SelfTestAfter", "");
+
+        Assert.Equal(1, code);
+        Assert.Contains("1 of 1 process(es) missing", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_release_script_passes_the_switch_to_the_installer_test()
     {
         var text = File.ReadAllText(Path.Combine(RepoRoot(), "bin", "publish-release.ps1"));

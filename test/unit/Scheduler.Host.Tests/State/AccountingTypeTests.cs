@@ -33,9 +33,9 @@ public class AccountingTypeTests
 
         var lines = File.ReadAllLines(path);
         Assert.Equal(AccountingCsv.Header, lines[0]);
-        Assert.EndsWith(",model,type,card_type,version", lines[0], StringComparison.Ordinal);
+        Assert.EndsWith(",model,type,card_type,version,kind", lines[0], StringComparison.Ordinal);
         Assert.Contains("010-A-old", lines[1], StringComparison.Ordinal);
-        Assert.EndsWith(",sonnet,Sonnet,,", lines[2], StringComparison.Ordinal);
+        Assert.EndsWith(",sonnet,Sonnet,,,", lines[2], StringComparison.Ordinal);
     }
 
     // WT-P6: a file that does not exist yet starts with the full header.
@@ -53,6 +53,6 @@ public class AccountingTypeTests
 
         var lines = File.ReadAllLines(accounting.FilePath);
         Assert.Equal(AccountingCsv.Header, lines[0]);
-        Assert.EndsWith(",m,,,", lines[1], StringComparison.Ordinal);
+        Assert.EndsWith(",m,,,,", lines[1], StringComparison.Ordinal);
     }
 }

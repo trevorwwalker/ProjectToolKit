@@ -47,6 +47,9 @@ public static class RunningJson
                 ["metricsUrl"] = w.MetricsUrl,
                 ["agent"] = w.Agent,
                 ["type"] = w.Type,
+                ["kind"] = w.Kind,
+                ["cardType"] = w.CardType,
+                ["version"] = w.CardVersion,
                 ["stats"] = s is null ? null : new JsonObject
                 {
                     ["Calls"] = s.Calls,
@@ -130,6 +133,9 @@ public static class RunningJson
             Endpoint = Str(o, "endpoint"),
             MetricsUrl = Str(o, "metricsUrl"),
             Agent = Str(o, "agent"),
+            Kind = Str(o, "kind"),
+            CardType = Str(o, "cardType"),
+            CardVersion = Str(o, "version"),
             Type = Str(o, "type"),   // WT-W5: an entry written before types has none
         };
         WorkerStats? stats = null;

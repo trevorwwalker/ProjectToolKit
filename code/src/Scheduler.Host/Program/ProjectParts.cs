@@ -1,9 +1,11 @@
 // Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
 // Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using System.Text.Json;
+using Scheduler.Core;
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Dispatch;
 using Scheduler.Core.Health;
+using Scheduler.Core.MainModel;
 using Scheduler.Core.Planner;
 using Scheduler.Core.Pool;
 using Scheduler.Core.Tick;
@@ -52,6 +54,9 @@ public sealed class SharedParts
 
     /// <summary>1111-B: the one counter of card numbers for every project here; null = the process's (<see cref="CardNumbering.Shared"/>).</summary>
     public CardNumbering? Numbering { get; init; }
+
+    /// <summary>EST-27: the pool's estimates (every member's file, and the pool's own report); null for a scheduler run for one project alone.</summary>
+    public EstimatesPool? Estimates { get; init; }
 
     /// <summary>1308-B: each project's count of workers running, so a health check's log line can say how many ran across the pool.</summary>
     public System.Collections.Concurrent.ConcurrentDictionary<object, Func<int>> WorkerCounts { get; } = new();
@@ -105,6 +110,15 @@ public sealed class ProjectParts : IDisposable
         var cores = Environment.ProcessorCount;
         var accounting = new AccountingCsv(config.LogDir, clock, log);
         Accounting = accounting;
+        // 1373-B: the project's review stays (EST-15 to EST-19); their open stays and closed file feed Table 2.
+        var stays = new ReviewStaysFile(config.LogDir, config.Repo, config.JobsDir, git, log);
+        ReviewStays = stays;
+        // EST-28: the report is written into the project's own checkout, beside the scheduler's dated log.
+        var estimates = new EstimatesFile(poolProject ?? config.Project, config.LogDir,
+            Path.Combine(config.Repo, config.JobsDir, ".logs", "estimates.json"), clock, CoreInfo.Version, log, shared.Estimates,
+            () => stays.Open);
+        Estimates = estimates;
+        stays.Changed += estimates.Changed;   // EST-29: a stay opened or closed
         // 920-B: the runner ends a leftover health tree before its first check, and keeps a check that
         // could not run from un-pausing a scheduler that is already paused-red.
         var health = new HealthCheck(config, clock, log,
@@ -129,7 +143,7 @@ public sealed class ProjectParts : IDisposable
             Committer = committer,
             Worktrees = new SlotWorktrees(config.Repo, config.WorkspaceRoot, config.Remote, config.Branch),
             Starter = new SlotWorkerStarter(slotFiles, processes),
-            Finisher = new WorkerFinisher(clock, log, accounting, health, processes, slotFiles),
+            Finisher = new WorkerFinisher(clock, log, accounting, health, processes, slotFiles, estimates),
             FinishedCards = finishedCards,
             Processes = processes,
             Files = files,
@@ -225,6 +239,17 @@ public sealed class ProjectParts : IDisposable
         reader.Feed = Model;
         finishedCards.Feed = Model;
 
+        // 1373-B: each tick (at its planner step, after the model's ref read) hands the model's snapshot to the
+        // review stays; the walk itself runs in the background (EST-17, EST-19).
+        StaysFeed = new ReviewStaysFeed(stays, () => Model.Model?.Snapshot, log);
+        Tick.StepStarting += step =>
+        {
+            if (step == TickStep.PlannerStep)
+            {
+                _ = StaysFeed.Tick();
+            }
+        };
+
         // 540-B: the generic files kept in step with ProjectToolkit's templates; never in a dry run.
         var toolkit = ToolkitLocator.Find(ToolkitSetting(configText, defaultToolkit), config.Repo, exeDir);
         if (toolkit is not null && !config.DryRun)
@@ -291,7 +316,8 @@ public sealed class ProjectParts : IDisposable
             // show - the tick's types are then the migration of the slots, not main's (WT-C7).
             WorkersFromMain = () => Host.WorkersFromMain,
         };
-        Data = new HostPageData(config, clock, Tick, main, files, () => HealthLog(health), sources);
+        Data = new HostPageData(config, clock, Tick, main, files, () => HealthLog(health), sources) { Estimates = estimates };
+        estimates.Changed();   // EST-29: once at start-up
         // 1090-B: the views data (VW-20 to VW-22), from the model of main and the page's slots only.
         Views = new ViewsSource(config.Project, config.JobsDir, () => Model.Model, () => Data.Snapshot().Slots, accountingPath: accounting.FilePath,
             maxWorkers: () => Tick?.Workers.Pool.MaxWorkers ?? 0, now: () => clock.Now);
@@ -356,6 +382,15 @@ public sealed class ProjectParts : IDisposable
 
     /// <summary>The project's accounting.csv.</summary>
     public AccountingCsv Accounting { get; }
+
+    /// <summary>EST-28: the project's estimates file.</summary>
+    public EstimatesFile Estimates { get; }
+
+    /// <summary>1373-B: the project's review stays (review-stays.csv in its log folder).</summary>
+    public ReviewStaysFile ReviewStays { get; }
+
+    /// <summary>1373-B: what advances <see cref="ReviewStays"/> from the tick.</summary>
+    public ReviewStaysFeed StaysFeed { get; }
 
     /// <summary>The page's notices.</summary>
     public PageNotice Notice { get; }
@@ -521,5 +556,75 @@ public sealed class ProjectParts : IDisposable
         }
 
         return null;
+    }
+}
+
+/// <summary>
+/// 1373-B: advances a project's <see cref="ReviewStaysFile"/> to the model of main's snapshot, from the tick (EST-17 to
+/// EST-19). Every advance runs on a background task, so the tick never walks history (EST-19: the first advance holds the
+/// file's lock while it walks from the root) and never waits: a tick that finds one still running skips. The first advance
+/// waits for the model's phase 2. A tick whose snapshot commit is the one last advanced to reads nothing and starts nothing
+/// (EST-17), which also keeps a walk that failed from being retried until main moves. A failure is logged once and the
+/// scheduler runs on; the estimates file is then written without the stays (EST section 5).
+/// </summary>
+public sealed class ReviewStaysFeed
+{
+    private readonly ReviewStaysFile _stays;
+    private readonly Func<MainSnapshot?> _snapshot;
+    private readonly ISchedulerLog? _log;
+    private Task _advance = Task.CompletedTask;
+    private string? _last;
+    private string? _lastError;
+
+    /// <summary>Feeds <paramref name="stays"/> from <paramref name="snapshot"/>, the model's current snapshot (null before its load).</summary>
+    public ReviewStaysFeed(ReviewStaysFile stays, Func<MainSnapshot?> snapshot, ISchedulerLog? log = null)
+    {
+        ArgumentNullException.ThrowIfNull(stays);
+        ArgumentNullException.ThrowIfNull(snapshot);
+        _stays = stays;
+        _snapshot = snapshot;
+        _log = log;
+    }
+
+    /// <summary>The advance in flight, or the last one; a test waits on it.</summary>
+    public Task Advancing => Volatile.Read(ref _advance);
+
+    /// <summary>How many advances the ticks started.</summary>
+    public int Started { get; private set; }
+
+    /// <summary>The tick's call: starts an advance in the background when main moved; true when it started one. Never blocks.</summary>
+    public bool Tick()
+    {
+        if (!Advancing.IsCompleted)
+        {
+            return false;   // the tick never waits for a walk
+        }
+
+        if (_snapshot() is not { DoneLoaded: true } snapshot || snapshot.Commit == _last)
+        {
+            return false;   // EST-19: not before phase 2; EST-17: nothing new, nothing read
+        }
+
+        _last = snapshot.Commit;
+        Started++;
+        Volatile.Write(ref _advance, Task.Run(() => Advance(snapshot)));
+        return true;
+    }
+
+    private void Advance(MainSnapshot snapshot)
+    {
+        try
+        {
+            _ = _stays.Advance(snapshot);   // raises Changed, which writes the estimates file (EST-29)
+            _lastError = null;
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            if (e.Message != _lastError)
+            {
+                _lastError = e.Message;
+                _log?.Write($"review stays: not advanced to {snapshot.Commit}: {e.Message}");
+            }
+        }
     }
 }

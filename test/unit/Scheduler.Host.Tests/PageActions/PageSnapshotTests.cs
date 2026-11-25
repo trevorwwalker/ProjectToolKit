@@ -413,12 +413,17 @@ public class PageSnapshotTests
         Assert.Equal(2, fromFigures.Trends.Count(d => d.HasData));
         Assert.Equal("sonnet", fromFigures.Trends[^2].Segments.Single().Model);
 
-        // One day of bars is not a trend (630-A): an empty window hides the chart.
+        // 1327-C: one day with a counted run is a trend; no counted run hides the chart.
         var oneDay = HostPageSnapshot.Build(harness.Config, harness.Clock, harness.Tick, new PageSnapshotSources
         {
             TrendRuns = () => [fileRuns[0]],
         });
-        Assert.Empty(oneDay.Trends);
+        Assert.Equal(1, oneDay.Trends.Count(d => d.HasData));
+        var none = HostPageSnapshot.Build(harness.Config, harness.Clock, harness.Tick, new PageSnapshotSources
+        {
+            TrendRuns = () => [],
+        });
+        Assert.Empty(none.Trends);
     }
 
     // PAGE-5, REQ: open requests, the cards waiting on the planner with "all done", and the planner line.

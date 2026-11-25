@@ -42,24 +42,56 @@ public class ProcessStartCheckTests
         Assert.Null(check.Warning);
     }
 
-    [Fact]
-    public void UnderTheThreshold_LogsAWarning_AndSetsTheStatusText()
+    private sealed class Tokens(long? live) : ITokenCount
     {
-        var log = new Log();
-        var check = new ProcessStartCheck(new Clock(T0), log, _ => 20);
-        check.Tick();
-        Finish(check);
-        Assert.StartsWith("process starts: 20/s - warning", log.Lines.Single());
-        Assert.Contains("20/s", check.Warning);
+        public long? Value { get; set; } = live;
+
+        public long? Live() => Value;
     }
 
     [Fact]
-    public void AtTheThreshold_IsNotSlow()
+    public void SlowRate_AloneIsNoWarning()
     {
-        var check = new ProcessStartCheck(new Clock(T0), new Log(), _ => ProcessStartCheck.WarnBelow);
+        var log = new Log();
+        var check = new ProcessStartCheck(new Clock(T0), log, _ => 20, tokens: new Tokens(5000));
+        check.Tick();
+        Finish(check);
+        Assert.Equal(["process starts: 20/s, tokens: 5000 live"], log.Lines);
+        Assert.Null(check.Warning);
+    }
+
+    [Fact]
+    public void AtTheTokenThreshold_WarnsInTheLogAndTheStatusText()
+    {
+        var log = new Log();
+        var check = new ProcessStartCheck(new Clock(T0), log, _ => 456, tokens: new Tokens(ProcessStartCheck.WarnTokensAt));
+        check.Tick();
+        Finish(check);
+        const string text = "Windows has leaked 250,000 process tokens; process starts get slower as they pile up, and a Restart (not Shut down) clears them";
+        Assert.Equal(text, check.Warning);
+        Assert.Equal($"process starts: 456/s, tokens: 250000 live - warning: {text}", log.Lines.Single());
+    }
+
+    [Fact]
+    public void JustUnderTheTokenThreshold_DoesNotWarn()
+    {
+        var log = new Log();
+        var check = new ProcessStartCheck(new Clock(T0), log, _ => 456, tokens: new Tokens(ProcessStartCheck.WarnTokensAt - 1));
         check.Tick();
         Finish(check);
         Assert.Null(check.Warning);
+        Assert.DoesNotContain("warning", log.Lines.Single());
+    }
+
+    [Fact]
+    public void NoTokenCount_NoWarning_NoError()
+    {
+        var log = new Log();
+        var check = new ProcessStartCheck(new Clock(T0), log, _ => 456, tokens: new Tokens(null));
+        check.Tick();
+        Finish(check);
+        Assert.Null(check.Warning);
+        Assert.Equal(["process starts: 456/s"], log.Lines);
     }
 
     [Fact]
@@ -83,15 +115,15 @@ public class ProcessStartCheckTests
     }
 
     [Fact]
-    public void RecoveredRate_ClearsTheStatusText()
+    public void CountBackUnderTheThreshold_ClearsTheStatusText()
     {
         var clock = new Clock(T0);
-        var rate = 10.0;
-        var check = new ProcessStartCheck(clock, new Log(), _ => rate);
+        var tokens = new Tokens(300_000);
+        var check = new ProcessStartCheck(clock, new Log(), _ => 450, tokens: tokens);
         check.Tick();
         Finish(check);
         Assert.NotNull(check.Warning);
-        rate = 400;
+        tokens.Value = 9000; // after a Restart
         clock.Now = T0.AddHours(2);
         check.Tick();
         Finish(check);

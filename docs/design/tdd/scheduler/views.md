@@ -170,7 +170,7 @@ The board, the Plans view and the Gantt are three drawings of the same snapshot.
   unstarted cards last in dispatch order. Each run (accounting row) is a bar from `finished - minutes` to `finished`,
   coloured by result (done, review, needs-human or waiting, stopped or yielded, failed or no result) with the model's
   short name on it and the result, minutes, model, worker type, stop reason and log on hover. A running card's bar grows
-  from its start to now, with its time limit drawn as an outline beyond it. A **now** line crosses all rows.
+  from its start to now, with its time limit drawn as an outline beyond it. A red **now** line is drawn only in a row with something to the right of now (an estimate, a waiting mark, a running bar's time limit, an arrow ending ahead); the **now** tag on the axis marks it. Every row's track starts and ends at the same place whatever its depth (a nested row is indented inside its label, never on the row or track), so one moment is one vertical line down the chart.
 - **VW-19 Dependencies and estimates.** An arrow from each `Depends on` card's last bar (or estimate) to the dependent's
   first; a dependency not in the window shows as a stub with its id. A queued card, and a running one past its median,
   gets an **estimated** bar (dashed, never coloured as a result): length = its `Time box:`, else its category's median
@@ -178,8 +178,9 @@ The board, the Plans view and the Gantt are three drawings of the same snapshot.
   its dependencies' estimated finish, and the moment a simulated worker is free - the project's workspaces (1029-B),
   capped by the pool's `maxWorkers`, filled in dispatch order, a card waiting for any running or earlier-estimated card
   whose scope overlaps its own (`ScopeOverlap`). Waiting cards (on you, on the planner) get no estimate: they show a
-  hatched "waiting" mark at now, and their dependents' estimates start "after" them, open-ended. The window is 24 hours
-  back to the last estimated finish, at most 3 days ahead; buttons 6 h, 24 h, 3 d, 7 d change the span back.
+  hatched "waiting" mark at now, and their dependents' estimates start "after" them, open-ended. The window is the chosen
+  range back from now, and ahead of now to the first axis tick at or after an eighth of the range, so the axis ends on a
+  regular tick; there is no "more ahead" text (the last estimated finish is in the Details window).
 
 ### Data and speed
 
@@ -476,6 +477,7 @@ names `scheduler-roadmap_plan.md, step 1.1`, the unnumbered `### Multi-project` 
   5. *The old window.* `w-plans-completed` and its CSS are removed; `PlansView.Html` has no `completed` parameter.
 
 - **VW-35 The shown step number is the whole path** (built by 1299-C, version 3.4.33). Developer, 2026-11-24 13:45: "I'd also like the number to be dotted to reflect the entire description. ie 2.7 or 4.5 - etc. The number reflects the entire path to the child in the tree and uniquely identifies it out of the entire plan". Where one step has several child plans (13:51): "option A - can reassess if it's a problem". Display only: the number in front of a step's title is the shown number of the step its plan is drawn inside, a dot, then the step's own label (`n` or `n.m`); a plan at the top level (a root, unplaced or missing plan) shows just its own labels. So `plans_plan.md` step 7 under root step 2 reads `2.7`, a plan under that under `scheduler-roadmap_plan.md` step 10 reads `2.10.8`, and a sub-step `1.2` of a plan under `2` reads `2.1.2`. Option A: nothing is added for which child plan it is, so two child plans under one step both show `<parent>.1`; the plan's own row above them tells them apart. Plan files, `step.Label`, `data-key`s, marks, links, anchors and cards' `Plan:` lines keep the step's own number; the link's `title` says it (`step 7 of jobs/plans/plans_plan.md`). The prefix is passed down `AppendPlan` and `AppendStep`; the Core tree is unchanged.
+  1318-A: the Gantt view's rows and its Details window show the same shown number and titles (`PlanLabels.Shown`, `StepTitle` and `CardTitle`, shared by both views; a step reads `2.7. Title`, a card `1312-D: Title`); row keys and links keep the own label.
 ### Build notes
 
 **`1232-A` (Core: `Scheduler.Core/Views/`, `test/unit/Scheduler.Core.Tests/Views/`).**

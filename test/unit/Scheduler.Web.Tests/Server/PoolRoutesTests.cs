@@ -202,6 +202,42 @@ public sealed class PoolRoutesTests : IDisposable
         Assert.Equal(1, actions.CallCount("/retry"));
     }
 
+    // EST-31: a project's report is that project's; with no project it is the pool's; an unknown project is a 400.
+    [Fact]
+    public void EST_31_Estimates_ProjectOrPool_OrRefused()
+    {
+        _poolData.Estimates = """{"project":null}""";
+        _data.Projects["AmigaX"].Estimates = """{"project":"AmigaX"}""";
+
+        var one = _router.Handle(Request("GET", "/estimates.json", "project=amigax"));
+        var pool = _router.Handle(Request("GET", "/estimates.json", ""));
+        var all = _router.Handle(Request("GET", "/estimates.json", "project=all"));
+        var unknown = _router.Handle(Request("GET", "/estimates.json", "project=Nope"));
+        var notYet = _router.Handle(Request("GET", "/estimates.json", "project=ProjectToolkit"));
+
+        Assert.Equal(("""{"project":"AmigaX"}""", 200), (one.Body, one.Status));
+        Assert.Equal(("""{"project":null}""", 200), (pool.Body, pool.Status));
+        Assert.Equal(pool.Body, all.Body);
+        Assert.Equal(400, unknown.Status);
+        Assert.Equal(404, notYet.Status);
+    }
+
+    // EST-31: one project answers its own report and ignores project=.
+    [Fact]
+    public void EST_31_OneProject_AnswersItsReport_AndNothingBeforeTheFirst()
+    {
+        var data = new FakePageData();
+        using var queue = new PageActionQueue();
+        var router = new PageRouter(data, new FakePageActions(), new FakePageRenderer(), new LiveFeed(new TestClock(), data), false, queue);
+
+        Assert.Equal(404, router.Handle(Request("GET", "/estimates.json", "")).Status);
+
+        data.Estimates = """{"project":"P"}""";
+        var answer = router.Handle(Request("GET", "/estimates.json", "project=Anything"));
+
+        Assert.Equal(("""{"project":"P"}""", 200), (answer.Body, answer.Status));
+    }
+
     private static PageRequest Request(string method, string path, string query, string form = "") => new()
     {
         Method = method,
@@ -232,6 +268,8 @@ public sealed class PoolRoutesTests : IDisposable
         public string? HealthText() => pool.HealthText();
 
         public string StatusJson() => pool.StatusJson();
+
+        public string? EstimatesJson() => pool.EstimatesJson();
 
         public IReadOnlyList<LiveWorker> RunningWorkers() => pool.RunningWorkers();
     }

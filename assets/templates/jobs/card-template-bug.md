@@ -2,6 +2,7 @@
 
 Category: <letter, from jobs/categories.json>
 Type: bug
+Kind: design | implementation | docs | check (set by the planner; the project's list is scheduler.json's cardKinds)
 Plan: <the plan whose work broke, with its step or phase, if known; else "none">
 Status: ready
 Priority: <normal | high>

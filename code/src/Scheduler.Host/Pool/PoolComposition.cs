@@ -188,6 +188,7 @@ public sealed class PoolComposition : IDisposable
             Load = new HostLoad(),
             Quota = quota,
             Servers = servers,
+            Estimates = new EstimatesPool(start.Clock, CoreInfo.Version, _log),   // EST-27
             Numbering = CardNumbering.Shared,   // 1111-B: one counter of card numbers for the whole pool, over its models of main
         };
         LogDir = PoolConfigFile.LogDirOf(pool, start.LocalAppData);
@@ -209,7 +210,7 @@ public sealed class PoolComposition : IDisposable
         };
 
         var pageData = new PoolPageData(start.Clock, LogDir, () => ProjectsOf(m => (IPageData)m.Parts.Data), PoolPart,
-            (name, now) => _members.TryGetValue(name, out var member) ? member.Parts.LockCounts(now) : null);
+            (name, now) => _members.TryGetValue(name, out var member) ? member.Parts.LockCounts(now) : null) { Estimates = _shared.Estimates };
         _pageData = pageData;
         var actions = Actions = new PoolPageActions(new PoolPageActionParts
         {
@@ -482,6 +483,7 @@ public sealed class PoolComposition : IDisposable
         {
             if (_members.TryRemove(gone, out var member))
             {
+                _shared.Estimates?.Remove(gone);   // EST-29: the others may have borrowed from it
                 member.Dispose();
             }
         }

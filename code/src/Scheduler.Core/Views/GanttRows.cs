@@ -62,7 +62,7 @@ public static class GanttRows
             {
                 Kind = GanttRowKind.Card,
                 Key = "card:" + card.Id,
-                Label = card.Id + (card.Title.Length == 0 ? "" : " " + card.Title),
+                Label = PlanLabels.CardText(card.Id, card.Title),
                 Card = card,
                 Bars = bars,
                 Done = CardMark.IsComplete(card) ? 1 : 0,
@@ -89,7 +89,7 @@ public static class GanttRows
                 continue;
             }
 
-            if (PlanRow(plan, rows, titles) is { } row)
+            if (PlanRow(plan, rows, titles, "") is { } row)
             {
                 result.Add(row);
             }
@@ -99,10 +99,10 @@ public static class GanttRows
     }
 
     // One plan's row (VW-32): its steps (each with its cards, child plans, sub-steps) and its Other cards; null when nothing under it is listed.
-    private static GanttRow? PlanRow(PlanNode plan, Dictionary<string, GanttRow> rows, IReadOnlyDictionary<string, string> titles)
+    private static GanttRow? PlanRow(PlanNode plan, Dictionary<string, GanttRow> rows, IReadOnlyDictionary<string, string> titles, string prefix)
     {
         var key = "plan:" + plan.Plan.Path;
-        var kids = plan.Steps.Select(s => StepRow(key, s, rows, titles)).OfType<GanttRow>().ToList();
+        var kids = plan.Steps.Select(s => StepRow(key, s, rows, titles, prefix)).OfType<GanttRow>().ToList();
         if (plan.Other is { } other)
         {
             AddIfAny(kids, Group(GanttRowKind.Group, key + "/other", "Other cards", Listed(other.Cards, rows)));
@@ -122,14 +122,50 @@ public static class GanttRows
         return Group(GanttRowKind.Plan, key, label, kids);
     }
 
-    private static GanttRow? StepRow(string parentKey, PlanStepNode node, Dictionary<string, GanttRow> rows, IReadOnlyDictionary<string, string> titles)
+    private static GanttRow? StepRow(string parentKey, PlanStepNode node, Dictionary<string, GanttRow> rows, IReadOnlyDictionary<string, string> titles, string prefix)
     {
         var step = node.Step!;
+        var shown = PlanLabels.Shown(prefix, step.Label);
         var key = parentKey + "/" + step.Label;
         var kids = Listed(node.Cards, rows);
-        kids.AddRange(node.Plans.Select(p => PlanRow(p, rows, titles)).OfType<GanttRow>());
-        kids.AddRange(node.SubSteps.Select(s => StepRow(key, s, rows, titles)).OfType<GanttRow>());
-        return kids.Count == 0 ? null : Group(GanttRowKind.Step, key, step.Label + " " + step.Title, kids);
+        kids.AddRange(node.Plans.Select(p => PlanRow(p, rows, titles, shown)).OfType<GanttRow>());
+        kids.AddRange(node.SubSteps.Select(s => StepRow(key, s, rows, titles, prefix)).OfType<GanttRow>());
+        return kids.Count == 0 ? null : Group(GanttRowKind.Step, key, PlanLabels.StepText(prefix, step.Label, step.Title), kids);
+    }
+
+    /// <summary>1318-A: every step's shown number (its path in the plan tree), by plan path and the step's own label; the Details window shows the same number as the row.</summary>
+    public static IReadOnlyDictionary<(string Plan, string Label), string> ShownNumbers(ViewsSnapshot snapshot)
+    {
+        var result = new Dictionary<(string, string), string>();
+        foreach (var plan in PlanTree.Of(snapshot).Top)
+        {
+            Numbers(result, plan, "");
+        }
+
+        return result;
+    }
+
+    private static void Numbers(Dictionary<(string, string), string> result, PlanNode plan, string prefix)
+    {
+        foreach (var step in plan.Steps)
+        {
+            Numbers(result, plan.Plan.Path, step, prefix);
+        }
+    }
+
+    private static void Numbers(Dictionary<(string, string), string> result, string planPath, PlanStepNode node, string prefix)
+    {
+        var shown = PlanLabels.Shown(prefix, node.Step!.Label);
+        result[(planPath, node.Step.Label)] = shown;
+        foreach (var child in node.Plans)
+        {
+            Numbers(result, child, shown);
+        }
+
+        foreach (var sub in node.SubSteps)
+        {
+            Numbers(result, planPath, sub, prefix);
+        }
     }
 
     private static List<GanttRow> Listed(IEnumerable<ViewCard> cards, Dictionary<string, GanttRow> rows) =>

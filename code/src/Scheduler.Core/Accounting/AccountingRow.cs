@@ -46,14 +46,17 @@ public sealed record AccountingRow
     /// <summary>1030-A: the card's <c>Version:</c> header, the <c>version</c> column; "" when none.</summary>
     public string Version { get; init; } = "";
 
+    /// <summary>EST-5: the card's kind (<c>Card.Kind</c>) when the run started, the <c>kind</c> column; "" when none.</summary>
+    public string Kind { get; init; } = "";
+
     /// <summary>
     /// 1030-A: the columns Host appends after its own <c>type</c> (the worker's type; the card's type is
     /// <c>card_type</c> so the two do not clash). Last, so old rows and readers still work.
     /// </summary>
-    public const string CardColumns = ",card_type,version";
+    public const string CardColumns = ",card_type,version,kind";
 
     /// <summary>1030-A: this row's values for <see cref="CardColumns"/>, with the leading comma.</summary>
-    public string CardFields() => "," + Clean(CardType) + "," + Clean(Version);
+    public string CardFields() => "," + Clean(CardType) + "," + Clean(Version) + "," + Clean(Kind);
 
     private static string Clean(string value) => value.Replace(',', ' ').ReplaceLineEndings(" ").Trim();
 

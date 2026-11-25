@@ -139,6 +139,12 @@ templates; `.gitattributes` only with `-Action new-project -Update`) and puts ba
 Why separate folders? Because "where is the card" is the whole status of the work. You can look at the folders in a
 file browser and know what is waiting, what is running and what needs you.
 
+`jobs/scheduler.json` also holds `cardKinds`, the words a card's `Kind:` line may use: `["design", "implementation",
+"docs", "check"]` when the key is left out or empty, and your own list when you set it. It is the planner's field, not
+yours: runs of one kind are measured together, so the list should be the words your work actually comes in (a project
+that sizes its cards as `build` and `test` writes those and uses no others). Switchyard reads the file from `main`, so
+commit and push the change.
+
 ## A card's life
 
 ### What a card looks like
@@ -157,6 +163,7 @@ Time box: 45 min
 Worker: Claude
 Plan: jobs/plans/search_plan.md, step 1
 Type: feature
+Kind: implementation
 
 ## Task
 
@@ -183,6 +190,7 @@ The header fields:
 | Title `# 12-A:` | The card's number, then its category letter. |
 | `Category` | Which category's files it may change. |
 | `Type` | `feature` or `bug` (bug cards also say the `Version` where it was seen). |
+| `Kind` | What sort of work this is, so its runs are measured with their own kind: `design`, `implementation`, `docs` or `check`. Optional, set by the planner; a project's own list is `cardKinds` in `jobs/scheduler.json`. A card with no `Kind:`, or a word not on the list, has no kind and is measured by category. |
 | `Plan` | The plan file (in `jobs/plans/`) and step it belongs to, or `none (<who>, <date>)` for a one-off. |
 | `Status` | Where it stands: `ready`, `waiting: ...`, `needs-human: ...`, `review: ...`. |
 | `Priority` | `high` runs first, `low` last; leave out for normal. |

@@ -36,6 +36,12 @@ public interface IPageData
     /// <summary>The JSON <c>/status.json</c> answers with.</summary>
     string StatusJson();
 
+    /// <summary>
+    /// The estimates report as last built, for <c>/estimates.json</c> (EST-31): this project's, or for a pool's data the pool's
+    /// own. Null when none has been built yet, or this data has no estimates.
+    /// </summary>
+    string? EstimatesJson() => null;
+
     /// <summary>The workers that are running, for the live view (PAGE-3).</summary>
     IReadOnlyList<LiveWorker> RunningWorkers();
 

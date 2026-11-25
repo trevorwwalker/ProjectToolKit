@@ -42,42 +42,20 @@ public static class AreaDurations
 
         var first = now.AddDays(-days);
         var runs = new List<AreaRun>();
-        foreach (var line in lines)
+        foreach (var row in AccountingRows.Parse(lines).Rows)
         {
-            // ACCT-1: nine fields, the stop reason quoted and the model last. A line of 8 is from
-            // before the model column; a stop reason holding a comma makes more fields, which is
-            // why the model is taken from the end.
-            var fields = line.Split(',');
-            if (fields.Length < 9 || fields[0].Length == 0 || fields[0][0] < '0' || fields[0][0] > '9')
+            // EST-8: every column by its name, so the model is the model column, not the last field.
+            if (!FinishedWords.Contains(row["result"], Text.Comparer))
             {
                 continue;
             }
 
-            if (!FinishedWords.Contains(fields[4], Text.Comparer))
+            if (row["card"].Length == 0 || row["lane"].Length == 0 || row["model"].Length == 0 || row.Finished < first)
             {
                 continue;
             }
 
-            if (fields[1].Length == 0 || fields[2].Length == 0 || fields[^1].Length == 0)
-            {
-                continue;
-            }
-
-            // ACCT-1's times are local, so a row reads back with the machine's own offset.
-            if (!DateTimeOffset.TryParse(fields[0], CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var finished)
-                || finished < first)
-            {
-                continue;
-            }
-
-            // A row whose minutes do not read as a number measures nothing; 0 would drag the
-            // figures down for a card that ran for real.
-            if (!int.TryParse(fields[5], NumberStyles.Integer, CultureInfo.InvariantCulture, out var minutes))
-            {
-                continue;
-            }
-
-            runs.Add(new AreaRun { Area = fields[2], Model = fields[^1], Minutes = minutes, Finished = finished });
+            runs.Add(new AreaRun { Area = row["lane"], Model = row["model"], Minutes = row.Minutes, Finished = row.Finished });
         }
 
         return runs;
@@ -144,10 +122,10 @@ public static class AreaDurations
     }
 
     // The middle run; the mean of the two middles when the count is even, rounded up on a half.
-    private static int Median(List<int> sorted) => sorted.Count % 2 == 1
+    internal static int Median(List<int> sorted) => sorted.Count % 2 == 1
         ? sorted[sorted.Count / 2]
         : (int)Math.Round((sorted[sorted.Count / 2 - 1] + sorted[sorted.Count / 2]) / 2.0, MidpointRounding.AwayFromZero);
 
     // Nearest rank: the smallest minutes value that at least p of the runs finished within.
-    private static int Percentile(List<int> sorted, double p) => sorted[(int)Math.Ceiling(p * sorted.Count) - 1];
+    internal static int Percentile(List<int> sorted, double p) => sorted[(int)Math.Ceiling(p * sorted.Count) - 1];
 }

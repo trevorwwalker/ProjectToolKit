@@ -19,7 +19,8 @@ public sealed class WorkerFinisher(
     AccountingCsv accounting,
     HealthCheck health,
     IWorkerProcesses processes,
-    SlotFiles slotFiles)
+    SlotFiles slotFiles,
+    EstimatesFile? estimates = null)
 {
     /// <summary>
     /// Do the bookkeeping for <paramref name="worker"/>, which ended as <paramref name="result"/>
@@ -46,7 +47,9 @@ public sealed class WorkerFinisher(
             Model = model,
             CardType = worker.CardType,
             Version = worker.CardVersion,
+            Kind = worker.Kind,
         }, worker.Log, worker.Type);
+        estimates?.Changed();   // EST-29: a run finished
         health.RunFinished();
         processes.EndJob(worker.Job, worker.Pid); // anything the worker left running goes with it
         running.Remove(worker.Slot);

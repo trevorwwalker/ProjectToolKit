@@ -27,10 +27,10 @@ public class AccountingCardTypeTests
     [Fact]
     public void Row_WritesCardTypeAndVersionLast()
     {
-        Assert.Equal(",card_type,version", AccountingRow.CardColumns);
-        Assert.Equal(",bug,3.0.61", Row().CardFields());
-        Assert.Equal(",,", (Row() with { CardType = "", Version = "" }).CardFields());
-        Assert.Equal(",bug,a b", (Row() with { Version = "a,b" }).CardFields());
+        Assert.Equal(",card_type,version,kind", AccountingRow.CardColumns);
+        Assert.Equal(",bug,3.0.61,", Row().CardFields());
+        Assert.Equal(",,,", (Row() with { CardType = "", Version = "" }).CardFields());
+        Assert.Equal(",bug,a b,", (Row() with { Version = "a,b" }).CardFields());
     }
 
     [Fact]

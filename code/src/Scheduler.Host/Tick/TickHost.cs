@@ -853,6 +853,7 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
                 Category = card.Category,
                 CardType = card.CardType,
                 CardVersion = card.Version,
+                Kind = card.Kind,
                 Id = card.Id,
                 Log = files.View,
                 RawLog = files.RawLog,

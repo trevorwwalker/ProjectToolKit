@@ -53,6 +53,11 @@ internal sealed class FakePageData : IPageData
 
     public string StatusJson() => Status;
 
+    /// <summary>The estimates report <c>/estimates.json</c> answers (EST-31); null answers none yet.</summary>
+    public string? Estimates { get; set; }
+
+    public string? EstimatesJson() => Estimates;
+
     /// <summary>Review panels by card name, for /review.</summary>
     public Dictionary<string, ReviewPanel> Reviews { get; } = new(StringComparer.OrdinalIgnoreCase);
 

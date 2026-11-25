@@ -204,10 +204,37 @@ public class CardTemplatesScriptTests
         var kit = KitRoot();
         var feature = Lf(Path.Combine(kit, "assets", "templates", "jobs", "card-template-feature.md"));
         var bug = Lf(Path.Combine(kit, "assets", "templates", "jobs", "card-template-bug.md"));
-        Assert.Contains("\nType: feature\n", feature);
-        Assert.Contains("\nType: bug\nPlan:", bug);
+        Assert.Contains("\nType: feature\nKind:", feature);
+        Assert.Contains("\nType: bug\nKind:", bug);
+        Assert.Contains("\nPlan:", bug);
         Assert.Contains("\nVersion: <e.g. 3.0.61, or the commit>\n", bug);
         Assert.EndsWith("## Questions\n\n## Result\n", feature);
         Assert.EndsWith("## Questions\n\n## Result\n", bug);
+    }
+
+    /// <summary>
+    /// EST-4 (card 1358-D): every card template carries the optional <c>Kind:</c> line right after
+    /// <c>Type:</c>, naming the four default kinds and where a project's own list lives; and this
+    /// repository's three copies under <c>jobs/</c> are the kit's text, byte for byte, because they
+    /// are deployed from it, not edited.
+    /// </summary>
+    [Theory]
+    [InlineData("card-template.md", "\nType: feature | bug (optional; read from the header only; a card with none is untyped)\n")]
+    [InlineData("card-template-feature.md", "\nType: feature\n")]
+    [InlineData("card-template-bug.md", "\nType: bug\n")]
+    public void EST_4_Templates_Carry_The_Kind_Line_After_The_Type_Line(string file, string typeLine)
+    {
+        const string KindLine = "Kind: design | implementation | docs | check (set by the planner; the project's list is scheduler.json's cardKinds)";
+        var kit = KitRoot();
+        var master = Lf(Path.Combine(kit, "assets", "templates", "jobs", file));
+        Assert.Contains(typeLine + KindLine + "\n", master);
+
+        // The kit's own scheduler.json offers the same four words (EST-2).
+        var config = File.ReadAllText(Path.Combine(kit, "assets", "templates", "jobs", "scheduler.json"));
+        Assert.Contains("\"cardKinds\": [\"design\", \"implementation\", \"docs\", \"check\"]", config, StringComparison.Ordinal);
+
+        // The project's copy is the master's text; -Update deploys it, so a hand edit is lost.
+        var copy = Lf(Path.Combine(kit, "jobs", file));
+        Assert.Equal(master, copy);
     }
 }

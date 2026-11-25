@@ -167,8 +167,8 @@ internal static class PlansView
     {
         var step = node.Step!;
         // 1299-C: the number shown is the whole path in the plan tree (2.7, 2.10.8); the plan files, data-keys, marks and links keep the step's own label.
-        var shown = prefix.Length == 0 ? step.Label : prefix + "." + step.Label;
-        var label = "<a href='" + PlanHref(view.Project, plan.Path, step.Anchor) + "' title='" + Enc("step " + step.Label + " of " + plan.Path) + "'>" + Enc(shown + ". " + StepTitle(step.Label, step.Title)) + "</a>";
+        var shown = PlanLabels.Shown(prefix, step.Label);
+        var label = "<a href='" + PlanHref(view.Project, plan.Path, step.Anchor) + "' title='" + Enc("step " + step.Label + " of " + plan.Path) + "'>" + Enc(PlanLabels.StepText(prefix, step.Label, step.Title)) + "</a>";
         var head = ClickMark(view.Project, plan.Path, step.Label, node.Mark, node.Manual, (node with { Manual = ManualMark.Automatic }).Mark) + label + Count(node.Done, node.Total);
         if (node.Cards.Count == 0 && node.Plans.Count == 0 && node.SubSteps.Count == 0)
         {
@@ -204,7 +204,7 @@ internal static class PlansView
         {
             // VW-5: a review card opens its review panel, any other its text.
             var path = card.Folder == ViewFolder.Review ? "/review" : "/card";
-            var title = CardTitle(card.Id, card.Title);
+            var title = PlanLabels.CardTitle(card.Id, card.Title);
             sb.Append("<li class='plan-card'>").Append(MarkHtml(CardMark.Of(card))).Append(CategoryChip.Html(categories, card.Category))
               .Append(" <a href='").Append(path).Append("?project=").Append(Url(view.Project)).Append("&id=").Append(Url(card.Id)).Append("'>")
               .Append(Enc(card.Id)).Append(title.Length == 0 ? "" : ": " + Enc(title)).Append("</a>");
@@ -217,43 +217,6 @@ internal static class PlansView
         }
 
         sb.Append("</ul>");
-    }
-
-    /// <summary>
-    /// 1289-C: a plan written with numbered headings ("## 2. Build the job system") carries the number in the title
-    /// already, so the step's label was drawn twice. When the title starts with the label followed by ".", ")" or a
-    /// space, the rest of it is what is shown beside the label; anything else is shown as it is.
-    /// </summary>
-    private static string StepTitle(string label, string title)
-    {
-        var t = title.TrimStart();
-        if (t.Length <= label.Length || !t.StartsWith(label, StringComparison.Ordinal))
-        {
-            return title;
-        }
-
-        return t[label.Length] is '.' or ')' or ' ' ? t[label.Length..].TrimStart('.', ')', ':', '-', ' ') : title;
-    }
-
-    /// <summary>
-    /// 1289-C: a card's title line is "# 1274-B: After a restart ...", so the id was drawn twice on the card row.
-    /// When the title starts with the id followed by ":" or a space, the rest of it is what is shown beside the id;
-    /// anything else is shown as it is, and nothing left means the row is the id alone.
-    /// </summary>
-    private static string CardTitle(string id, string title)
-    {
-        var t = title.TrimStart();
-        if (!t.StartsWith(id, StringComparison.OrdinalIgnoreCase))
-        {
-            return title;
-        }
-
-        if (t.Length == id.Length)
-        {
-            return "";
-        }
-
-        return t[id.Length] is ':' or ' ' ? t[id.Length..].TrimStart(':', ' ') : title;
     }
 
     private static string PlanHref(string project, string path, string anchor) =>

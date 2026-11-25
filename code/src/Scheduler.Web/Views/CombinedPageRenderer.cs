@@ -1167,7 +1167,7 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
     // 2026-11-20): it follows the dropdown - under All projects one chart of every project's days
     // summed, with one project picked that project's own chart (the style beside the filter script
     // hides the other set). A pool of one shows its project's chart. Hidden while no project has a
-    // day of data before today.
+    // counted run in the last 14 days (1327-C: one run is enough, as on a project's first day).
     private void AppendTrends(StringBuilder sb, IReadOnlyList<PageSnapshot> projects)
     {
         var several = projects.Count >= 2;
@@ -1194,14 +1194,14 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
             {
                 var sums = SummedTrends(shown.Select(snapshot => SeriesFor(snapshot, range.Key)));
                 inner.Append("<div class='trendproj allonly'><div class='trendname'>All projects</div>")
-                     .Append(TrendChart.Html(sums, types)).Append("</div>");
+                     .Append(ChartOrEmpty(sums, types, range.Name)).Append("</div>");
             }
 
             foreach (var snapshot in shown)
             {
                 inner.Append("<div class='trendproj").Append(several ? " projonly" : "").Append("' data-project='").Append(Enc(snapshot.Project)).Append("'>")
                      .Append("<div class='trendname'>").Append(Enc(snapshot.Project)).Append("</div>")
-                     .Append(TrendChart.Html(SeriesFor(snapshot, range.Key), snapshot.WorkerTypes))
+                     .Append(ChartOrEmpty(SeriesFor(snapshot, range.Key), snapshot.WorkerTypes, range.Name))
                      .Append("</div>");
             }
 
@@ -1225,6 +1225,10 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
             heading.ToString(),
             "id='w-trends' data-view='trends'");
     }
+
+    // 1327-C: a range with no counted run shows the frame and one muted line instead of bars.
+    private static string ChartOrEmpty(IReadOnlyList<TrendDay> series, IReadOnlyList<PageWorkerTypeView>? types, string rangeLabel) =>
+        series.Any(day => day.HasData) ? TrendChart.Html(series, types) : TrendChart.EmptyHtml(rangeLabel);
 
     // 1095-C: a project's Trends buckets for a range; a snapshot built without ranges has its 14 days
     // for the 2 week range alone.
@@ -1351,9 +1355,9 @@ public sealed partial class CombinedPageRenderer(PageThemes? themes = null, stri
         .gantt .glabel { flex: 0 0 34%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 6px; }
         .gantt .gtrack { flex: 1 1 auto; position: relative; height: 1.2em; min-width: 0; } .gantt .gsvg { width: 100%; height: 100%; display: block; }
         .gantt .gcal { height: 1.4em; } .gantt .gtick, .gantt .gnowtag { position: absolute; top: 0; transform: translateX(-50%); font-size: 0.8em; white-space: nowrap; }
-        .gantt .gtick { color: var(--muted); } .gantt .gnowtag { color: var(--bad); }
+        .gantt .gtick { color: var(--muted); } .gantt .gtickend { transform: translateX(-100%); } .gantt .gnowtag { color: var(--bad); z-index: 1; background: var(--panel, inherit); }
         .gantt .gaxis { cursor: default; position: sticky; top: 0; background: var(--panel, inherit); z-index: 1; }
-        .gantt details > details, .gantt details > .gcard { margin-left: 1em; } .gantt summary { list-style: none; } .gantt summary::-webkit-details-marker { display: none; }
+        .gantt summary { list-style: none; } .gantt summary::-webkit-details-marker { display: none; }
         .gantt summary .glabel::before { content: '\25B8  '; } .gantt details[open] > summary .glabel::before { content: '\25BE  '; }
         .gantt details[open] > summary .gsum rect { display: none; }
         .gantt .gplan { font-size: 0.8em; border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; margin-left: 4px; }

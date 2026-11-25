@@ -163,7 +163,7 @@ Order of a tick (`Tick` L2795): sample host, sample model servers, reap health c
 
 ## A8. Accounting and statistics
 
-- **ACCT-1** accounting.csv in the log folder, header `finished,card,lane,slot,result,minutes,log_bytes,stop_reason,model,type` (the `type` column is added by card 850-D, WT-P6; an old header is rewritten in place as ACCT-4 does for `model`); one row per finished run: ISO time, card name, category, slot, result, whole minutes, readable-log bytes, stop reason in quotes, model, type. (`Account` L844)
+- **ACCT-1** accounting.csv in the log folder, header `finished,card,lane,slot,result,minutes,log_bytes,stop_reason,model,type,card_type,version,kind` (the `type` column is added by card 850-D, WT-P6, `card_type` and `version` after it, and `kind` last by card 1357-B, EST-5; an old header is rewritten in place as ACCT-4 does for `model`); one row per finished run: ISO time, card name, category, slot, result, whole minutes, readable-log bytes, stop reason in quotes, model, type, card type, version, kind. (`Account` L844)
 - **ACCT-2** Model column = models.json key the worker's model resolves to (`Model-Key`), else the worker's model, else config model. (L848-849)
 - **ACCT-3** `Model-Key`: exact key; else the server's `/models` root (cached 10 min) matched by its last path part against each entry's key, name, last part of source or served list; else the longest key the last part starts with; else ''. (L2263)
 - **ACCT-4** Start-up: an old header without `,model` is rewritten in place; rows of the last 48 h loaded. (`Seed-RunStats` L863)
@@ -271,8 +271,12 @@ that built it, it says so: that is current behaviour, not a decision.
   the line share one axis, whose top (`axisTop` in `Scheduler.Web/Views/TrendChart.cs`) is the larger of the
   most cards and the most runs any day reached, and the line has its own legend chip, "runs" (card 1052-C). A
   run with no model is labelled "other" in the legend. Runs excluded by ACCT-6 stay excluded.
-- **TREND-2** The chart is hidden unless two or more local days carry counted runs (`Trends.HasTrend`), so a
-  scheduler with less than a day of data shows none.
+- **TREND-2** A project has a chart as soon as one local day in the 14 carries a counted run (`Trends.HasTrend`),
+  so it has one on its first day, after its first finished card; the window is drawn only when some project has one.
+  A range with no counted run shows the chart's frame with the line `nothing finished in the last <range>` in place
+  of bars. Card 1327-C (developer, 2026-11-24: "starting from new project that had no completed cards and nothing
+  queued, the trends window didn't show any graph when seven cards had completed over a 2.5 hour period"); it
+  replaces the two-days rule of 630-A.
 - **TREND-3** The 14 days are read from accounting.csv itself (`Trends.RunsFromRows`, cached by the file's
   last write), because the loaded figures reach only 48 h back (ACCT-4); if the file cannot be read, the
   loaded figures are used. The read lives in Host's `State/AccountingCsv` (`TrendRuns`, card 770-B).
@@ -280,7 +284,7 @@ that built it, it says so: that is current behaviour, not a decision.
 ### Time limits from history (card 640-A, roadmap item 4): assumptions of the card
 
 - **TLH-1** Per category and model, only the newest 30 finished runs count and only those finished within 30
-  days (`AreaDurations.WindowRuns`, `WindowDays`); both cuts apply together.
+  days (`AreaDurations.WindowRuns`, `WindowDays`); both cuts apply together. The rows are read by the header's column names (`AccountingRows.Parse`, EST-8), so a new column cannot shift the model or the minutes.
 - **TLH-2** A group with fewer than 3 done or review runs (`MinimumRuns`) gives no figure: no warning, no
   suggestion.
 - **TLH-3** The typical length is the median (an even count: the mean of the two middles, rounded up on a
@@ -291,6 +295,176 @@ that built it, it says so: that is current behaviour, not a decision.
 - **TLH-5** The Queue window warns when a card's Time box is shorter than the group's usual length and
   suggests a Time box when it has none. The words are built in Core and tested there (`TimeBoxAdviceTests`);
   the two renderers only print them. The page display itself was not tested (640-A went to review).
+
+### Estimates for planners (cards 1356-A to 1373-B; design `estimates.md`, card 1340-D; developer's answers 2026-11-24): as built
+
+The rules EST-1 to EST-34 are the design's, moved here and corrected to what the code on main does (the design file
+keeps its text and says the rules now live here). Where the code differs from the design, the rule says so in a line
+that starts **As built**. The report is history, counted and summarised: it predicts nothing. Three tables, written to
+`<jobsDir>/.logs/estimates.json` and served at `/estimates.json`. The code is in `Scheduler.Core/Estimates/`
+(`EstimateFigures`, `RunTimeTable`, `OutcomeTable`, `RunOutcome`, `ReviewStays`, `EstimatesReport`) and Host's
+`State/EstimatesFile.cs` and `State/ReviewStaysFile.cs`; the tests are named `EST_<n>_<what>`.
+
+#### The card's kind
+
+- **EST-1 The `Kind:` line.** An optional header line, set by the planner, read like `Type:` (CARD-6 to CARD-11):
+  only from the header block, the first `Kind:` line wins. The value is the first word after the colon, matched
+  against the project's kind list ignoring case, and kept lowercase. (`CardFiles.ParseText`; `Card.Kind`,
+  `Card.UnknownKind`, `Card.KindList`.)
+- **EST-2 The list comes from the project.** The known kinds are `scheduler.json`'s `cardKinds` (an array of words,
+  lowercased by `SchedulerConfigLoader`); a missing, empty or non-array key gives `design`, `implementation`, `docs`,
+  `check`. The kit's `scheduler.json` carries the four. **As built:** the parsers take the list as an optional argument
+  (`kinds`), and the default list applies when the caller passes none.
+- **EST-3 Unknown or missing is "".** No `Kind:` line, an empty one, or a word not on the list gives kind "".
+  `UnknownKindLog.Once(card, blobId)` words the log line `card <name>: Kind: <word> is not one of <list>` once per card
+  and blob. A run with kind "" is grouped by category (EST-12).
+- **EST-4 Where it sits in the template.** All six card templates (the kit's three under `assets/templates/jobs/` and
+  this repository's three under `jobs/`) carry `Kind: design | implementation | docs | check (...)` right after
+  `Type:`; each repository copy equals its master (test `EST_4_Templates_Carry_The_Kind_Line_After_The_Type_Line`).
+
+#### The `kind` column
+
+- **EST-5 Its place.** `accounting.csv`'s header ends `,kind`:
+  `finished,card,lane,slot,result,minutes,log_bytes,stop_reason,model,type,card_type,version,kind`
+  (`AccountingRow.CardColumns`; commas and line ends replaced, trimmed).
+- **EST-6 Taken at dispatch, kept across a restart.** `RunningWorker.Kind` is set from `Card.Kind` where `CardType`
+  is (`TickHost`), passed into the row by `WorkerFinisher`, and `running.json` writes and reads `"kind"`, `"cardType"`
+  and `"version"`.
+- **EST-7 An old file gains the column, old rows hold "".** The header is rewritten in place at start-up when it
+  differs (ACCT-4's step), no row is touched, and a row with no `kind` field reads as "".
+
+#### Reading the rows
+
+- **EST-8 Rows are read by the header's names.** `AccountingRows.Parse(lines)` takes the first line as the header and
+  maps each later line's fields to its names, handling the quoted `stop_reason` (a comma inside the quotes is kept).
+  A line that does not start with a digit, or whose `finished` or `minutes` does not parse, is skipped and counted
+  (`rows.skipped` in the report). `AreaDurations.RunsFromRows` and `Trends.RunsFromRows` read through it too (this
+  fixes the time-limit warnings reading `version` as the model). It works with or without the `kind` column, and with
+  no header at all. **As built:** a Trends row whose minutes do not parse is now skipped, where it used to count as
+  0 minutes.
+
+#### Which runs count
+
+- **EST-9 The window: the newest 100 runs within 60 days, per group.** `EstimateFigures.Window`: the group's counted
+  runs that finished within the last 60 days (`WindowDays`), then the newest 100 (`NewestRuns`).
+- **EST-10 The fewest runs for a figure.** A median needs 3 runs, a 90th percentile 10, a share 10
+  (`EstimateFigures.MinRunsShare`). Below that the figure is `null` and EST-25 applies.
+- **EST-11 Median and percentile, as TLH-3.** Both reuse `AreaDurations.Median` and `Percentile` (made `internal`).
+
+#### Table 1: run time by worker type and kind
+
+- **EST-12 The groups.** A counted run belongs to (worker type, kind); with kind "" it belongs to (worker type,
+  category). The worker type is the `type` column, compared ignoring case; a row with no `type` uses its `model`,
+  and one with neither is `other` (`EstimateFigures.WorkerOf`). **As built:** the group's kind is the row's `kind`
+  column as written, not checked again against the list; a category group holds the bare letter of the row's `lane`
+  (JSON `category`, with `kind` absent), and a row with no `lane` has category `unknown`. The worker type is shown as
+  first written, not as in the group's newest row.
+- **EST-13 Which runs count.** Result `done` or `review`, with any `stop_reason`, and minutes 0 or more. Every other
+  result is left out of Table 1 and counted in Table 3.
+- **EST-14 What each group gives.** `runs`, `median`, `p90` in whole minutes, and the oldest and newest `finished` of
+  the runs used. Sorted by worker type, then kind; category groups last of all.
+
+#### Table 2: time in review
+
+- **EST-15 What a stay is.** It starts at the committer time of the commit on main's first-parent line that adds
+  `<jobsDir>/review/<card>.md` and ends at the first later commit that deletes that path. Where the card went is the
+  folder the same commit adds it to (done, queue, active), else `gone`. Each stay counts on its own; a rename inside
+  review/ ends one stay and starts another. A stay with no end is **open** (`ReviewStays.Apply`).
+- **EST-16 The stays are kept in a file as they happen.** `review-stays.csv` in the log folder, header
+  `entered,left,card,to,entered_commit,left_commit`, times `yyyy-MM-ddTHH:mm:ss` local; a stay is written when it
+  closes; `review-stays.head` holds the last main commit read. **As built:** the open stays are not rebuilt from the
+  cards now in review/. The first `Advance` of each start walks main's first-parent line from its root once and
+  replays it: with no file (or a head not on the line) it writes the whole file (EST-19); with a file it appends only
+  stays closed after the head and keeps the open ones in memory.
+- **EST-17 New stays come from the model, with no git process.** When the model's snapshot commit differs from the
+  head, `ReviewStaysFile.Advance(snapshot)` takes `MainSnapshot.Commits(head)` and scans each commit's changes under
+  `review/`, `done/`, `queue/` and `active/`; when it equals the head nothing is read and nothing runs. **As built:**
+  `ReviewStaysFeed` calls it from `SchedulerTick.StepStarting` at `TickStep.PlannerStep` (every tick, light or full),
+  on a background task: it skips while an advance is still running, waits for the model's phase 2 before the first,
+  logs a failure once per message and does not retry the same commit until main moves.
+- **EST-18 A gap is walked once, in process.** When `Commits(head)` is null, the Host walks the range with
+  `InProcessHistory` along `<jobsDir>/` only; when that answers null it runs one
+  `git log --first-parent --reverse --name-status --no-renames <head>..<commit> -- <jobsDir>/review <jobsDir>/done
+  <jobsDir>/queue <jobsDir>/active`. **As built:** the git fallback alone does not notice a head left behind by a
+  force push (`head..commit` then reads back to the merge base); the in-process walk does and rewrites the file.
+- **EST-19 The first start backfills.** With no `review-stays.csv`, the first walk runs from the root of main's
+  history, in the background after the model's phase 2, so the page and the first tick never wait for it.
+- **EST-20 What Table 2 gives.** For each kind of the card (the `kind` of the card's newest accounting row, else
+  `category:<L>`) and for `all`: `stays` (closed stays that ended within 60 days, the newest 100), `median` and `p90`
+  (EST-10, EST-11), `toDone` and `toQueue`; and `open` (the count of open stays and the age in minutes of the oldest).
+  Open stays are never in the percentiles; a stay with `left` before `entered` is skipped.
+
+#### Table 3: outcomes by worker type
+
+- **EST-21 The outcome of a run.** One outcome per row, by `result` first, then `stop_reason`, words compared ignoring
+  case (`RunOutcomes.Of`):
+
+  | Outcome | Read from the row |
+  |---|---|
+  | `done` | result `done` |
+  | `review` | result `review` |
+  | `question` | result `needs-human` |
+  | `planner` | result `waiting` |
+  | `yielded` | result `yielded` |
+  | `timeLimit` | result `time limit`; or result `stopped` with stop_reason starting `over the` |
+  | `stopped` | result `stopped` (other stop_reason), `stopped from page`, `killed` |
+  | `outOfQuota` | result `out of quota` |
+  | `didNotStart` | result starting `crashed`, `no result line` or `ended early`, with minutes 0 |
+  | `failed` | result `failed`, `stalled`, `crashed`, `no result line` or `ended early` with minutes above 0, or any other word |
+  | `notCounted` | result `no log`, `model server down` |
+
+- **EST-22 Shares.** Per worker type, over the runs in the EST-9 window: `runs` is all rows of the type except
+  `notCounted`, `didNotStart` and `outOfQuota`. `done`, `review`, `question`, `planner`, `yielded`, `timeLimit`,
+  `stopped` and `failed` are given as a count and a whole percent of `runs` (half rounds away from zero);
+  `outOfQuota`, `didNotStart` and `notCounted` as counts only. **As built:** the window is the newest 100 counted
+  runs of the type within 60 days (as EST-9), and the three counts-only outcomes are counted over that type's rows
+  from the oldest of those runs on.
+- **EST-23 A card that needed more than one run.** `cards`, `moreThanOneRun` and `runsPerCard` (one decimal), per
+  worker type, as the design words it: earlier runs outside the window count, and a card sent back from review and
+  finished again starts a new attempt. **As built:** `cards` counts finishes (a `done` or `review` run in the window),
+  so a card finished, sent back and finished again counts twice; it equals the number of distinct cards in the usual
+  case. Card ids are kept per project (EST-27).
+- **EST-24 The fewest runs.** Below 10 runs the counts are given and the shares are `null`.
+
+#### Project and pool
+
+- **EST-25 Project first, then the pool, per figure.** Each median, 90th percentile and set of shares comes from the
+  project's rows; with too few runs (EST-10), from the same group in the pool; else `null`. A figure's source is
+  `project`, `pool` or `none`, with the runs it rests on; one group's median and 90th percentile may differ in source.
+  **As built:** Table 3's source and `runs` apply to the whole line: the project's when it has 10 runs, else the pool's
+  whole line when it has 10, else the project's counts with `null` shares and source `none`.
+- **EST-26 Category groups never fall back.** A group keyed `category:<L>` takes no pool figure; its source is
+  `project` or `none`.
+- **EST-27 Where the pool's rows come from.** Every member project's `accounting.csv` and `review-stays.csv`, from its
+  log folder (`EstimateLogFolders`): each folder is read once even when two members share it (full path, ignoring
+  case), and a file is re-read only when its last write moves. Card ids are kept per project. A scheduler for one
+  project alone has no pool and `pool` never appears as a source.
+
+#### The file and the route
+
+- **EST-28 The file.** `<config.Repo>/<config.JobsDir>/.logs/estimates.json`, the folder `FileSchedulerLog` writes
+  to; created if missing; not in git (`jobs/.logs/` is in this repository's `.gitignore` and the kit's template).
+- **EST-29 When it is written.** At start-up (`ProjectParts`); after each run finishes (`WorkerFinisher.Finish`, after
+  `AccountingCsv.Add`); and when a review stay opens or closes (`ReviewStaysFile.Changed`, raised only then). Never on
+  a tick where none of these happened. A pool rebuilds every member's file when any member's rows change.
+  **As built:** there is one start-up write, made before the first walk finishes; the walk's stays reach the file
+  through `Changed`, not through a second start-up write.
+- **EST-30 Atomic.** Written to `estimates.json.tmp`, then `File.Move(tmp, path, overwrite: true)`. A failed move is
+  logged once, the temporary file stays, and the next trigger tries again.
+- **EST-31 The route.** `GET /estimates.json?project=<name>` answers that project's report;
+  `GET /estimates.json` with no `project` answers the pool's report (every source `pool`); in a scheduler for one
+  project it answers that project's. An unknown project gives 400. **As built:** when nothing has been built yet the
+  route answers 404. The answer is the last report held in memory: no file read, no process.
+- **EST-32 Cost.** No estimates step starts a git process on a tick, except the one walk of EST-18 after a gap
+  (and the first walk of each start, EST-16), and that falls back to git only when the in-process walk refuses.
+- **EST-33 The shape.** Whole minutes for times and whole percents for shares; times ISO 8601 with the machine's
+  offset; camelCase English field names that are only ever added to; `schema` is 1 and becomes 2 only if a field
+  changes meaning (`EstimatesReport.ToJson`, `FromJson`). **As built:** in the pool report, review kinds merge cards by
+  id across projects (the first wins), a small approximation, and its `reviewOpen` counts only the open stays that
+  each member's estimates file knows.
+- **EST-34 The planner reads the report before it sizes a card.** The kit's planner brief, `docs/guide/planner.md`
+  and this project's `jobs/project.md` carry the paragraph of design section 4. **Not built yet** (card 1363-D): the
+  rule stands, and this section is updated when that card lands.
 
 ### Message hooks (card 570-B)
 
@@ -973,4 +1147,4 @@ Not guessed; each needs a decision whether the port keeps or fixes it.
 
 ### Foreground lock workaround (1161-B)
 
-Temporary. Windows 11 leaks a kernel token for each process started while its starter does not own the foreground window; the pool host sets the live `ForegroundLockTimeout` to 0 (`SystemParametersInfo`, live only, no registry write) at its start and with each hourly process-start check, and logs one line (`foreground lock timeout: ...`); the hourly rate line carries `tokens: <n> live`. Pool file switch `foregroundLockFix` (default true). Side effect: at 0 any app may take the foreground. To tell whether Microsoft has fixed it, switch it off and repeat the run in `docs/perf/process-start-log.md` (2026-11-23): no `Toke` growth means remove `ForegroundLockFix`.
+Temporary. Windows 11 leaks a kernel token for each process started while its starter does not own the foreground window; the pool host sets the live `ForegroundLockTimeout` to 0 (`SystemParametersInfo`, live only, no registry write) at its start and with each hourly process-start check, and logs one line (`foreground lock timeout: ...`); the hourly rate line carries `tokens: <n> live`. 1311-B: at 250,000 live tokens or more (`ProcessStartCheck.WarnTokensAt`) that line ends `- warning: Windows has leaked <n> process tokens; process starts get slower as they pile up, and a Restart (not Shut down) clears them` and the pool's status line shows the same text until a check reads a lower count (after a Restart); no readable count = no warning. The rate is logged as before but warns of nothing: it dips while workers run and returns when the PC is quiet. Pool file switch `foregroundLockFix` (default true). Side effect: at 0 any app may take the foreground. To tell whether Microsoft has fixed it, switch it off and repeat the run in `docs/perf/process-start-log.md` (2026-11-23): no `Toke` growth means remove `ForegroundLockFix`.

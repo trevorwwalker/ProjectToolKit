@@ -175,6 +175,9 @@ public sealed partial class PageRouter
             case "/status.json":
                 return PageResponse.Json(Data.StatusJson());
 
+            case "/estimates.json":
+                return Data.EstimatesJson() is { } estimates ? PageResponse.Json(estimates) : PageResponse.NotFound("no estimates yet");
+
             default:
                 return PageResponse.NotFound("not found");
         }
