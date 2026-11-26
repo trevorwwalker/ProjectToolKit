@@ -30,4 +30,14 @@ public sealed record DispatchPlan
 
     /// <summary>The stuck cards, for Waiting on you with Retry (DISP-7, DISP-11).</summary>
     public required IReadOnlyList<Card> Stuck { get; init; }
+
+    /// <summary>
+    /// 1472-A: the plan as a <c>paused-red</c> project offers it: only the candidates whose card says <c>Fixes-red: yes</c>.
+    /// Every other rule was applied when the plan was made, so a held card (Depends on, scope, Locks) is not here to offer.
+    /// </summary>
+    public DispatchPlan OnlyFixesRed() => this with
+    {
+        Candidates = [.. Candidates.Where(c => c.Card.FixesRed)],
+        Ordered = [.. Ordered.Where(c => c.Card.FixesRed)],
+    };
 }

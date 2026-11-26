@@ -66,7 +66,8 @@ public sealed class AuditBeforeFinishTests
         Assert.True(rig.TickUntilSettled(() => rig.Composition.Tick.Running.Count == 0 && rig.RemoteHas("jobs/done/010-B-x.md")), string.Join("\n", rig.Log.Lines));
 
         Assert.False(rig.RemoteHas("jobs/review/010-B-x.md"));
-        Assert.DoesNotContain(rig.Log.Lines, l => l.StartsWith("locks: ", StringComparison.Ordinal) || l.Contains(" locks: ", StringComparison.Ordinal));
+        Assert.Single(rig.Log.Lines, l => l.StartsWith("locks: off (", StringComparison.Ordinal));   // 1477-B: said once
+        Assert.DoesNotContain(rig.Log.Lines, l => l.StartsWith("locks: on", StringComparison.Ordinal) || l.Contains(" locks: ", StringComparison.Ordinal));
         Assert.Null(rig.Composition.Host.Audit);
     }
 }

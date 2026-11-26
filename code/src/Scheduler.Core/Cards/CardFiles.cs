@@ -97,6 +97,8 @@ public static class CardFiles
         var kind = "";
         var kindWord = "";
         var kindSeen = false;
+        var fixesRed = false;
+        var fixesRedSeen = false;
         var title = "";
         var status = "";
         var prio = 1;
@@ -220,6 +222,13 @@ public static class CardFiles
                 kind = known is null || kindWord.Length == 0 ? "" : known.ToLowerInvariant();
             }
 
+            // 1472-A: Fixes-red is a header field, the first line wins; yes in any case is true, anything else false.
+            if (!fixesRedSeen && Text.Match(line, @"^Fixes-red:[ \t]*(\S*)") is { Success: true } fr)
+            {
+                fixesRedSeen = true;
+                fixesRed = Text.Same(fr.Groups[1].Value, "yes");
+            }
+
             if (version == "" && Text.Match(line, @"^Version:\s*(\S.*?)\s*$") is { Success: true } ve)
             {
                 version = ve.Groups[1].Value;
@@ -265,6 +274,7 @@ public static class CardFiles
             HeaderCategory = headerCategory,
             CardType = cardType,
             Kind = kind,
+            FixesRed = fixesRed,
             UnknownKind = kind == "" ? kindWord : "",
             KindList = kinds,
             Version = version,

@@ -102,8 +102,16 @@ in ProjectToolkit's `docs/guide/plans.md`. Nothing else is a plan: design docume
 **Cards.** Follow `jobs/card-template.md`. Every card has:
 - `Category:` the letter of the category that owns the files it changes (`jobs/categories.json`);
 - `Scope:` the exact files or folders it may change, as few as possible; `Locks: none` unless it must change another
-  category's files, then those files;
+  category's files, then those files. A worker of a card with locks on asks for such a file while it works, with the
+  `lock` command its prompt names; this needs the project's locks on, which is the default, so check the day's log
+  (`jobs/.logs/scheduler-YYYYMMDD.log`) for `locks: on` or `locks: off` before relying on it;
 - `Type: feature` or `Type: bug`; `Plan: jobs/plans/<name>_plan.md, step <n>` (or `none (<who>, <date>)` for a one-off);
+- `Kind:` one of the words in `scheduler.json`'s `cardKinds` (by default design, implementation, docs or check);
+- `Fixes-red: yes` (optional) on the card that repairs a red main, and on no other: when main is red the project's
+  dispatching pauses and every card is held except those with that header, which still follow every other rule. The
+  daily log (`jobs/.logs/scheduler-YYYYMMDD.log`) says `dispatching paused: <project> main red at <sha> (<failing check>)`
+  when the pause starts and `dispatching resumed: <project>` when a green check ends it, so look for those lines when
+  work has stopped;
 - `Worker:` chosen by `jobs/project.md`'s rules; `Time box:` in minutes; `Depends on:` cards or `none`;
 - a Task a worker with no memory can do from the card, the plan and the repository; `Done when` as checkable facts.
 
@@ -114,6 +122,19 @@ in ProjectToolkit's `docs/guide/plans.md`. Nothing else is a plan: design docume
 work into a design card (strong model), small implementation cards (one file, class or rule each, fully specified,
 30-60 minutes), and a review card at the end. A card a small model failed is split further or raised one step, with
 a Dev note saying what was missing.
+
+**Size cards from the estimates.** Before you set a card's `Time box:` or `Worker:`, read
+`jobs/.logs/estimates.json` in the project folder (or `/estimates.json?project=<name>` on the scheduler's page).
+It is the scheduler's record of past runs, not a forecast. Find the `runTime` entry for the worker type you are
+considering and the card's kind. If it has no figure, use the entry for the card's category, then the pool's.
+Set `Time box:` to the 90th percentile rounded up to the next 15 minutes. If there is only a median, use twice the
+median. If there is no figure at all, use 45 minutes for a small card and 90 for a large one, and say so in
+the card. Never set a time box below the median. Pick the worker type with `outcomes` in mind: a type with a high
+`failed` or `timeLimit` share, or many cards needing more than one run, costs more than its run time says. Use
+`review` for the date a card is really finished: it waits for the developer for about the median, and sometimes
+the 90th percentile. Set `Kind:` on every card (one of the words in `scheduler.json`'s `cardKinds`, by default
+design, implementation, docs or check), because a card without one only adds to its category's figure. When you
+size a card from the report, say in the plan's step which figure you used.
 
 **Writing changes.** Write card and plan changes as a batch in the outbox (`batch.json` written last; paths only under
 `jobs/`; `base` is `git rev-parse origin/main:<path>` for a file you edited, `new` for a new one). Run `git fetch` or
@@ -140,6 +161,10 @@ Why each rule is there:
 - **No numbers.** Two sessions that each took "highest number + 1" once wrote the same number and a card was lost.
   The scheduler now numbers every `new-*` card, so numbers never collide.
 - **Ask first.** The planner can write twenty cards in a minute, and each one starts a paid session.
+- **The estimates.** A `Time box:` picked from a guess is the usual reason a card ends over its limit, and a card with
+  no `Kind:` line is counted with every other card of its category, so the figures get no finer. The scheduler keeps
+  the record of what runs actually took at `jobs/.logs/estimates.json` and serves it at `/estimates.json`; a planner
+  that reads it before sizing a card makes the queue's time boxes mean something.
 
 ## 4. Everyday use
 
@@ -215,6 +240,7 @@ Time box: 45 min
 Worker: Spark
 Plan: jobs/plans/stop-words_plan.md, step 1
 Type: feature
+Kind: implementation
 
 ## Task
 Add `public sealed class StopWords` in `code/src/Tally.Core/StopWords.cs`:
@@ -293,13 +319,18 @@ reports only what changed and what needs you:
 
 After a run finishes the scheduler builds and tests main in its own worktree (the health check; **Check main** on the
 page starts one). If it fails, the project pauses (`paused: main is red`), its Health cell on the page turns red with a
-**log** link, and no new card starts until main is green again.
+**log** link, and no new card starts until main is green again. The project's daily log says
+`dispatching paused: <project> main red at <sha> (<failing check>)` when that pause starts and
+`dispatching resumed: <project>` when a green check ends it, so those two lines are how you tell a red-main stop from
+an empty queue. The card that repairs main carries `Fixes-red: yes` in its header: while main is red it is dispatched
+and every other card is held.
 
 > **You:** Main is red.
 >
 > **Planner:** The health log shows `StopWordsTests.Load_SkipsBlankAndCommentLines` failing on main at `3f2a1c0`, the
 > commit from 1205-A. Revert that commit (`git revert 3f2a1c0`, by you, since I don't push code) and I send 1205-A
-> back with what was found, or I write a fix card? I suggest the revert: it restores a known good main now.
+> back with what was found, or I write a fix card marked `Fixes-red: yes` so it starts while the project is paused?
+> I suggest the revert: it restores a known good main now.
 
 Reverting first is the rule that held up best ([agent-lessons.md](../agent-lessons.md), section 10). Once the fix is
 on main, press **Check main**; when the check is green, the project resumes by itself. The page's Resume button also clears the pause, but without a
@@ -336,6 +367,13 @@ picks a worker and shapes cards for it") is a good start; in short:
   the test to add, named; no open design choices; an example to copy; Done when as checkable facts; 30-60 minutes.
 - **Send to a bigger model** work that spans several areas, touches concurrency or shared state, needs a design
   decision, or that a smaller model already failed.
+- **Size cards from the estimates:** read `jobs/.logs/estimates.json` in the project folder (or
+  `/estimates.json?project=<name>` on the page) before setting `Time box:` or `Worker:`; the starter brief of
+  section 3 says which figure to use. It is the scheduler's record of past runs, not a forecast.
+- **Set `Kind:` on every card** (one of the words in `scheduler.json`'s `cardKinds`: design, implementation, docs or
+  check), because the estimates are grouped by kind and a card without one only adds to its category's figure.
+- **`Fixes-red: yes`** goes on the one card that repairs a red main and on no other (section 3's brief says why): while
+  main is red the project holds every card except those marked so.
 - **After a run** that went badly, add a short Dev note on what the card was missing.
 
 ## 6. What to watch for

@@ -126,9 +126,10 @@ public static class TypeDispatcher
         var starts = new List<TypeStart>();
         var tried = new HashSet<string>(Text.Comparer);
 
-        if (state == SchedulerState.Running)
+        if (state is SchedulerState.Running or SchedulerState.PausedRed)
         {
-            foreach (var cand in plan.Ordered)
+            // 1472-A: a paused-red project still offers its Fixes-red cards, and only those.
+            foreach (var cand in state == SchedulerState.Running ? plan.Ordered : plan.OnlyFixesRed().Ordered)
             {
                 if (total >= maxWorkers)
                 {

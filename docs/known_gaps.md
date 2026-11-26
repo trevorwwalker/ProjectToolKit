@@ -167,6 +167,7 @@ Known differences from the specification, and assumptions made where it is silen
 - The `lock` command finds its log folder in `PTK_LOG_DIR` and its slot in `PTK_SLOT`, which the host sets beside Core's `WorkerLocks` variables; without them it takes the parent of `core.hooksPath` from `GIT_CONFIG_*` and the slot from the card's row in the table. Core's `WorkerLocks` could carry both. **By design (1183-A, 2026-11-23):** still as described; a deliberate difference or a recorded assumption.
 - [closed by 1021-B, 2026-11-23: the host writes the hooks at start (`HookFiles`) (1183-A)] The hooks folder named in the worker's `core.hooksPath` is empty until card 5 (HookFiles) writes the hooks, so with locks on a worker's own repository hooks do not run.
 - [closed by 1188-B, 2026-11-23: the page is filled from the table (see the entry above)] The page shows nothing of it yet (`PageLocks` is not filled from the table; cards 1022-C and the host's page data). **Real (1183-A, 2026-11-23):** request #019. [closed by 1188-B, 2026-11-23: `HostPageSnapshot` fills the slot's holds and the queue note from the table, and `PoolPageData` the project's lock counts, so the page shows them]
+- **(1478-D, 2026-11-26):** this section's first line "off by default" is history. Since 1477-B (2026-11-26) the `locks` switch is **on by default**: no `locks` line, or a non-boolean one, is on, and only `"locks": false` in the project's `jobs/scheduler.json` turns locks off; a scheduler with no usable `scheduler.json` has no locks. With them off the day's log says `locks: off ("locks": false in jobs/scheduler.json): workers have no lock command` and the `lock` command refuses at once (exit 4) on a `locks-off.txt` marker. Spec DL-13.
 
 ## Dynamic locks: hooks, check-push and the audit in the host (1021-B)
 
@@ -236,6 +237,15 @@ A Codex worker runs with `--dangerously-bypass-approvals-and-sandbox` (the devel
 
 - **VW-24 clauses with no test.** `PlanSteps.LeadingNumber` does what VW-24 says, but `PlanStepsNumberedTests.cs` has no test that a `## 5.2 Something` heading is not a step in a numbered plan, and none for the `3) Build` or `3: Build` forms of a numbered heading. Both work today (read in `PlanSteps.cs`); a category A card could add two `VW24_` tests.
 - **Card numbers: README and planner brief differ.** `jobs/README.md` ("A job card") says a new card takes the highest number in use plus one; the planner brief (`assets/templates/docs/planner-brief.md`, "Numbers") and `docs/guide/planner.md` say never choose a card number, name it `new-<L>-<slug>` and let the scheduler number it. Both are true for someone (by hand versus under the scheduler), but the README master does not say who numbers a card under the scheduler. A category D card could add that to the README master (`assets/templates/jobs/README.md`) and refresh the copies.
+
+## Nothing keeps the guide's embedded planner brief equal to its master (2026-11-26, 1473-D)
+
+- **`docs/guide/planner.md` section 3 embeds `assets/templates/docs/planner-brief.md` as a fenced markdown block, and no
+  test compares them.** The two are equal today (checked with a throwaway script that applied the `{{PROJECT}}` to
+  `Tally` substitution, during 1473-D), and both must say the same thing about the card header lines, but only the card
+  *templates* are guarded (`EST_4_Templates_Carry_The_Kind_Line_After_The_Type_Line` compares each `jobs/` copy with its
+  master). A card that owns `test/unit/` could add the same kind of test for the brief. Found while writing 1473-D,
+  whose card text said such a test exists.
 
 ## The kit's gitignore template misses the queue's ignored folders (2026-11-24, 1294-D)
 

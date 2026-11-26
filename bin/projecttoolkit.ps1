@@ -34,6 +34,17 @@
                             queue into an existing repository, and with -Update to pull kit
                             improvements into a project that already has one.
 
+      -Action new-library   A new library project: a cut-down layout (bin/, code/lib/, code/tools/,
+                            test/unit/, docs/design/, out/) for a repository that other projects nest
+                            at code/extern/<repository>/. No assets/, code/src/, code/extern/, extern/,
+                            test/integration/ or test/data/. Lays down the library variants of README.md
+                            and docs/conventions.md (templates in assets/templates/library/), .gitignore,
+                            .gitattributes, the planner brief and the job queue (one default category,
+                            "A=library:code/,test/"), and joins the pool as new-project does. It carries
+                            no language, build or example code. A line in the library's docs/conventions.md
+                            (<!-- ptk-layout: library -->) marks it, so -Update and -Action new-project never
+                            add the folders a library leaves out.
+
     Nothing already in the repository is overwritten unless -Force is given. -Update refreshes only
     the text the kit owns (the jobs README, the card, plan and request templates,
     .gitattributes) and fills in any folder or file the project is missing. README.md, .gitignore,
@@ -41,7 +52,7 @@
     workers.json and scheduler.json become the project's own and are left alone.
 
 .PARAMETER Action
-    'new-project' lays down the canonical layout and then does 'jobs'. 'jobs' does the queue only,
+    'new-library' lays down the cut-down library layout and then does 'jobs'. 'new-project' lays down the canonical layout and then does 'jobs'. 'jobs' does the queue only,
     which is what an existing repository needs.
 
 .PARAMETER Categories
@@ -83,7 +94,7 @@
 # Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 
 param(
-    [Parameter(Mandatory)][ValidateSet('new-project', 'jobs')][string]$Action,
+    [Parameter(Mandatory)][ValidateSet('new-project', 'new-library', 'jobs')][string]$Action,
     [Parameter(Mandatory)][string]$Repo,
     [string]$Project = '',
     [Alias('Lanes')][string]$Categories = 'A=core:code/src/,test/',
@@ -125,6 +136,13 @@ if (-not $Project) {
     if (-not $Project) { $Project = Split-Path -Leaf $Repo }
 }
 $Safe = ($Project -replace '[^\w.-]', '_')
+# A library project: made by -Action new-library, or marked by this line in its docs/conventions.md (so -Update, and
+# -Action new-project run on it again, never add the folders a library leaves out).
+$LibraryMarker = '<!-- ptk-layout: library -->'
+$convPath = Join-Path $Repo 'docs/conventions.md'
+$IsLibrary = ($Action -eq 'new-library') -or ((Test-Path $convPath) -and (Get-Content -Raw -Encoding UTF8 -Path $convPath).Contains($LibraryMarker))
+# A library has one category over its code and tests unless -Categories says otherwise.
+if ($IsLibrary -and -not $PSBoundParameters.ContainsKey('Categories')) { $Categories = 'A=library:code/,test/' }
 
 #
 # Shared helpers.
@@ -268,13 +286,22 @@ function Join-Pool {
 #
 function Install-CanonicalLayout {
     # Folders every project has, and what each is for (the reasoning is in assets/templates/conventions.md).
-    $LayoutDirs = @(
-        'assets', 'bin', 'code/extern', 'code/lib', 'code/src', 'code/tools', 'extern/bin', 'out',
-        'test/unit', 'test/integration', 'test/data',
-        'docs/reference'
-    )
+    # A library project (-Action new-library, or marked) has the cut-down set and its own readme and conventions.
+    if ($IsLibrary) {
+        $LayoutDirs = @('bin', 'code/lib', 'code/tools', 'test/unit', 'docs/design', 'out')
+        $keepIgnored = @('out/windows')
+        $readme = 'library/readme.md'; $conv = 'library/conventions.md'
+    } else {
+        $LayoutDirs = @(
+            'assets', 'bin', 'code/extern', 'code/lib', 'code/src', 'code/tools', 'extern/bin', 'out',
+            'test/unit', 'test/integration', 'test/data',
+            'docs/reference'
+        )
+        $keepIgnored = @('out/windows', 'extern/bin')
+        $readme = 'readme.md'; $conv = 'conventions.md'
+    }
     foreach ($d in $LayoutDirs) { Keep $d }
-    foreach ($d in @('out/windows', 'extern/bin')) { Keep $d }   # git-ignored, so the .gitkeep stays
+    foreach ($d in $keepIgnored) { Keep $d }   # git-ignored, so the .gitkeep stays
     # One folder per module under code/src/, once the design has named them.  OS-specific code goes
     # under code/src/platform/<platform>/ with the shared part in code/src/platform/common/.
     foreach ($m in ($Modules -split ',' | Where-Object { $_.Trim() })) {
@@ -287,9 +314,10 @@ function Install-CanonicalLayout {
     # the rest become the project's own the moment they exist.
     Put '.gitignore'                  (Template 'gitignore')
     Put '.gitattributes'              (Template 'gitattributes') $true
-    Put 'README.md'                   ((Template 'readme.md').Replace('{{PROJECT}}', $Project))
-    Put 'docs/conventions.md'         ((Template 'conventions.md').Replace('{{PROJECT}}', $Project))
+    Put 'README.md'                   ((Template $readme).Replace('{{PROJECT}}', $Project))
+    Put 'docs/conventions.md'         ((Template $conv).Replace('{{PROJECT}}', $Project))
     Put 'docs/planner-brief.md'       ((Template 'docs/planner-brief.md').Replace('{{PROJECT}}', $Project))
+    if ($IsLibrary) { return }   # no design documents: a library's design goes where its own plan says
     Put "docs/design/gdd/$Safe.md"           ((Template 'design/gdd.md').Replace('{{PROJECT}}', $Project))
     Put "docs/design/tdd/$Safe-technical.md" ((Template 'design/tdd.md').Replace('{{PROJECT}}', $Project))
 }
@@ -376,8 +404,8 @@ function Install-JobQueue {
 #
 # Dispatch.
 #
-if ($Action -eq 'new-project') {
-    Write-Host "== canonical layout in $Repo"
+if ($Action -ne 'jobs') {
+    Write-Host "== $(if ($IsLibrary) { 'library' } else { 'canonical' }) layout in $Repo"
     Install-CanonicalLayout
 }
 Write-Host "== job queue in $Repo"
@@ -399,7 +427,13 @@ if ($Update) {
     Write-Host 'docs/design/, jobs/{project,categories,lanes,workers,scheduler}.json.'
     return
 }
-if ($Action -eq 'new-project') {
+if ($Action -eq 'new-library') {
+    Write-Host "$Project is set up in $Repo as a library project with a job queue. Next:"
+    Write-Host '  1. Fill in README.md (the language and build, where its public interface is, whether hosts hold it'
+    Write-Host '     pinned or following, and how a host nests it at code/extern/<repository>/) and docs/conventions.md.'
+    Write-Host '  2. Put each library in code/lib/<name>/, its tools in code/tools/ and its tests in test/unit/.'
+    $n = 3
+} elseif ($Action -eq 'new-project') {
     Write-Host "$Project is set up in $Repo with the canonical layout and a job queue. Next:"
     Write-Host '  1. Fill in README.md (what the project is, what is in the repository now) and the **fill in**'
     Write-Host '     sections of docs/conventions.md (the project rules: naming, formatting, errors, logging).'

@@ -12,11 +12,16 @@ namespace Scheduler.Core.Pool;
 /// </summary>
 public static class PoolGate
 {
-    /// <summary>The projects that dispatch: those whose state is running. A project with no state yet counts as running.</summary>
+    /// <summary>
+    /// The projects that dispatch: those whose state is running, and (1472-A) those paused-red, which offer only their
+    /// <c>Fixes-red</c> cards. A project with no state yet counts as running.
+    /// </summary>
     public static IReadOnlyList<PoolProject> Eligible(
         IEnumerable<PoolProject> projects,
         IReadOnlyDictionary<string, SchedulerState> states) =>
-        [.. projects.Where(p => !states.TryGetValue(p.Name, out var s) || s == SchedulerState.Running)];
+        [.. projects.Select(p => !states.TryGetValue(p.Name, out var s) || s == SchedulerState.Running ? p
+            : s == SchedulerState.PausedRed ? p with { Plan = p.Plan.OnlyFixesRed() }
+            : null).OfType<PoolProject>()];
 
     /// <summary>WT-9: the type's agent is out of quota (names match without case, G-1).</summary>
     public static bool AgentPaused(DispatchType type, AgentQuota quota) => quota.IsOut(type.Agent);

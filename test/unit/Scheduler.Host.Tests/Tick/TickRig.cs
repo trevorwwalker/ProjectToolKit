@@ -115,10 +115,7 @@ internal sealed class TickRig : IDisposable
             settings["planner"] = new { fetchRepo = Fx.Repo, outbox = plannerOutbox };
         }
 
-        if (locks)
-        {
-            settings["locks"] = true;   // 1025-B: dynamic locks on (scheduler.json "locks": true)
-        }
+        settings["locks"] = locks;   // 1025-B, 1477-B: dynamic locks are on unless scheduler.json says "locks": false
 
         if (toolkit is not null)
         {

@@ -42,6 +42,10 @@
 .PARAMETER UsePublished
     Deploy the out\windows\scheduler.next that is already there instead of publishing a new one.
 
+.PARAMETER SelfTest
+    Runs only the choice of the scheduler among scheduler-next.exe processes on -SelfTestProcesses (items `id,command line`
+    separated by `|`) and prints the ids it takes for the scheduler (1479-B). Starts and stops nothing.
+
 .PARAMETER StartWindowSeconds
     How long the new scheduler is given to stay up before it is swapped back. Default 30 (967-B).
 
@@ -62,7 +66,9 @@ param(
     [switch]$Pool,
     [string]$PoolFile = '',
     [switch]$UsePublished,
-    [int]$StartWindowSeconds = 30
+    [int]$StartWindowSeconds = 30,
+    [switch]$SelfTest,
+    [string]$SelfTestProcesses = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -85,21 +91,58 @@ function Get-BuildVersion([string]$Path) {
     return $text
 }
 
+# 1479-B (as 1354-B in test-installer.ps1): the first argument after the exe in a command line ('' when none or unknown).
+function Get-FirstArgument([string]$CommandLine) {
+    if (-not $CommandLine) { return '' }
+    $rest = $CommandLine.Trim()
+    if ($rest.StartsWith('"')) {
+        $end = $rest.IndexOf('"', 1)
+        if ($end -lt 0) { return '' }
+        $rest = $rest.Substring($end + 1).Trim()
+    }
+    else {
+        $space = $rest.IndexOf(' ')
+        if ($space -lt 0) { return '' }
+        $rest = $rest.Substring($space + 1).Trim()
+    }
+    ($rest -split '\s+', 2)[0].Trim('"')
+}
+
+# 1479-B: a scheduler-next call that lasts moments (a worker's lock, the git hook's check-push, the agent hook's
+# --deliver-message, --version, --help). An unreadable command line is taken for a scheduler.
+function Test-ShortCall([string]$CommandLine) {
+    if (-not $CommandLine) { return $false }
+    $first = Get-FirstArgument $CommandLine
+    if ($first -in @('lock', 'check-push', '--deliver-message', '--version')) { return $true }
+    return (@(Split-CommandLine $CommandLine | Select-Object -Skip 1) -match '(?i)^(--help|-h|-\?|/\?)$').Count -gt 0
+}
+
+# 1479-B: the one answer to "the scheduler processes running from this exe": every process of $Processes
+# (objects with ProcessId and CommandLine) that is not a short call.
+function Select-Schedulers($Processes) {
+    @(@($Processes) | Where-Object { $_ -and -not (Test-ShortCall ([string]$_.CommandLine)) })
+}
+
+function Get-RunningSchedulers {
+    Select-Schedulers @(Get-CimInstance Win32_Process -Filter "Name='scheduler-next.exe'" |
+            Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -ieq $Exe) })
+}
+
 function Stop-RunningScheduler {
     # End the scheduler alone. Its workers are in job objects of their own that this does not end, so the
     # new scheduler adopts them, as after the tray's Restart (TRAY-5).
-    $found = @(Get-CimInstance Win32_Process -Filter "Name='scheduler-next.exe'" |
-            Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -ieq $Exe) })
+    $found = @(Get-RunningSchedulers)
     if ($found.Count -eq 0) { return $null }
-    $running = $found[0]
-    Write-Host "  ending the scheduler (pid $($running.ProcessId)); its workers keep running"
-    Stop-Process -Id $running.ProcessId -Force
-    $deadline = (Get-Date).AddSeconds(30)
-    while ((Get-Date) -lt $deadline) {
-        if (-not (Get-Process -Id $running.ProcessId -ErrorAction SilentlyContinue)) { return $running }
-        Start-Sleep -Milliseconds 250
+    foreach ($running in $found) {
+        Write-Host "  ending the scheduler (pid $($running.ProcessId)); its workers keep running"
+        Stop-Process -Id $running.ProcessId -Force -ErrorAction SilentlyContinue
+        $deadline = (Get-Date).AddSeconds(30)
+        while (Get-Process -Id $running.ProcessId -ErrorAction SilentlyContinue) {
+            if ((Get-Date) -ge $deadline) { throw "the scheduler (pid $($running.ProcessId)) would not end; nothing was swapped" }
+            Start-Sleep -Milliseconds 250
+        }
     }
-    throw "the scheduler (pid $($running.ProcessId)) would not end; nothing was swapped"
+    return $found[0]
 }
 
 function Get-TrayLockedNames {
@@ -163,11 +206,11 @@ function Start-TrayFrom([string[]]$Arguments, [switch]$Quiet) {
 }
 
 function Wait-SchedulerStarted([int]$Seconds) {
-    # The scheduler a tray starts is the tray's child, not this script's: it is found by its path.
+    # The scheduler a tray starts is the tray's child, not this script's: it is found by its path, and a worker's
+    # short call of the same exe is not it (1479-B).
     $deadline = (Get-Date).AddSeconds($Seconds)
     while ((Get-Date) -lt $deadline) {
-        $found = @(Get-CimInstance Win32_Process -Filter "Name='scheduler-next.exe'" |
-                Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -ieq $Exe) })
+        $found = @(Get-RunningSchedulers)
         if ($found.Count -gt 0) { return (Get-Process -Id $found[0].ProcessId -ErrorAction SilentlyContinue) }
         Start-Sleep -Milliseconds 500
     }
@@ -207,7 +250,7 @@ function Restore-OldBuild {
     # (975-B), whose own copy is refreshed from the old build, so any tray the new build started is ended first.
     $newTrays = @(Get-TraysForScheduler)
     if ($newTrays.Count -gt 0) { Stop-Trays $newTrays }
-    $leftover = @(Get-CimInstance Win32_Process -Filter "Name='scheduler-next.exe'" | Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -ieq $Exe) })
+    $leftover = @(Get-RunningSchedulers)
     foreach ($p in $leftover) {
         Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
         Wait-Process -Id $p.ProcessId -Timeout 15 -ErrorAction SilentlyContinue
@@ -220,6 +263,15 @@ function Restore-OldBuild {
     else {
         Start-SchedulerFrom $savedArgs '' | Out-Null
     }
+}
+
+if ($SelfTest) {
+    $items = @($SelfTestProcesses -split '\|' | Where-Object { $_ } | ForEach-Object {
+            $f = $_ -split ',', 2
+            [pscustomobject]@{ ProcessId = [int]$f[0]; CommandLine = $(if ($f.Count -gt 1) { $f[1] } else { '' }) }
+        })
+    Write-Host ('schedulers: ' + ((@(Select-Schedulers $items) | ForEach-Object { $_.ProcessId }) -join ' '))
+    exit 0
 }
 
 if (-not (Test-Path $Current)) { throw "$Current is not there; publish the scheduler once (see bin\projecttoolkit.ps1)" }
@@ -303,7 +355,14 @@ catch {
 }
 
 if (-not (Test-StaysUp $started $StartWindowSeconds)) {
-    Write-Host "  the new scheduler $new did not stay up for $StartWindowSeconds s; putting the old build back"
+    $how = "pid $($started.Id)"
+    if ($started.HasExited) {
+        $code = $null
+        try { $code = $started.ExitCode } catch { }
+        $how += $(if ($null -ne $code) { ", it ended with exit code $code" } else { ', it ended (no exit code to read)' })
+    }
+    else { $how += ', it was still running' }
+    Write-Host "  the new scheduler $new did not stay up for $StartWindowSeconds s ($how); putting the old build back"
     if (-not $started.HasExited) { Stop-Process -Id $started.Id -Force }
     Restore-OldBuild
     Write-Host "scheduler: $old is running again from $Current"

@@ -4,22 +4,30 @@ using Scheduler.Core.Config;
 
 namespace Scheduler.Core.Tests.Config;
 
-/// <summary>The <c>locks</c> switch in scheduler.json (design <c>dynamic-locks.md</c>, section 8 card 9; DL-13): off by default.</summary>
+/// <summary>The <c>locks</c> switch in scheduler.json (design <c>dynamic-locks.md</c>, section 8 card 9; DL-13): on by default (1477-B).</summary>
 public sealed class LockSettingsTests
 {
     [Theory]
     [InlineData(null)]
     [InlineData("")]
-    [InlineData("{}")]
     [InlineData("""{"locks":false}""")]
-    [InlineData("""{"locks":"yes please"}""")]
     [InlineData("not json {")]
-    public void Locks_OffUnlessSwitchedOn(string? json)
+    public void Locks_Off_WhenFalseOrNoUsableConfig(string? json)
     {
         var s = LockSettings.Load(json);
 
         Assert.False(s.On);
         Assert.Equal(20, s.WaitMinutes);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("""{"locks":true}""")]
+    [InlineData("""{"locks":"yes please"}""")]
+    [InlineData("""{"locks":null}""")]
+    public void Locks_On_WhenNotFalse(string json)
+    {
+        Assert.True(LockSettings.Load(json).On);
     }
 
     [Fact]
@@ -38,5 +46,5 @@ public sealed class LockSettingsTests
     }
 
     [Fact]
-    public void Locks_DefaultIsOff() => Assert.False(LockSettings.Off.On);
+    public void Locks_OffValueIsOff() => Assert.False(LockSettings.Off.On);
 }

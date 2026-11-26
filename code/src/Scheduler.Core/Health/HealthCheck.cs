@@ -160,10 +160,11 @@ public sealed class HealthCheck(SchedulerConfig config, IClock clock, IScheduler
 
             runner.Kill();
             log.Write($"health check of main {Sha} killed after {config.MaxMinutes} min; treated as red");
-            return Finish(false, state);
+            return Finish(false, state, $"{CommandWord()} killed after {config.MaxMinutes} min");
         }
 
-        return Finish(runner.ExitCode() == 0, state);
+        var exit = runner.ExitCode();
+        return Finish(exit == 0, state, $"{CommandWord()} exit {exit?.ToString() ?? "unknown"}");
     }
 
     /// <summary>
@@ -185,11 +186,16 @@ public sealed class HealthCheck(SchedulerConfig config, IClock clock, IScheduler
 
         retries.Clear();
         log.Write("resumed from the page");
+        if (state == SchedulerState.PausedRed)
+        {
+            log.Write($"dispatching resumed: {config.Project}");
+        }
+
         return SchedulerState.Running;
     }
 
     /// <summary>The end of a check (L1732-1743), shared by the exit and the kill.</summary>
-    private SchedulerState Finish(bool ok, SchedulerState state)
+    private SchedulerState Finish(bool ok, SchedulerState state, string failing)
     {
         // 1100-B: the result line always carries how long the check took, so the durations are in the log.
         var took = Started is { } start
@@ -207,16 +213,30 @@ public sealed class HealthCheck(SchedulerConfig config, IClock clock, IScheduler
             log.Write($"health check of main {Sha}: green{took}{LoadText}");
             if (state == SchedulerState.PausedRed)
             {
-                log.Write("main is green again: dispatching resumed");
+                log.Write($"dispatching resumed: {config.Project}");
                 return SchedulerState.Running;
             }
 
             return state;
         }
 
-        log.Write($"health check of main {Sha}: RED{took}, see {LogPath}; dispatching paused{LoadText}");
-        return state == SchedulerState.Running ? SchedulerState.PausedRed : state;
+        var redLine = $"health check of main {Sha}: RED{took}, see {LogPath}; dispatching paused{LoadText}";
+        if (state != SchedulerState.Running)
+        {
+            log.Write(redLine);
+            return state;
+        }
+
+        // 1472-A: said once per pause, so the planner can see it; the check's log is not read for a test name, so the
+        // failing check is the health command's first word and its exit code.
+        log.Write($"dispatching paused: {config.Project} main red at {Sha} ({failing})");
+        log.Write(redLine);   // last, so the check's own RED line stays the last of the check
+        return SchedulerState.PausedRed;
     }
+
+    /// <summary>1472-A: the health command's first word, for the pause line.</summary>
+    private string CommandWord() =>
+        config.HealthCommand.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "health";
 
     /// <summary>
     /// 1100-B (HLTH-11): once a running check passes <c>limits.healthWarnMinutes</c>, say so - one log

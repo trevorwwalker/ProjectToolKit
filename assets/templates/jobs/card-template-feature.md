@@ -3,6 +3,7 @@
 Category: <letter, from jobs/categories.json>
 Type: feature
 Kind: design | implementation | docs | check (set by the planner; the project's list is scheduler.json's cardKinds)
+Fixes-red: yes (optional; only on a card that repairs a red main: it is dispatched while dispatching is paused for the red main)
 Plan: <a file in jobs/plans/, e.g. jobs/plans/machines_plan.md, and its step or phase ("step 3", "phase 1"); a design document is not a plan; "none (<who>, <date>)" for a one-off>
 Status: ready
 Priority: <normal | high>

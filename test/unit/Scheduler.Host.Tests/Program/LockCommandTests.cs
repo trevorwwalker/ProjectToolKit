@@ -30,6 +30,25 @@ public class LockCommandTests
         Directory.Exists(Path.Combine(rig.Moves, "done")) ? Directory.GetFiles(Path.Combine(rig.Moves, "done"), "*.lock").Length : 0;
 
     [Fact]
+    public void Lock_LocksOff_RefusesAtOnce_WritesNothing()
+    {
+        using var rig = new LockRig();
+        LockCommand.SetOffMarker(rig.LogDir, off: true);
+        var output = new StringWriter();
+        var slept = 0;
+
+        var code = Lock(rig, Env(rig, LockRig.Old, 1), output, () => slept++, 110, "docs/known_gaps.md", "--why", "a gap");
+
+        Assert.Equal(4, code);
+        Assert.Equal("refused: locks are off for this project (\"locks\": false in jobs/scheduler.json)", LastLine(output));
+        Assert.Equal(0, slept);
+        Assert.False(Directory.Exists(rig.Moves) && Directory.GetFiles(rig.Moves, "*.lock").Length > 0);
+
+        LockCommand.SetOffMarker(rig.LogDir, off: false);
+        Assert.False(File.Exists(Path.Combine(rig.LogDir, LockCommand.OffMarker)));
+    }
+
+    [Fact]
     public void Lock_FreePath_GrantedExit0()
     {
         using var rig = new LockRig();

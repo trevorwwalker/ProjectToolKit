@@ -115,9 +115,13 @@ under a worker that may still be relying on it, and saves little (runs are under
     line in Result, and hands the card back with a move request To: active, Status `ready`, ending with
     `LANE-RESULT: yielded`. Its locks are released (DL-8 c); its remembered set gets the entries it held *and*
     the entries it asked for, so it is not restarted until the holder has finished (DL-1 with ScopeGate).
-- **DL-13 Wait limit.** An older card waits at most `lockWaitMinutes` (scheduler.json `limits`, default 20) and
-  never past its own warn time. When the limit passes, the answer turns to `yield` and it leaves as in DL-12.
-  A wait never ends with a younger card being stopped (that would be wound-wait; section 4).
+- **DL-13 Wait limit, and the `locks` switch.** An older card waits at most `lockWaitMinutes` (scheduler.json
+  `limits`, default 20) and never past its own warn time. When the limit passes, the answer turns to `yield` and it
+  leaves as in DL-12. A wait never ends with a younger card being stopped (that would be wound-wait; section 4).
+  The `locks` switch in scheduler.json is **on by default** (1477-B, after the switch-on trial below): no `locks`
+  line, or one that is not a boolean, is on; only `"locks": false` turns locks off, and a scheduler with no usable
+  scheduler.json has no locks. With them off the worker's prompt names no `lock` command and the command refuses at
+  once (section 3).
 - **DL-14 Yield is not a failure.** A run that ends `LANE-RESULT: yielded` with its request applied gives its run
   back (as spec C8 does, never below 0) and does not count toward the stuck limit (spec C2, 940-A). A yielded card
   in `active/` is an orphan and goes first among cards of its priority (DISP-14), which, with its fixed age, is
@@ -226,7 +230,7 @@ rename, CM-1) and waits up to 110 seconds for `<log>\moves\replies\<same name>.r
 | 0 | `granted` | edits the files. |
 | 2 | `waiting: held by 990-B, gives up at 10:42` | runs the same command again (it finds the open request and keeps waiting; no new request). |
 | 3 | `yield: <path> held by 990-B (older)` | commits its work to `wip/<card>`, journals where to resume, hands the card back To: active as `ready`, ends `LANE-RESULT: yielded`. |
-| 4 | `refused: <reason>` (too broad, unknown card) | narrows the request, or parks and asks. |
+| 4 | `refused: <reason>` (too broad, unknown card, locks off: `refused: locks are off for this project ("locks": false in jobs/scheduler.json)`, which the command answers at once, 1477-B) | narrows the request, or parks and asks. |
 
 Splitting the wait into calls of under two minutes keeps within the prompt's rule that no command waits longer.
 A worker that cannot run the exe (no Windows host) falls back to the README's rule: park and ask.
@@ -321,7 +325,10 @@ scheme.
 - `Scheduler.Host/Locks/HookFiles.cs` (new): writes `<log>\hooks\commit-msg` and `pre-push` (sh, as Git for
   Windows runs them) at start.
 - `Scheduler.Host/Program/` and `Program.cs`: subcommands `lock` (section 3) and `check-push` (DL-18), which read
-  files only and never start a scheduler.
+  files only and never start a scheduler. `Program/LockCommand.cs` keeps the off marker (1477-B): the scheduler
+  writes `<log>\locks-off.txt` at start when the project's locks are off and removes it when they are on, and the
+  `lock` command refuses at once when it finds it. `Program/ProjectParts.cs` logs one line at start either way
+  (DL-13).
 - `Scheduler.Host/Git/`: `MainAudit` runner (`git log --name-only --format=%H%x00%(trailers:key=Card)` from the
   last audited commit) on every main move that CardReader already detects.
 - `Scheduler.Host/Moves/CardRequestStep.cs`: release on an applied finish, park or send-back (DL-8, DL-9).
@@ -386,7 +393,8 @@ Each test named by its rule. Core tests are pure (no disk, no git); Host tests u
 7. **D: spec and test plan** - DL rules into spec B2; `test-plans/dynamic-locks.md`. Can run beside 1.
 8. **Kit README** (the kit owner's card): section 3's README text, then `-Update`. Lands with or after 4, before
    locks are switched on.
-9. **Switch-on trial** (developer and planner): a `locks` switch in scheduler.json (default off until here); two
+9. **Switch-on trial** (developer and planner): a `locks` switch in scheduler.json (default off until here; the
+   trial ran and locks are **on by default** since 1477-B, 2026-11-26 - `"locks": false` turns them off); two
    cards with neighbouring scopes, one that is told to need the other's file; check grant, wait, yield and the
    refused push on the page. The trial includes a **spark** card (amended by 1018-D), told to need a file it does
    not hold, to show a local model follows the lock routine.

@@ -71,7 +71,11 @@ public static class PoolQueueOrder
                 continue;   // a repeated project is skipped, as the pool file's repeat is
             }
 
-            var lane = new Lane(l, PoolShares.Minutes(runList, l.Project.Name, now), PoolDispatcher.WorkspacesOf(l.Project.Workspaces, maxWorkers));
+            // 1472-A: a paused-red project offers only its Fixes-red cards.
+            var source = states.TryGetValue(l.Project.Name, out var st) && st == SchedulerState.PausedRed
+                ? l with { Queue = [.. l.Queue.Where(c => c.FixesRed)] }
+                : l;
+            var lane = new Lane(source, PoolShares.Minutes(runList, l.Project.Name, now), PoolDispatcher.WorkspacesOf(l.Project.Workspaces, maxWorkers));
             all.Add(lane);
             byName[l.Project.Name] = lane;
         }

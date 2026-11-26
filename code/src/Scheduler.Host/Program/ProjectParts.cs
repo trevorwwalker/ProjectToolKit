@@ -199,9 +199,15 @@ public sealed class ProjectParts : IDisposable
             Host.Moves = new CardRequestStep(committer, Scheduler.Core.Moves.CardRequests.Folder(config.LogDir), config.JobsDir, clock, log);
             Host.NewCards = new NewCardStep(committer, shared.Numbering ?? CardNumbering.Shared, config.JobsDir, poolProject ?? "", log);   // 1111-B
 
-            // Dynamic locks (1020-B): off unless scheduler.json says "locks": true (section 8 card 9). On, the
+            // Dynamic locks (1020-B): on unless scheduler.json says "locks": false (1477-B). On, the
             // host keeps the repository's table (DL-20, DL-22), answers .lock requests and releases on moves.
             Tick.Locks = Scheduler.Core.Config.LockSettings.Load(configText);
+            LockCommand.SetOffMarker(config.LogDir, !Tick.Locks.On);
+            if (!Tick.Locks.On)
+            {
+                log.Write("locks: off (\"locks\": false in jobs/scheduler.json): workers have no lock command");
+            }
+
             if (Tick.Locks.On)
             {
                 var table = new LockTableFile(config.LogDir, config.Repo, log);

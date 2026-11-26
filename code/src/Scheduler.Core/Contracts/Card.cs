@@ -68,6 +68,9 @@ public sealed record Card
     /// <summary>EST-1: the header's <c>Kind:</c>, lower case, when it is on the project's list (EST-2); "" otherwise (EST-3).</summary>
     public string Kind { get; init; } = "";
 
+    /// <summary>1472-A: the header's <c>Fixes-red: yes</c>; such a card is still dispatched while its project is paused-red.</summary>
+    public bool FixesRed { get; init; }
+
     /// <summary>EST-3: the word of a <c>Kind:</c> line that is not on the list, "" when there is none or it is known.</summary>
     public string UnknownKind { get; init; } = "";
 

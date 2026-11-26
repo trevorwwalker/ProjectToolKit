@@ -35,7 +35,8 @@ project/
 
 At the root: `README.md` (what the project is, its honest status, its design in brief),
 `.gitignore`, `.gitattributes`. Build intermediates go to `build/` and final results to `out/`; both
-are git-ignored.
+are git-ignored. A smaller layout for a project that holds only static libraries is in
+"Library projects" below.
 
 ### Content vs. code
 
@@ -109,6 +110,66 @@ are git-ignored.
 - Technical reference material: `docs/reference/`, with an index naming what each document covers.
 - A doc belongs beside the code it describes only if it must change in lockstep with it; otherwise
   it goes in `docs/`.
+
+## Library projects
+
+A **library project** is a whole project in its own right: its own repository, queue, plans and docs. It
+holds one or more static libraries and the tools that go with them, and other projects nest it, the way
+a link folder is nested in unix. It uses the same folder names as the layout above, with fewer of them:
+
+```
+library/
+├── bin/             # The project's own scripts and built tools
+├── code/
+│   ├── lib/         # One folder per library: code/lib/<name>/
+│   └── tools/       # Source for the tools that go with the libraries
+├── docs/
+│   ├── conventions.md  # This library project's own decisions (see below)
+│   └── design/      # gdd/ (intent) and tdd/ (architecture and technical specs)
+├── jobs/            # Its own job queue, run only in its own clone
+├── test/
+│   └── unit/        # Unit tests, mirroring the code/ paths
+└── README.md        # What it is, its honest status, and how its hosts hold it
+```
+
+Not present: `assets/`, `code/src/`, `code/extern/`, `extern/bin/`, `test/integration/` and `test/data/`. A
+library adds one of them the day it needs it, under the canonical name and by the canonical rules above.
+
+**What each library decides for itself.** The kit carries no language, no build and no example code for a
+library. Each library says, in its own `README.md` and `docs/conventions.md`: its language and build, where
+its public interface lives, and whether its hosts hold it pinned or following (below).
+
+**How a host nests one.** From the host's side the library is third-party source we compile ourselves, so it
+goes where "Third-party code" says: `code/extern/<library repository>/`, and the host's build compiles it
+from there. The library's `README.md` says which of the two ways its hosts use.
+
+- **Pinned: a git submodule.** The host records one exact commit of the library and moves it only on purpose.
+  - Add it once: `git submodule add <library url> code/extern/<library repository>`. This clones the library
+    there and records its commit, and the folder's path and url, in the host's next commit.
+  - A fresh clone of the host gets the library with `git clone --recurse-submodules <host url>`, or, in a
+    clone that is already made, `git submodule update --init`. This checks out the recorded commit.
+  - Move to a newer version: `git -C code/extern/<library repository> fetch` downloads the library's new
+    commits, `git -C code/extern/<library repository> checkout <commit or tag>` selects one, and
+    `git add code/extern/<library repository>` followed by a commit records it in the host. Build and test the
+    host before that commit.
+- **Following: a copy that tracks the library's main.** The host does not record a version. The nested
+  folder is its own clone, which the host's `.gitignore` lists.
+  - Add it once: `git clone <library url> code/extern/<library repository>`, and add
+    `code/extern/<library repository>/` to the host's `.gitignore`. Every fresh clone of the host repeats the
+    clone.
+  - Move to a newer version: `git -C code/extern/<library repository> pull --ff-only` fetches the library's
+    main and moves to it, and refuses if the copy was changed by hand.
+  - The host's history no longer says which version of the library a given build used: the same host commit
+    built on two days can contain different library code. A host that must reproduce a build holds the
+    library pinned instead.
+
+**Two rules.**
+
+- The nested copy's `jobs/` is never worked from the host. The library's cards run only in its own clone, as
+  its own pool project, and reach a host through the way above.
+- The host's categories leave the nested folder out (an `except` for `code/extern/<library repository>/` in the
+  host's `jobs/categories.json`), so a host worker reads the library and never changes it. A change to the
+  library is a card in the library's own queue.
 
 ## Project rules
 

@@ -20,7 +20,7 @@ public class HealthStateTests
         var runner = new FakeHealthRunner(Sha);
         var log = new FakeLog();
         var health = new HealthCheck(
-            new SchedulerConfig { HealthCommand = Command }, new FakeClock(), log, runner);
+            new SchedulerConfig { HealthCommand = Command, Project = "Proj" }, new FakeClock(), log, runner);
         health.RunFinished();
         Assert.True(health.StartIfWanted());
         return (health, runner, log);
@@ -44,7 +44,7 @@ public class HealthStateTests
         Assert.False(health.Running);
 
         // The resume is logged; a green check in any other state says nothing about dispatching.
-        var said = log.Lines.Any(l => l.Contains("main is green again", StringComparison.Ordinal));
+        var said = log.Lines.Any(l => l == "dispatching resumed: Proj");
         Assert.Equal(before == SchedulerState.PausedRed, said);
     }
 
@@ -67,6 +67,51 @@ public class HealthStateTests
         Assert.False(health.Running);
         Assert.Contains(log.Lines, l => l.Contains($"health check of main {Sha}: RED", StringComparison.Ordinal));
         Assert.Contains(log.Lines, l => l.Contains("dispatching paused", StringComparison.Ordinal));
+
+        // 1472-A: the pause line is written once, on running -> paused-red only.
+        var said = log.Lines.Count(l => l.StartsWith("dispatching paused: Proj main red at ", StringComparison.Ordinal));
+        Assert.Equal(before == SchedulerState.Running ? 1 : 0, said);
+    }
+
+    /// <summary>1472-A: the pause line names the project, the sha and the command's first word with its exit code.</summary>
+    [Fact]
+    public void Health_Red_PauseLineNamesProjectShaAndFailingCheck()
+    {
+        var (health, runner, log) = RunningCheck();
+        runner.FinishWith(3);
+        health.Reap(SchedulerState.Running);
+        Assert.Contains($"dispatching paused: Proj main red at {Sha} (dotnet exit 3)", log.Lines);
+    }
+
+    /// <summary>1472-A: a second red while paused writes no new pause line; green writes one resume line; green after green none.</summary>
+    [Fact]
+    public void Health_PauseAndResumeLines_OncePerPause()
+    {
+        var (health, runner, log) = RunningCheck();
+        runner.FinishWith(1);
+        var state = health.Reap(SchedulerState.Running);
+
+        state = NextCheck(health, runner, "def5678", 1, state);
+        Assert.Equal(SchedulerState.PausedRed, state);
+        Assert.Equal(1, log.Lines.Count(l => l.StartsWith("dispatching paused:", StringComparison.Ordinal)));
+        Assert.Equal(2, log.Lines.Count(l => l.Contains(": RED", StringComparison.Ordinal)));
+
+        state = NextCheck(health, runner, "fed9876", 0, state);
+        Assert.Equal(SchedulerState.Running, state);
+        Assert.Equal(1, log.Lines.Count(l => l == "dispatching resumed: Proj"));
+
+        NextCheck(health, runner, "0001111", 0, state);
+        Assert.Equal(1, log.Lines.Count(l => l == "dispatching resumed: Proj"));
+        Assert.Equal(1, log.Lines.Count(l => l.StartsWith("dispatching paused:", StringComparison.Ordinal)));
+    }
+
+    private static SchedulerState NextCheck(HealthCheck health, FakeHealthRunner runner, string sha, int exit, SchedulerState state)
+    {
+        health.RunFinished();
+        runner.Sha = sha;
+        Assert.True(health.StartIfWanted());
+        runner.FinishWith(exit);
+        return health.Reap(state);
     }
 
     /// <summary>MOVE-8, HLTH-5: resume lifts a red pause with no green check and clears retries.</summary>

@@ -3,6 +3,7 @@
 Category: <letter, from jobs/categories.json>
 Type: bug
 Kind: design | implementation | docs | check (set by the planner; the project's list is scheduler.json's cardKinds)
+Fixes-red: yes (optional; only on a card that repairs a red main: it is dispatched while dispatching is paused for the red main)
 Plan: <the plan whose work broke, with its step or phase, if known; else "none">
 Status: ready
 Priority: <normal | high>

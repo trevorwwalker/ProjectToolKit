@@ -23,7 +23,9 @@ see [Working with a planner](planner.md).
 
 ## Set up a new project
 
-`bin\projecttoolkit.ps1` is the setup tool. It has two actions: `new-project` and `jobs`.
+`bin\projecttoolkit.ps1` is the setup tool. It has three actions: `new-project`, `new-library` and `jobs`.
+A project that holds only static libraries other projects nest is a library project with a cut-down
+layout: see [Library projects](library-projects.md).
 
 `new-project` lays down the standard folder layout (code, tests, docs, design documents) and then adds the queue.
 In an installed kit the script lives in the kit's `bin` folder, so give its full path:

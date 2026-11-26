@@ -524,8 +524,15 @@ Several workers run at once, so two must not change the same file. Each card has
 change (its `Scope:` line, or its category's files in `jobs/categories.json`). Within its scope a worker needs no
 permission.
 
-With locks switched on (`"locks": true` in the project's `jobs/scheduler.json`), a worker that finds it must change a
-file outside its scope asks for it while it works:
+Locks are **on by default** (1477-B): a project runs with them unless its `jobs/scheduler.json` says
+`"locks": false`. A missing `locks` line, or one that is not `true` or `false`, is on; only a scheduler with no
+usable `jobs/scheduler.json` at all has no locks. At start the project's log (and the day's file in
+`jobs/.logs`) says which it got, one line each. With locks on it is the code's
+`locks: on, table {table.Path}, an older card waits up to {Tick.Locks.WaitMinutes} min` - the table is the
+repository's lock json, and the wait is `limits.lockWaitMinutes`, 20 by default (DL-13). With locks off it is
+`locks: off ("locks": false in jobs/scheduler.json): workers have no lock command`.
+
+With locks on, a worker that finds it must change a file outside its scope asks for it while it works:
 
 ```powershell
 scheduler-next.exe lock code/src/Exporter.cs --why 'the date format is set here'
@@ -540,8 +547,11 @@ scheduler-next.exe lock code/src/Exporter.cs --why 'the date format is set here'
 
 A git hook (`check-push`, installed by Switchyard) refuses a push to `main` that touches a file the card does not
 hold, so a worker cannot skip the step. On the page, each worker window shows `holds: ...`, the queue notes cards
-held back by a lock, and the statistics show `Locks today: ...`. Without locks, a worker that needs a file outside
-its scope parks the card and asks you. Design: [dynamic-locks.md](../design/tdd/scheduler/dynamic-locks.md).
+held back by a lock, and the statistics show `Locks today: ...`. With locks off there is no lock command to ask with:
+a worker that needs a file outside its scope parks the card and asks you, and `scheduler-next.exe lock ...` run by
+hand answers at once, exit 4, `refused: locks are off for this project ("locks": false in jobs/scheduler.json)`
+(the scheduler leaves a `locks-off.txt` marker in the project's log folder for the command to find). Design:
+[dynamic-locks.md](../design/tdd/scheduler/dynamic-locks.md).
 
 ## 10. The planner outbox
 

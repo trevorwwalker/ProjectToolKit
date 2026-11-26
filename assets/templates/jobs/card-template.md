@@ -10,6 +10,7 @@ Worker: one worker type by name or model (optional; blank = the pool's default t
 Plan: jobs/plans/<name>_plan.md, step <n> (or "none (<who>, <date>)" for a one-off)
 Type: feature | bug (optional; read from the header only; a card with none is untyped)
 Kind: design | implementation | docs | check (set by the planner; the project's list is scheduler.json's cardKinds)
+Fixes-red: yes (optional; only on a card that repairs a red main: it is dispatched while dispatching is paused for the red main)
 Version: <the version a bug was seen in; bug cards only>
 
 <!-- Type: feature or bug. A person filing a card by hand copies card-template-feature.md or

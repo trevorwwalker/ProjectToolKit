@@ -8,7 +8,7 @@
     <!-- The one place the scheduler's version is written (951-A, CFG-18): CoreInfo.Version reads it
          back out of the build's informational version, and the page, the log and the version switch
          show that. The PowerShell scheduler ended at 2.3.16; the C# rewrite is 3.0.0. -->
-    <Version>3.4.51</Version>
+    <Version>3.4.53</Version>
   </PropertyGroup>
   <PropertyGroup>
     <!-- The layout's own rule (docs/conventions.md): build/ holds intermediates and can be deleted at

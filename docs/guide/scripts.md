@@ -45,10 +45,15 @@ checks and measurements for people working on the toolkit itself.
 
 ## projecttoolkit.ps1
 
-**What it is for.** The setup script. It does two independent jobs, chosen with `-Action`:
+**What it is for.** The setup script. It does three independent jobs, chosen with `-Action`:
 
 - `new-project` makes a new project: the standard folder layout, a `README.md`, `.gitignore`, `.gitattributes`, a conventions
   file, the planner brief (`docs/planner-brief.md`) and the two design documents to fill in, and then it does the second job too.
+- `new-library` makes a new **library project**: the same setup with the cut-down layout for a repository of static
+  libraries that other projects nest at `code/extern/<repository>/` (`bin/`, `code/lib/`, `code/tools/`, `test/unit/`,
+  `docs/design/`, `out/`; no `assets/`, `code/src/`, `code/extern/`, `extern/`, `test/integration/` or `test/data/`), the
+  library variants of `README.md` and `docs/conventions.md`, and one default category (`A=library:code/,test/`). See
+  [Library projects](library-projects.md).
 - `jobs` sets up the **job queue** alone: the `jobs/` folders (`queue`, `active`, `review`, `done`, `plans`, `archive`,
   `requests`), the rules every worker reads (`jobs/README.md`), and the project's settings files. Use it to add a queue to a
   repository you already have, or with `-Update` to pull in newer rules from the toolkit.
@@ -60,7 +65,7 @@ checks and measurements for people working on the toolkit itself.
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `-Action` | (required) | `new-project` or `jobs`. |
+| `-Action` | (required) | `new-project`, `new-library` or `jobs`. |
 | `-Repo` | (required) | The project's folder. Created if it does not exist, and `git init`-ed on branch `main` if it is not a git repository yet. |
 | `-Project` | the name in `jobs/scheduler.json`, else the folder name | The project's name. |
 | `-Categories` | `A=core:code/src/,test/` | The kinds of work, as `LETTER=name:path,path;LETTER=name:path`. Each category owns its paths, so two workers never edit the same file. One is fine to start with. Used only when `categories.json` is first written. |
@@ -142,11 +147,22 @@ docs/design/, jobs/{project,categories,lanes,workers,scheduler}.json.
 
 `same` means the file already matched the kit; `kept` means it is yours and was left alone. It is safe to repeat.
 
+**4. A new library project.**
+
+```powershell
+.\bin\projecttoolkit.ps1 -Action new-library -Repo C:\Projects\MyLib -NoPool
+```
+
+The cut-down layout for a repository of static libraries (`-NoPool` keeps the experiment out of your real pool):
+the library variants of `README.md` and `docs/conventions.md`, one default category, `A=library:code/,test/`, and
+the same queue and pool join as `new-project`. How a host nests the result is in
+[Library projects](library-projects.md).
+
 ### What it changes on disk
 
 Only files under `-Repo`, plus `%LOCALAPPDATA%\ProjectToolkit\pool.json` for the pool join. It never overwrites a file that
 exists unless you give `-Force`. With `-Update` it rewrites only the kit's own text: `jobs/README.md`, the card, plan and
-request templates and `jobs/attachments/README.md` (and `.gitattributes`, with `-Action new-project`). Your `README.md`,
+request templates and `jobs/attachments/README.md` (and `.gitattributes`, with `-Action new-project` or `new-library`). Your `README.md`,
 `.gitignore`, `docs/conventions.md`, `docs/design/`, `jobs/project.md`, `jobs/categories.json` and `jobs/scheduler.json` are
 never touched by it.
 

@@ -45,6 +45,7 @@ The "Page" column is the guide page that covers it.
 | Plans | What a plan is, how to write one, and the checklist before carding it | [plans.md](plans.md) |
 | Switchyard | The scheduler, its tray and its page: starting it, the views, the worker types, the settings. | [switchyard.md](switchyard.md) |
 | Projects and the job queue | Set up a project or add the queue to one you have; what is in jobs/; a card's life. | [projects.md](projects.md) |
+| Library projects | Make a static-library repository other projects nest; create it, nest it (pinned or following), update the host, run its queue. | [library-projects.md](library-projects.md) |
 | The scripts in bin/ | Every script, its parameters and examples. | [scripts.md](scripts.md) |
 | The command line | scheduler-next.exe: run one project or a pool; the worker's commands. | [scheduler-cli.md](scheduler-cli.md) |
 

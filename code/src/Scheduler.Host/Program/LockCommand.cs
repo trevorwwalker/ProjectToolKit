@@ -31,6 +31,31 @@ public static class LockCommand
     /// <summary>How long one call waits for its answer (under the prompt's two-minute rule).</summary>
     public static readonly TimeSpan Wait = TimeSpan.FromSeconds(110);
 
+    /// <summary>The file the scheduler keeps in its log folder while the project's locks are off (1477-B).</summary>
+    public const string OffMarker = "locks-off.txt";
+
+    /// <summary>Writes the off marker when locks are off at start, removes it when they are on.</summary>
+    public static void SetOffMarker(string logDir, bool off)
+    {
+        try
+        {
+            var path = Path.Combine(logDir, OffMarker);
+            if (off)
+            {
+                Directory.CreateDirectory(logDir);
+                File.WriteAllText(path, "locks are off for this project (\"locks\": false in jobs/scheduler.json)" + Environment.NewLine, Utf8);
+            }
+            else if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // the marker is a courtesy to the command; the scheduler runs without it
+        }
+    }
+
     private static readonly UTF8Encoding Utf8 = new(false);
 
     /// <summary>
@@ -72,6 +97,11 @@ public static class LockCommand
         if (logDir.Length == 0 || !Directory.Exists(logDir))
         {
             return Refuse($"no scheduler log folder: {LogDirVariable} is not set");
+        }
+
+        if (File.Exists(Path.Combine(logDir, OffMarker)))
+        {
+            return Refuse("locks are off for this project (\"locks\": false in jobs/scheduler.json)");
         }
 
         var row = Row(logDir, card);

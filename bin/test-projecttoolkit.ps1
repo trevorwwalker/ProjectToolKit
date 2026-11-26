@@ -133,6 +133,35 @@ try {
         $staged = @(& git -C $repoN diff --cached --name-only)
         Check (($staged -contains 'out/windows/.gitkeep') -and -not ($staged -like 'out/windows/pkg*') -and -not ($staged -contains 'out/x.txt')) 'a new project commits out/windows/.gitkeep and nothing else under out/'
     }
+    # 10. -Action new-library: the cut-down layout, the library readme and conventions, the queue, and -Update
+    # never adds the folders a library leaves out (marker line in docs/conventions.md).
+    $repoL = Join-Path $real 'Lib'
+    $poolBefore = Get-Content -Raw $pool
+    $out = Run $local @('-Action', 'new-library', '-Repo', $repoL, '-NoPool')
+    foreach ($d in @('bin', 'code\lib', 'code\tools', 'test\unit', 'docs\design', 'jobs')) { Check (Test-Path "$repoL\$d" -PathType Container) "library project has $d" }
+    foreach ($d in @('assets', 'code\src', 'code\extern', 'extern', 'test\integration', 'test\data')) { Check (-not (Test-Path "$repoL\$d")) "library project has no $d" }
+    Check (-not (Test-Path "$repoL\docs\design\gdd") -and -not (Test-Path "$repoL\docs\design\tdd")) 'library project has no design documents'
+    $rd = Get-Content -Raw "$repoL\README.md"; $cv = Get-Content -Raw "$repoL\docs\conventions.md"
+    Check ($rd -match 'library project' -and $rd -match 'code/extern/<repository>/' -and $rd -match 'pinned') 'README.md is the library variant'
+    Check ($cv.Contains('<!-- ptk-layout: library -->') -and $cv -match 'never worked' -and $cv -match 'leave the nested folder out') 'docs/conventions.md is the library variant'
+    Check ((Test-Path "$repoL\.gitignore") -and (Test-Path "$repoL\.gitattributes") -and (Test-Path "$repoL\docs\planner-brief.md")) 'library project has .gitignore, .gitattributes and the planner brief'
+    foreach ($f in @('queue', 'active', 'review', 'done', 'plans', 'archive', 'requests')) { Check (Test-Path "$repoL\jobs\$f" -PathType Container) "library queue has jobs/$f" }
+    foreach ($f in @('README.md', 'project.md', 'categories.json', 'scheduler.json', 'card-template.md')) { Check (Test-Path "$repoL\jobs\$f") "library queue has jobs/$f" }
+    $cat = Get-Content -Raw "$repoL\jobs\categories.json" | ConvertFrom-Json
+    Check (@($cat.categories.PSObject.Properties).Count -eq 1 -and $cat.categories.A.name -eq 'library' -and (@($cat.categories.A.owns) -join ',') -eq 'code/,test/') 'library default category is A=library:code/,test/'
+    Check ((Get-Content -Raw $pool) -eq $poolBefore) 'new-library -NoPool does not touch the pool file'
+    $null = Run $local @('-Action', 'jobs', '-Repo', $repoL, '-Update', '-NoPool')
+    $null = Run $local @('-Action', 'new-library', '-Repo', $repoL, '-Update', '-NoPool')
+    $null = Run $local @('-Action', 'new-project', '-Repo', $repoL, '-Update', '-NoPool')
+    $left = @('assets', 'code\src', 'code\extern', 'extern', 'test\integration', 'test\data', 'docs\reference') | Where-Object { Test-Path "$repoL\$_" }
+    Check (-not $left) "-Update (jobs, new-library, new-project) adds none of the left-out folders$(if ($left) { ': ' + ($left -join ', ') })"
+    Check ((Get-Content -Raw "$repoL\README.md") -eq $rd) '-Update leaves the library README.md alone'
+    $cat = Get-Content -Raw "$repoL\jobs\categories.json" | ConvertFrom-Json
+    Check ($cat.categories.A.name -eq 'library') '-Update on a library project keeps its categories'
+    $repoL2 = Join-Path $real 'Lib2'
+    $null = Run $local @('-Action', 'new-library', '-Repo', $repoL2, '-NoPool', '-Categories', 'B=core:code/lib/')
+    $cat = Get-Content -Raw "$repoL2\jobs\categories.json" | ConvertFrom-Json
+    Check ($null -ne $cat.categories.B -and $null -eq $cat.categories.A) '-Categories overrides the library default'
 } finally {
     Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 }
