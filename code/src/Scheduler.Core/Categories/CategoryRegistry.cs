@@ -36,7 +36,7 @@ public sealed class CategoryRegistry
 
     /// <summary>
     /// Read categories.json's text from main. null (not readable) changes nothing; invalid JSON is
-    /// logged and the previous categories kept; a file without a <c>categories</c> key is ignored silently.
+    /// logged and the previous categories kept; a file without a <c>categories</c> (or old <c>lanes</c>) key is ignored, with one log line when that changes.
     /// Then each category is compared with the accepted definitions: new ones are accepted, changed
     /// ones are accepted and logged, whether or not cards of the category are in queue/ or active/
     /// (LANE-2 as changed by SC-4 and 320-A Q5: nothing is held).
@@ -45,13 +45,15 @@ public sealed class CategoryRegistry
     {
         if (text is null)
         {
+            LogRead($"categories: no {_categoriesRel} on main");
             return;
         }
 
         CategoriesFile? file;
+        string? keyRead;
         try
         {
-            file = CategoriesJson.Parse(text);
+            file = CategoriesJson.Parse(text, out keyRead);
         }
         catch (JsonException)
         {
@@ -61,9 +63,12 @@ public sealed class CategoryRegistry
 
         if (file is null)
         {
+            LogRead($"categories: {_categoriesRel} ignored: it has no \"{CategoriesJson.Key}\" section");
             return;
         }
 
+        var oldName = keyRead == CategoriesJson.OldKey ? " (the old name)" : "";
+        LogRead($"categories: read \"{keyRead}\"{oldName} from {_categoriesRel} ({file.Categories.Count} categories)");
         Current = file;
         var accepted = LoadAccepted();
         var changed = false;
@@ -98,6 +103,20 @@ public sealed class CategoryRegistry
 
         Overlaps = CategoryOverlaps.Find(file);
     }
+
+    /// <summary>Writes the line once, and again only when it changes (what was read changed).</summary>
+    private void LogRead(string line)
+    {
+        if (line == _lastReadLine)
+        {
+            return;
+        }
+
+        _lastReadLine = line;
+        _log.Write(line);
+    }
+
+    private string? _lastReadLine;
 
     private Dictionary<string, string> LoadAccepted()
     {

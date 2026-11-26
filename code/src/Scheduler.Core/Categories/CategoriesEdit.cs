@@ -152,7 +152,8 @@ public static class CategoriesEdit
             root = [];
         }
 
-        var old = root["lanes"] as JsonObject;
+        var old = (root[CategoriesJson.Key] ?? root[CategoriesJson.OldKey]) as JsonObject;
+
         var section = new JsonObject();
         foreach (var row in rows)
         {
@@ -179,7 +180,31 @@ public static class CategoriesEdit
             section[row.Letter] = def;
         }
 
-        root["lanes"] = section;
+        // "categories" goes where the section was and "lanes" goes; everything else stays as it was.
+        var result = new JsonObject();
+        var placed = false;
+        foreach (var (name, value) in root.ToList())
+        {
+            if (name is CategoriesJson.Key or CategoriesJson.OldKey)
+            {
+                if (!placed)
+                {
+                    result[CategoriesJson.Key] = section;
+                    placed = true;
+                }
+            }
+            else
+            {
+                result[name] = value?.DeepClone();
+            }
+        }
+
+        if (!placed)
+        {
+            result[CategoriesJson.Key] = section;
+        }
+
+        root = result;
         var shared = root["shared"] as JsonObject ?? [];
         shared["addOnly"] = Array(addOnly);
         root["shared"] = shared;

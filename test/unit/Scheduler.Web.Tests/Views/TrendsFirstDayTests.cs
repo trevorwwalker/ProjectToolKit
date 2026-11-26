@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Trevor W. Walker. Licensed under the PolyForm Noncommercial License 1.0.0; see LICENSE.
 // Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
+using System.Text.RegularExpressions;
 using Scheduler.Core.Accounting;
 using Scheduler.Core.WebContract;
 using Scheduler.Web.Views;
@@ -118,3 +119,79 @@ public sealed class TrendsFirstDayTests
         Assert.Contains("data-project='Fresh'", window, StringComparison.Ordinal);
     }
 }
+
+/// <summary>1488-C: the time labels under the bars are compact, never touch, and show the date where the day changes.</summary>
+public sealed class TrendAxisLabelTests
+{
+    private static List<TrendDay> Hours(DateTime first, int count, int minutes = 60)
+    {
+        var days = new List<TrendDay>();
+        for (var i = 0; i < count; i++)
+        {
+            var start = first.AddMinutes(i * minutes);
+            days.Add(new TrendDay
+            {
+                Date = DateOnly.FromDateTime(start),
+                Time = TimeOnly.FromDateTime(start),
+                Label = Trends.HourLabel(start),
+                Segments = [new TrendSegment { Model = "opus", Label = "Opus", CardsDone = 1, Runs = 1 }],
+            });
+        }
+
+        return days;
+    }
+
+    [Theory]
+    [InlineData(0, 0, "12a")]
+    [InlineData(7, 0, "7a")]
+    [InlineData(12, 0, "12p")]
+    [InlineData(13, 0, "1p")]
+    [InlineData(23, 0, "11p")]
+    [InlineData(7, 30, "7:30a")]
+    public void HourLabel_IsCompact(int hour, int minute, string expected) =>
+        Assert.Equal(expected, Trends.HourLabel(new DateTime(2026, 11, 26, hour, minute, 0)));
+
+    [Fact]
+    public void TwentyFourHourlyBars_ShowNoTwoTouchingLabels_AndTheDateOnce()
+    {
+        var html = TrendChart.Html(Hours(new DateTime(2026, 11, 26, 11, 0, 0), 24));
+        var labels = Regex.Matches(html, "<text class='tday' x='([0-9.]+)'[^>]*>([^<]+)</text>");
+        Assert.NotEmpty(labels);
+        var xs = labels.Select(m => double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        for (var i = 1; i < xs.Length; i++)
+        {
+            Assert.True(xs[i] - xs[i - 1] >= labels[i].Groups[2].Value.Length * 6.6 + 6 - 0.01, "labels touch: " + labels[i].Groups[2].Value);
+        }
+
+        Assert.Equal("11a", labels[0].Groups[2].Value);
+        Assert.Equal(24, labels.Count + Regex.Matches(html, "<line class='ttick'").Count);
+        Assert.Single(Regex.Matches(html, "tdate'[^>]*>11-27</text>"));
+        Assert.DoesNotContain(":00", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ThirtyMinuteBars_KeepWholeHours_AndTheFirstBar()
+    {
+        var html = TrendChart.Html(Hours(new DateTime(2026, 11, 26, 7, 0, 0), 48, 30));
+        var shown = Regex.Matches(html, "<text class='tday' [^>]*>([^<]+)</text>").Select(m => m.Groups[1].Value).ToArray();
+        Assert.Equal("7a", shown[0]);
+        Assert.All(shown, label => Assert.DoesNotContain(":30", label, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void DateLabels_AreUnchanged()
+    {
+        var days = new List<TrendDay>();
+        for (var i = 0; i < 14; i++)
+        {
+            var d = new DateOnly(2026, 11, 5).AddDays(i);
+            days.Add(new TrendDay { Date = d, Label = d.ToString("MM-dd", System.Globalization.CultureInfo.InvariantCulture), Segments = [] });
+        }
+
+        var html = TrendChart.Html(days);
+        Assert.Equal(14, Regex.Matches(html, "<text class='tday").Count);
+        Assert.Contains(">11-18</text>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("tdate", html, StringComparison.Ordinal);
+    }
+}
+

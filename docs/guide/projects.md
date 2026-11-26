@@ -297,14 +297,21 @@ A category is a letter for a kind of work and the set of files it may change. Se
 files are changed by one card at a time, so two workers never edit the same file. `jobs/categories.json`:
 
 ```json
-"A": { "name": "app",  "purpose": "the program",   "owns": ["code/src/", "test/"], "except": [] },
-"D": { "name": "docs", "purpose": "documentation", "owns": ["docs/"],              "except": [] }
+"categories": {
+  "A": { "name": "app",  "purpose": "the program",   "owns": ["code/src/", "test/"], "except": [] },
+  "D": { "name": "docs", "purpose": "documentation", "owns": ["docs/"],              "except": [] }
+}
 ```
 
 A path ending in `/` is a folder and everything under it. `except` lists files carved out. The `shared` section names files any
 category may *add to* (such as `.gitignore`) but not rewrite. If a card must change another category's files it names them in
 `Locks:`, and while it is active no other card touches them. Start with one category; split when you want two kinds of work
 running at once without colliding. Ask the planner to fill in each category's purpose, owns and exceptions.
+
+The categories are under the key `categories`. An older project's file may hold them under `lanes`, the name this key had
+before it was renamed; the scheduler still reads `lanes` when there is no `categories`, and a file with both uses
+`categories`. To rename it, change the key's name in the file on `main` once the build that reads both is running
+(3.4.54, card 1486-A), and push; saving the categories from the page writes `categories` and drops `lanes`.
 
 ## `project.md`: gates and briefs
 

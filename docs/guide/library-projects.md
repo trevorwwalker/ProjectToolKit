@@ -214,8 +214,8 @@ straight:
   want in the library is a card in the library's own queue, run in its own worktrees; it reaches the
   host through the update commands above.
 - **The host's categories leave the nested folder out.** Put an `except` for `code/extern/<library repository>/`
-  in the host's `jobs/categories.json` (on any category that would otherwise own `code/`):
-  `{"A": {"owns": ["code/", "test/"], "except": ["code/extern/mylib/"]}}`. Then a host worker reads the
+  in the host's `jobs/categories.json` (in the `categories` section, on any category that would otherwise own `code/`):
+  `{"categories": {"A": {"owns": ["code/", "test/"], "except": ["code/extern/mylib/"]}}}`. Then a host worker reads the
   library and never changes it.
 - **The library's default category is one and broad** (`A=library:code/,test/`). Split it into real
   categories with the planner as the library grows, the same as for any project.

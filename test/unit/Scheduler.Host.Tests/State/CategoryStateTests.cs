@@ -40,7 +40,7 @@ public class CategoryStateTests
         Assert.Equal(3, doc.RootElement.EnumerateObject().Count());
         Assert.True(doc.RootElement.TryGetProperty("E", out var e));
         Assert.Contains("src/e/", e.GetString(), StringComparison.Ordinal);
-        Assert.Empty(log.Lines);
+        Assert.DoesNotContain(log.Lines, l => l.Contains("redefined", StringComparison.Ordinal));
     }
 
     // LANE-2: a changed category with no card of its own in queue/ or active/ is accepted, logged and stored.
@@ -52,7 +52,7 @@ public class CategoryStateTests
         var log = new ListLog();
         var registry = new CategoryRegistry(log, files, Rel);
         registry.Read(CategoriesOwns("A", "src/core/"), []);
-        Assert.Empty(log.Lines);
+        Assert.DoesNotContain(log.Lines, l => l.Contains("redefined", StringComparison.Ordinal));
 
         // category A's owns changes; its only card has finished, so nothing of A's is queued or active.
         registry.Read(CategoriesOwns("A", "src/core/", "docs/extra/"), [CardOf("060-A-done", CardFolder.Done)]);

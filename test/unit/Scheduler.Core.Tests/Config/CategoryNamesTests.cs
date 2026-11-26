@@ -28,6 +28,15 @@ public class CategoryNamesTests
         return new CategoriesFile { Categories = map };
     }
 
+    // 1486-A: scheduler.json's names under "categories", else "lanes"; "categories" wins.
+    [Fact]
+    public void Config_CategoryNames_EitherKey()
+    {
+        Assert.Equal("core", Load("""{"categories":{"A":"core"}}""").CategoryNames["A"]);
+        Assert.Equal("core", Load("""{"lanes":{"A":"core"}}""").CategoryNames["A"]);
+        Assert.Equal("new", Load("""{"lanes":{"A":"old"},"categories":{"A":"new"}}""").CategoryNames["A"]);
+    }
+
     // CFG-13: cfg.categories before the first Read-Categories, categories.json's names after it.
     [Fact]
     public void Config_CategoryNames_FromConfigUntilCategoriesJsonRead()

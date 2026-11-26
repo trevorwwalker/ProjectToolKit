@@ -152,6 +152,25 @@ public class WorkerTypesTests
         Assert.Contains(log.Lines, l => l.Contains("SPARK") && l.Contains("duplicate"));
     }
 
+    // 1486-A: a worker's categories are read from "categories", else "lanes"; "categories" wins. The same
+    // settings (the categories included) are one type, so three spellings of "ab" merge into one, "cd" does not.
+    [Fact]
+    public void WorkerTypes_EitherCategoriesKey()
+    {
+        var cfg = Load("""{"slots":2,"agents":{"ag":{"cli":"ag","args":["-p","{prompt}"]}}}""");
+        const string text = """
+            {"slots":4,"workers":{
+              "1": {"agent":"ag","model":"m","categories":"ab"},
+              "2": {"agent":"ag","model":"m","lanes":"AB"},
+              "3": {"agent":"ag","model":"m","lanes":"cd","categories":"ab"},
+              "4": {"agent":"ag","model":"m","categories":"cd"}}}
+            """;
+
+        var pool = WorkerTypesJson.FromWorkersJson(cfg, text, new Dictionary<int, bool>());
+        Assert.Equal(2, pool.Types.Count);
+        Assert.Equal(3, pool.Types.Max(t => t.Max));
+    }
+
     // WT-C6: broken JSON, or a pool with no valid type, is logged and the previous settings are kept.
     [Fact]
     public void WorkerTypes_InvalidJson_PreviousKept()

@@ -55,6 +55,50 @@ public static class TrendChart
     // under the type that does that work today.
     private static readonly string[] FreeTypeNames = ["worker", "default", "free"];
 
+    // 1488-C: a time-of-day label is a 12-hour number and a or p (7a, 12p, 7:30a).
+    private static bool IsTimeLabel(string label) =>
+        label.Length > 1 && (label[^1] == 'a' || label[^1] == 'p') && char.IsDigit(label[^2]);
+
+    // 1488-C: how many bars apart the shown time labels are, the same n across the axis. The drawing is
+    // scaled as a whole, so the check is made in its own units: the widest label (about 6.6 units a
+    // character at the 12-unit font) plus a clear gap must fit in n slots. With buckets of 15 to 59
+    // minutes, n is a whole number of hours, so the kept labels are the hours, not the half hours.
+    private static int LabelStep(IReadOnlyList<TrendDay> days, double slot)
+    {
+        var widest = 0;
+        foreach (var day in days)
+        {
+            if (IsTimeLabel(day.Label))
+            {
+                widest = Math.Max(widest, day.Label.Length);
+            }
+        }
+
+        if (widest == 0)
+        {
+            return 1;
+        }
+
+        var perHour = 1;
+        if (days.Count > 1)
+        {
+            var minutes = (days[1].Date.ToDateTime(days[1].Time) - days[0].Date.ToDateTime(days[0].Time)).TotalMinutes;
+            if (minutes is >= 15 and < 60)
+            {
+                perHour = Math.Max(1, (int)Math.Round(60 / minutes));
+            }
+        }
+
+        var need = (widest * 6.6) + 6;
+        var step = perHour;
+        while (step * slot < need)
+        {
+            step += perHour;
+        }
+
+        return step;
+    }
+
     /// <summary>
     /// 1327-C: the chart's frame with one muted line in place of bars, for a range in which the
     /// project finished nothing (for example the last hour when the last card finished two hours ago).
@@ -99,13 +143,14 @@ public static class TrendChart
         var axisTop = Math.Max(1, Math.Max(days.Max(day => day.CardsDone), days.Max(day => day.Runs)));
         var slot = (Right - Left) / (double)days.Count;
         var bar = Math.Clamp(slot * BarFill, 3d, 72d);
+        var step = LabelStep(days, slot);
 
         var sb = new StringBuilder();
         sb.Append("<div class='trend'>")
           .Append("<svg class='trendchart' viewBox='0 0 ").Append(Width).Append(' ').Append(Height)
           .Append("' width='100%' role='img'")
-          .Append(days[0].Label.Length > 0 && days[0].Label.Contains(':') ? " aria-label='Cards finished and runs per period over the last " : " aria-label='Cards finished and runs per day for the last ").Append(days.Count)
-          .Append(days[0].Label.Length > 0 && days[0].Label.Contains(':') ? " periods'" : " days'")
+          .Append(IsTimeLabel(days[0].Label) ? " aria-label='Cards finished and runs per period over the last " : " aria-label='Cards finished and runs per day for the last ").Append(days.Count)
+          .Append(IsTimeLabel(days[0].Label) ? " periods'" : " days'")
           .Append(" preserveAspectRatio='xMidYMid meet'>");
 
         // The two axes, and the count the tallest bar reaches beside the top of the vertical one
@@ -159,11 +204,36 @@ public static class TrendChart
             points.Append(N(centre)).Append(',').Append(N(y));
 
             // The date along the bottom. Every day keeps one; the page hides alternate ones when the
-            // window is too narrow for them all (963-C).
-            sb.Append("<text class='tday").Append(day % 2 == 1 ? " alt" : string.Empty)
-              .Append("' x='").Append(N(centre)).Append("' y='").Append(DayLabel)
-              .Append("' text-anchor='middle'>")
-              .Append(days[day].Label.Length > 0 ? Enc(days[day].Label) : days[day].Date.ToString("MM-dd", CultureInfo.InvariantCulture)).Append("</text>");
+            // window is too narrow for them all (963-C). Time-of-day labels (1488-C) are thinned here
+            // instead, to every nth bar, so none touches its neighbour; a bar left without a label
+            // keeps its tick. The first bar of a new day carries its date above its hour.
+            var text = days[day].Label.Length > 0 ? days[day].Label : days[day].Date.ToString("MM-dd", CultureInfo.InvariantCulture);
+            if (IsTimeLabel(text))
+            {
+                if (day > 0 && days[day].Date != days[day - 1].Date)
+                {
+                    sb.Append("<text class='tday tdate' style='font-size:10px' x='").Append(N(centre)).Append("' y='").Append(DayLabel - 12)
+                      .Append("' text-anchor='middle'>").Append(days[day].Date.ToString("MM-dd", CultureInfo.InvariantCulture)).Append("</text>");
+                }
+
+                if (day % step == 0)
+                {
+                    sb.Append("<text class='tday' x='").Append(N(centre)).Append("' y='").Append(DayLabel)
+                      .Append("' text-anchor='middle'>").Append(Enc(text)).Append("</text>");
+                }
+                else
+                {
+                    sb.Append("<line class='ttick' x1='").Append(N(centre)).Append("' y1='").Append(Baseline)
+                      .Append("' x2='").Append(N(centre)).Append("' y2='").Append(Baseline + 4)
+                      .Append("' stroke='var(--line)' stroke-width='1'/>");
+                }
+            }
+            else
+            {
+                sb.Append("<text class='tday").Append(day % 2 == 1 ? " alt" : string.Empty)
+                  .Append("' x='").Append(N(centre)).Append("' y='").Append(DayLabel)
+                  .Append("' text-anchor='middle'>").Append(Enc(text)).Append("</text>");
+            }
         }
 
         // The runs: a thin line over the bars, on the bars' own scale (1052-C).

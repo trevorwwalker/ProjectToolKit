@@ -175,7 +175,7 @@ public static class Trends
             var start = first.AddTicks(i * width);
             var label = daily
                 ? start.ToString("MM-dd", CultureInfo.InvariantCulture)
-                : start.ToString(longer && start.TimeOfDay == TimeSpan.Zero ? "MM-dd" : "HH:mm", CultureInfo.InvariantCulture);
+                : longer && start.TimeOfDay == TimeSpan.Zero ? start.ToString("MM-dd", CultureInfo.InvariantCulture) : HourLabel(start);
             var segments = perBucket.TryGetValue(i, out var byModel) ? SegmentsOf(byModel, models) : [];
             buckets.Add(new TrendDay
             {
@@ -187,6 +187,18 @@ public static class Trends
         }
 
         return buckets;
+    }
+
+    /// <summary>
+    /// 1488-C: a bar's time as the chart's axis shows it, compact: a whole hour is the 12-hour number
+    /// and <c>a</c> or <c>p</c> (<c>12a</c>, <c>7a</c>, <c>12p</c>, <c>11p</c>), a bar that starts off the
+    /// hour keeps its minutes (<c>7:30a</c>). Invariant culture, lower case.
+    /// </summary>
+    public static string HourLabel(DateTime start)
+    {
+        var hour = start.Hour % 12 == 0 ? 12 : start.Hour % 12;
+        var minutes = start.Minute == 0 ? string.Empty : ":" + start.Minute.ToString("00", CultureInfo.InvariantCulture);
+        return hour.ToString(CultureInfo.InvariantCulture) + minutes + (start.Hour < 12 ? "a" : "p");
     }
 
     private static List<TrendSegment> SegmentsOf(Dictionary<string, Tally> byModel, IReadOnlyList<ModelEntry>? models)

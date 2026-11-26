@@ -90,7 +90,7 @@ public class StatsRangeTests
 
         Assert.Equal(12, buckets.Count);
         Assert.Equal(new TimeOnly(11, 15), buckets[0].Time);
-        Assert.Equal("11:15", buckets[0].Label);
+        Assert.Equal("11:15a", buckets[0].Label);
         Assert.Equal(new TimeOnly(12, 10), buckets[11].Time);
         Assert.Equal(1, buckets[0].Runs);
         Assert.Equal(1, buckets[10].Runs);
@@ -111,9 +111,9 @@ public class StatsRangeTests
         var three = Trends.Range(runs, Now, CardStats.RangeOf("3d")!, null, TimeZoneInfo.Utc);
         Assert.Equal(12, three.Count);
         Assert.Equal(new DateOnly(2026, 11, 19), three[0].Date);
-        Assert.Equal("18:00", three[0].Label);
+        Assert.Equal("6p", three[0].Label);
         Assert.Equal("11-20", three[1].Label); // a bucket at midnight carries the date
-        Assert.Equal("06:00", three[2].Label);
+        Assert.Equal("6a", three[2].Label);
         Assert.Equal(1, three[4].CardsDone); // 11-20 18:00 holds the 23:00 run
         Assert.Equal(1, three[9].CardsDone); // 11-22 00:00 holds the 01:00 run
         Assert.Equal(2, three.Sum(b => b.CardsDone));

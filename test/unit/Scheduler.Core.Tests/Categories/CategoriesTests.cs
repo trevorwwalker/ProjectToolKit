@@ -2,6 +2,7 @@
 // Required Notice: Copyright (c) 2026 Trevor W. Walker (https://github.com/trevorwwalker)
 using Scheduler.Core.Contracts;
 using Scheduler.Core.Categories;
+using Scheduler.Core.WebContract;
 
 namespace Scheduler.Core.Tests.Categories;
 
@@ -106,12 +107,78 @@ public class CategoriesTests
 
         registry.Read("{ not json", []);
         Assert.Same(before, registry.Current);
-        Assert.Single(log.Lines);
-        Assert.Contains("not valid JSON", log.Lines[0]);
+        Assert.Equal(2, log.Lines.Count);
+        Assert.Contains("not valid JSON", log.Lines[1]);
 
         registry.Read("{}", []);
         Assert.Same(before, registry.Current);
-        Assert.Single(log.Lines);
+        Assert.Equal(3, log.Lines.Count);
+        Assert.Contains("ignored", log.Lines[2]);
+    }
+
+    private const string CategoriesKeyText = """
+        { "categories": { "A": { "name": "core", "owns": ["src/"] } }, "shared": { "addOnly": ["x"] } }
+        """;
+
+    private const string LanesKeyText = """
+        { "lanes": { "A": { "name": "core", "owns": ["src/"] } }, "shared": { "addOnly": ["x"] } }
+        """;
+
+    // 1486-A: "categories" is the key, "lanes" the old name read the same, "categories" wins, neither is ignored.
+    [Fact]
+    public void Parse_CategoriesKey_LanesKey_Both_Neither()
+    {
+        var a = CategoriesEdit.Parse(CategoriesKeyText);
+        var b = CategoriesEdit.Parse(LanesKeyText);
+        Assert.Equal(a!.Categories["A"].Json, b!.Categories["A"].Json);
+        Assert.Equal(["x"], b.AddOnly);
+
+        var both = CategoriesEdit.Parse(
+            """{ "lanes": { "A": { "name": "old" } }, "categories": { "A": { "name": "new" } } }""");
+        Assert.Equal("new", both!.Categories["A"].Name);
+
+        Assert.Null(CategoriesEdit.Parse("{}"));
+    }
+
+    // 1486-A: a page save of a "lanes" file writes "categories" in the same place, no "lanes", the same definitions.
+    [Fact]
+    public void Edit_SaveOfLanesFile_WritesCategoriesInPlace()
+    {
+        const string main = """
+            { "note": 1, "lanes": { "A": { "name": "core", "owns": ["src/"], "except": [] } }, "shared": { "addOnly": ["x"] }, "tail": true }
+            """;
+        var rows = new[] { new PageCategory { Letter = "A", Name = "core", Owns = ["src/"], Except = [], OriginalLetter = "A" } };
+        var text = CategoriesEdit.Text(main, rows, ["x"]);
+
+        Assert.DoesNotContain("\"lanes\"", text);
+        var order = System.Text.Json.Nodes.JsonNode.Parse(text)!.AsObject().Select(kv => kv.Key).ToArray();
+        Assert.Equal(["note", "categories", "shared", "tail"], order);
+        Assert.Equal(
+            CategoriesEdit.Parse(main)!.Categories["A"].Json,
+            CategoriesEdit.Parse(text)!.Categories["A"].Json);
+    }
+
+    // 1486-A: the log line, for each of the four cases, once and again only when it changes.
+    [Fact]
+    public void Registry_LogsWhatWasRead_OnceAndOnChange()
+    {
+        var log = new FakeLog();
+        var registry = new CategoryRegistry(log, new FakeFiles(), Rel);
+        registry.Read(null, []);
+        registry.Read(null, []);
+        registry.Read(CategoriesKeyText, []);
+        registry.Read(CategoriesKeyText, []);
+        registry.Read(LanesKeyText, []);
+        registry.Read("{}", []);
+        registry.Read("{}", []);
+        Assert.Equal(
+            [
+                $"categories: no {Rel} on main",
+                $"categories: read \"categories\" from {Rel} (1 categories)",
+                $"categories: read \"lanes\" (the old name) from {Rel} (1 categories)",
+                $"categories: {Rel} ignored: it has no \"categories\" section",
+            ],
+            log.Lines);
     }
 
     // LANE-2 as changed by SC-4 (320-A Q5, 560-A): a changed category with cards pending is not held;
@@ -155,7 +222,8 @@ public class CategoriesTests
         var cards = new[] { CardOf("010-A-card", CardFolder.Queue), CardOf("020-B-card", CardFolder.Active) };
         registry.Read(compact, cards);
 
-        Assert.Empty(log.Lines);
+        Assert.Single(log.Lines); // only 1486-A's "categories: read" line, no redefinition
+        Assert.StartsWith("categories: read", log.Lines[0], StringComparison.Ordinal);
     }
 
     // LANE-4: same entry owned twice; a folder holding another category's path; an except clears it.

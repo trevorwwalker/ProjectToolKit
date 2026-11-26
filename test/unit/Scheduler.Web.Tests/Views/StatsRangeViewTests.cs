@@ -14,7 +14,7 @@ public class StatsRangeViewTests
     {
         Date = new DateOnly(2026, 11, day),
         Time = new TimeOnly(hour, 0),
-        Label = $"{hour:00}:00",
+        Label = Trends.HourLabel(new DateTime(2026, 11, day, hour, 0, 0)),
         Segments = cards == 0 ? [] : [new TrendSegment { Model = "opus", Label = "opus", CardsDone = cards, Runs = cards }],
     };
 
@@ -183,7 +183,7 @@ public class StatsRangeViewTests
 
         // 8 ranges x (All projects + two projects), each drawn from that range's own buckets: times on the axis.
         Assert.Equal(24, Regex.Matches(trends, "<svg class='trendchart'").Count);
-        Assert.Contains(">10:00</text>", trends, StringComparison.Ordinal);
+        Assert.Contains(">10a</text>", trends, StringComparison.Ordinal);
         Assert.Contains("per period over the last 2 periods", trends, StringComparison.Ordinal);
     }
 

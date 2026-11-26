@@ -289,7 +289,7 @@ public static class WorkerTypesJson
                 Endpoint = ConfigJson.GetString(v, "endpoint") ?? "",
                 Model = ConfigJson.GetString(v, "model") ?? "",
                 MetricsUrl = ConfigJson.GetString(v, "metricsUrl") ?? "",
-                Categories = (ConfigJson.GetString(v, "lanes") ?? "").ToUpperInvariant(),
+                Categories = (ConfigJson.GetString(v, ConfigJson.Has(v, "categories") ? "categories" : "lanes") ?? "").ToUpperInvariant(),
             };
         }
 

@@ -84,7 +84,7 @@ public static class SchedulerConfigLoader
             WorkerEnv = ConfigJson.GetMap(worker, "env"),
 
             // CFG-13: the category names from the file, used until categories.json on main has been read.
-            CategoryNames = ConfigJson.GetMap(cfg, "lanes"),
+            CategoryNames = ConfigJson.GetMap(cfg, ConfigJson.Has(cfg, "categories") ? "categories" : "lanes"),
             PageTheme = Cfg.Value(ConfigJson.GetString(page, "theme"), ""),
 
             DryRun = options.DryRun,
