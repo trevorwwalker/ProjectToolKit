@@ -62,7 +62,8 @@ public class AnswersCommitterUnlandedTests
 
     private static string Remote(GitFixture fx, string path) => GitFixture.Git(fx.Bare, "show", "main:" + path).Replace("\r\n", "\n");
 
-    private const string Waiting = "Status: waiting: planner (finished, but its work is not on main: wip/010-A)";
+    // 1492-B: the commits left to apply are named after the branch
+    private const string Waiting = @"Status: waiting: planner \(finished, but its work is not on main: wip/010-A: [0-9a-f]{7,} the card's fix\)";
 
     // CM-24 (1273-D, 1284-D): the developer picks "yes -> done" on a parked card whose fix is on wip/010-A only. The
     // card goes to queue/ waiting on the planner, the answer is still written after the question, the Result says
@@ -81,12 +82,12 @@ public class AnswersCommitterUnlandedTests
             Assert.True(result.Ok, result.Error);
             Assert.Equal([$"{Jobs}/queue/{Name}.md"], Copies(fx));
             var text = Remote(fx, $"{Jobs}/queue/{Name}.md");
-            Assert.Contains(Waiting, text);
+            Assert.Matches(Waiting, text);
             Assert.Contains("-> **yes** (developer, 2026-11-24", text);
-            Assert.Contains("- 2026-11-24 15:00 scheduler: an answer from the page asked for done/, but its work is not on main: wip/010-A; it waits on the planner (CM-24).", text);
+            Assert.Matches(@"- 2026-11-24 15:00 scheduler: an answer from the page asked for done/, but its work is not on main: wip/010-A: [0-9a-f]{7,} the card's fix; it waits on the planner \(CM-24\)\.", text);
             Assert.Equal(CardFolder.Queue, made!.Folder);
             Assert.Equal($"{Jobs}/queue/{Name}.md", made.NewPath);
-            Assert.Single(log, l => l.Contains("010-A-x: an answer from the page asked for done/, but its work is not on main: wip/010-A; it goes to queue/", StringComparison.Ordinal));
+            Assert.Single(log, l => System.Text.RegularExpressions.Regex.IsMatch(l, @"010-A-x: an answer from the page asked for done/, but its work is not on main: wip/010-A: [0-9a-f]{7,} the card's fix; it goes to queue/"));
             Assert.StartsWith("jobs: wait 010-A-x", GitFixture.Git(fx.Bare, "log", "-1", "--format=%s", "main"), StringComparison.Ordinal);
         }
     }
@@ -105,7 +106,7 @@ public class AnswersCommitterUnlandedTests
             Assert.True(result.Ok, result.Error);
             Assert.Equal([$"{Jobs}/queue/{Name}.md"], Copies(fx));
             var text = Remote(fx, $"{Jobs}/queue/{Name}.md");
-            Assert.Contains("Status: waiting: planner (finished, but its work is not on main: wip/010-A-retry)", text);
+            Assert.Matches(@"Status: waiting: planner \(finished, but its work is not on main: wip/010-A-retry: [0-9a-f]{7,} the card's fix\)", text);
             Assert.Contains("scheduler: the Done button asked for done/, but its work is not on main: wip/010-A-retry", text);
             Assert.Contains("developer: reviewed, done (from the page).", text);
         }

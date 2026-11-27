@@ -75,22 +75,39 @@ step the running cards on its own thread (`CardRequestStep.Running`); tests `...
 does not have, on the slot worktree's HEAD or on a `wip/<card>` branch (`wip/<n>-<L>` or `wip/<n>-<L>-*`, on the
 remote or local). If there are any, the request is sent back before it is applied: `To: queue` with
 `Status: waiting: planner (finished, but its work is not on main: <where>)`, where `<where>` names the card's
-wip branches on the remote, or says `only in the worktree slot<N>` when there is none, and a line is added to the
+wip branches on the remote, or says `only in the worktree slot<N>` when there is none, and after each names the commits
+left to apply, `<sha> <subject>`, at most three and then `; and <n> more` (1492-B): `wip/1471-W: c9e8337 fix it; 0abc123 test
+it`. The same `<where>` is what the log line says. A line is added to the
 card's Result: `scheduler: the worker's finish asked for <done|review>/, but its work is not on main: <where>; it
 waits on the planner (CM-23).` The card is listed under the cards waiting on the planner in the page's Requests to
 the planner window and no worker takes it; the scheduler's log says which folder was asked for, in one line. (Card
 1300-B replaced the earlier outcome, a park as `needs-human` in `active/`: in the developer's words, "cards that
 haven't pushed to main can't be "done". Done implies the work was completed. I think a task that leaves its work
 sitting in an incomplete state should be in a request state for planner to evaluate".) A card
-whose run's commits are all on main, or that made none, is settled as before; so is one git cannot judge
-(the slot folder is gone, git fails), with a log line. Only commits made since the run started count here; a
+whose run's commits are all on main, or that made none, is settled as before. A commit main lacks by ancestry is still on it when
+the branch is **landed**, and 1492-B made one function answer that for CM-23, CM-24 and the wip cleanup
+(`Git/WipBranches.Unmerged`): the branch is an ancestor of main, **or** no commit of it is left to apply by patch equivalence
+(`git cherry`'s meaning, so a branch rebased onto main under other commit ids is landed), **or** every file it changed equals
+main's or main changed it later (1049-B's file rule, kept as the third way because it is stronger for a squashed or partly
+rewritten branch, and the sweep is never weaker for it). `Unmerged` returns the commits left to apply, `<sha> <subject>` oldest
+first: empty when landed, null when git cannot say. A card git cannot judge (the slot folder is gone, git fails) is settled as
+before, with a log line. Only commits made since the run started count here; a
 wip branch left from an earlier session is CM-24's.
+**A landed branch goes when the card does** (1492-B): when a move into `done/` or `review/` is applied, the card's
+`wip/<card>` branch is deleted on the remote if `Unmerged` says nothing on it is left to apply, with the cleanup's line
+`deleted wip/<card> on origin: its work is on main` (a card moving to `done/` only asked the cleanup before; a review card's
+landed branch now goes too); a failed delete is logged and left to the sweep, and a kept branch of a done card is still named in
+the card's Result.
 Cost: no git on a tick without a finishing card, none for a finish that asks for `active` or `queue`; one
 `git rev-list --count` in the slot worktree per finished card that asks for done or review, and a second
-(`git for-each-ref`, to name the branch) only when commits are found. No fetch: the slot worktrees share the
+(`git for-each-ref`, to name the branch) only when commits are found; the one rule then runs once per ref that has commits
+(one `git log --cherry-pick --right-only main...branch`, and the file comparison only when it lists commits), so a rebased
+branch costs no extra process beyond that (1492-B). No fetch: the slot worktrees share the
 repository's refs, so `origin/main` there is the newest main any worker pushed or the scheduler fetched.
-Code: `Moves/UnpushedWork.cs`, `CardRequestStep.NotSettled`, `TickHost.CheckSettled`; tests `..._CM23` in
-`CardRequestStepSettleTests`.
+Code: `Moves/UnpushedWork.cs` (`Reason`, `Named`, `Words`), `Moves/UnpushedWork` and `Git/WipBranches.Unmerged` (the one rule,
+shared with CM-24 and the cleanup), `CardRequestStep.NotSettled`, `TickHost.CheckSettled`, `Moves/AnswersCommitter.CleanWipBranches`
+(the delete when the card arrives); tests `..._CM23` in
+`CardRequestStepSettleTests` and `Moves/PatchEquivalentWipTests` (1492-B).
 
 **CM-24 No card reaches done with its work off main, wherever the move comes from** (card 1300-B). A change
 that moves a card into `done/` through the answers worktree - an answer from the page whose choice ends
@@ -102,9 +119,11 @@ answer is still written after its question), a line is added to the card's Resul
 `scheduler: <an answer from the page | the Done button | a move request> asked for done/, but its work is not on
 main: <branches>; it waits on the planner (CM-24).`, the commit is `jobs: wait <card> (...)`, and the log says
 the same in one line. A branch "holds work main lacks" when it has commits main does not (one `git rev-list
---count` over the card's wip refs) and, of those branches (one `git for-each-ref`), the files it changed differ
-from main as the wip cleanup judges them (1049-B), so a branch whose work reached main rebased or cherry-picked
-does not hold the card; one git cannot compare counts as holding it. Git is asked only for a change that moves a
+--count` over the card's wip refs) and, of those branches (one `git for-each-ref`), `WipBranches.Unmerged` gives it work main
+lacks: an ancestor of main, a branch whose patches are all on main by patch equivalence (a rebased or cherry-picked branch,
+1492-B), or one whose every changed file equals main's or main changed it later (1049-B's rule, which the wip cleanup judges by),
+does not hold the card; one git cannot compare counts as holding it. The commits left to apply are named in the Status and the
+log the same way CM-23 names them (at most three, then `; and <n> more`). Git is asked only for a change that moves a
 card into `done/`; when it cannot answer at all, the change is applied as asked, with a log line. A planner batch
 that moves a card into `done/` is the planner's evaluation and is applied as it is; when the card still has work
 not on main the log says `planner: <card> moved to done with work not on main: <branch>` (and the wip cleanup

@@ -551,8 +551,10 @@ public sealed class AnswersCommitter : IJobsCommitter
     }
 
     /// <summary>
-    /// 1049-B: cards this change moved into <c>done/</c> lose their <c>wip/</c> branch on the remote when its work is
-    /// on main; one that still holds work main lacks is kept and named in the card's Result. Never fails the commit.
+    /// 1049-B: cards this change moved into <c>done/</c> (1492-B: or <c>review/</c>) lose their <c>wip/</c> branch on the
+    /// remote when its work is on main (<see cref="WipBranches.Unmerged"/>'s rule), logged as "deleted wip/&lt;card&gt; on
+    /// origin: its work is on main"; a done card's branch that still holds work main lacks is kept and named in the
+    /// card's Result. A failed delete is logged and left to the sweep. Never fails the commit.
     /// </summary>
     /// <param name="planner">
     /// Card 1300-B: the change came through <see cref="Apply"/>, whose only move into done/ is a planner batch's (the
@@ -562,16 +564,21 @@ public sealed class AnswersCommitter : IJobsCommitter
     {
         try
         {
-            var done = change.Moves
-                .Where(m => m.To.Contains("/done/", StringComparison.Ordinal) && m.To.EndsWith(".md", StringComparison.Ordinal))
-                .ToDictionary(m => Path.GetFileNameWithoutExtension(m.To), m => m.To, StringComparer.Ordinal);
-            if (done.Count == 0)
+            // 1492-B: a card that arrives in review/ loses its landed branch too; only a done card is noted when kept
+            var arrived = change.Moves
+                .Where(m => (m.To.Contains("/done/", StringComparison.Ordinal) || m.To.Contains("/review/", StringComparison.Ordinal))
+                    && m.To.EndsWith(".md", StringComparison.Ordinal))
+                .GroupBy(m => Path.GetFileNameWithoutExtension(m.To), StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.Last().To, StringComparer.Ordinal);
+            if (arrived.Count == 0)
             {
                 return;
             }
 
-            var kept = new WipBranches(_git, _remote, _branch, _log).Clean(dir, done.Keys);
-            foreach (var (card, files) in kept)
+            var done = arrived.Where(a => a.Value.Contains("/done/", StringComparison.Ordinal))
+                .ToDictionary(a => a.Key, a => a.Value, StringComparer.Ordinal);
+            var kept = new WipBranches(_git, _remote, _branch, _log).Clean(dir, arrived.Keys);
+            foreach (var (card, files) in kept.Where(k => done.ContainsKey(k.Key)))
             {
                 if (planner)
                 {

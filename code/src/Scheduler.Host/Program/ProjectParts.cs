@@ -198,6 +198,7 @@ public sealed class ProjectParts : IDisposable
         {
             Host.Moves = new CardRequestStep(committer, Scheduler.Core.Moves.CardRequests.Folder(config.LogDir), config.JobsDir, clock, log);
             Host.NewCards = new NewCardStep(committer, shared.Numbering ?? CardNumbering.Shared, config.JobsDir, poolProject ?? "", log);   // 1111-B
+            Host.NewRequests = new RequestNumberStep(committer, config.JobsDir, poolProject ?? "", log);   // 1493-B
 
             // Dynamic locks (1020-B): on unless scheduler.json says "locks": false (1477-B). On, the
             // host keeps the repository's table (DL-20, DL-22), answers .lock requests and releases on moves.

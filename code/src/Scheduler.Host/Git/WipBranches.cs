@@ -67,6 +67,11 @@ public sealed partial class WipBranches
             }
 
             var files = NotOnMainInProcess(dir, branch) ?? NotOnMain(dir, $"{_remote}/{branch}", $"{_remote}/{_main}");
+            if (files is { Count: > 0 } && Commits(dir, $"refs/remotes/{_remote}/{branch}", $"refs/remotes/{_remote}/{_main}") is { Count: 0 })
+            {
+                files = []; // 1492-B: every commit of it is on main by patch equivalence (Unmerged's rule)
+            }
+
             if (files is null)
             {
                 _log?.Write($"{branch} left alone: could not compare it with {_main}");
@@ -121,6 +126,56 @@ public sealed partial class WipBranches
         return set;
     }
 
+    /// <summary>
+    /// 1492-B: the one answer to "is this branch's work on main", used by CM-23, CM-24 and the wip cleanup and sweep
+    /// (<see cref="Clean"/>). The branch <paramref name="branchRef"/> is landed on <paramref name="mainRef"/> when it is
+    /// an ancestor of main, or no commit of it is left to apply by patch equivalence (<c>git cherry</c>'s meaning: a
+    /// rebased branch), or every file it changed equals main's or main changed it later (1049-B's rule, kept for a
+    /// squashed or partly rewritten branch). Returns the commits left to apply, as "&lt;short sha&gt; &lt;subject&gt;",
+    /// oldest first: empty when landed, null when git cannot say. One <c>git log</c>; the file comparison only when it
+    /// lists commits.
+    /// </summary>
+    /// <param name="dir">A worktree of the repository.</param>
+    /// <param name="branchRef">The branch, as a full ref or <c>HEAD</c>.</param>
+    /// <param name="mainRef">Main, as a full ref.</param>
+    /// <param name="since">Only commits made since then count (CM-23: the run's own); null counts all.</param>
+    public IReadOnlyList<string>? Unmerged(string dir, string branchRef, string mainRef, DateTimeOffset? since = null)
+    {
+        var commits = Commits(dir, branchRef, mainRef, since);
+        if (commits is not { Count: > 0 })
+        {
+            return commits;
+        }
+
+        // HEAD is a worktree's own; git reads it as that worktree has it
+        var files = (branchRef.StartsWith("refs/", StringComparison.Ordinal) ? NotOnMainInProcess(dir, branchRef, mainRef) : null)
+            ?? NotOnMain(dir, branchRef, mainRef);
+        return files is { Count: 0 } ? [] : commits;
+    }
+
+    // The commits of branchRef that main has no patch-equivalent of, oldest first; null when git fails.
+    private List<string>? Commits(string dir, string branchRef, string mainRef, DateTimeOffset? since = null)
+    {
+        var r = _git.Run(dir, "log", "--no-merges", "--cherry-pick", "--right-only", "--reverse", "--format=%ct %h %s", $"{mainRef}...{branchRef}");
+        if (!r.Ok)
+        {
+            return null;
+        }
+
+        var after = since?.ToUnixTimeSeconds() ?? long.MinValue;
+        var result = new List<string>();
+        foreach (var line in r.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var space = line.IndexOf(' ', StringComparison.Ordinal);
+            if (space > 0 && long.TryParse(line[..space], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var at) && at >= after)
+            {
+                result.Add(line[(space + 1)..]);
+            }
+        }
+
+        return result;
+    }
+
     private bool Exists(string dir, string branch) =>
         _git.Run(dir, "ls-remote", "--heads", _remote, $"refs/heads/{branch}") is { Ok: true } r && r.Stdout.Trim().Length > 0;
 
@@ -162,7 +217,10 @@ public sealed partial class WipBranches
     /// be asked: no reader for the repository (MM-2), a ref or object it cannot read, more than one best merge base,
     /// or none (git's own answer then decides, as before).
     /// </summary>
-    public List<string>? NotOnMainInProcess(string dir, string branch)
+    public List<string>? NotOnMainInProcess(string dir, string branch) =>
+        NotOnMainInProcess(dir, $"refs/remotes/{_remote}/{branch}", $"refs/remotes/{_remote}/{_main}");
+
+    private static List<string>? NotOnMainInProcess(string dir, string branchRef, string mainRef)
     {
         var objects = InProcessHistory.Open(dir);
         if (objects is null)
@@ -172,8 +230,8 @@ public sealed partial class WipBranches
 
         try
         {
-            if (objects.Resolve($"refs/remotes/{_remote}/{branch}") is not { } theirsAt
-                || objects.Resolve($"refs/remotes/{_remote}/{_main}") is not { } oursAt)
+            if (objects.Resolve(branchRef) is not { } theirsAt
+                || objects.Resolve(mainRef) is not { } oursAt)
             {
                 return null;
             }

@@ -1,5 +1,15 @@
 # ProjectToolkit changelog
 
+## 3.4.57 (2026-11-27)
+
+### New
+
+### Fixed
+
+* Three requests got the same number: the scheduler numbers requests, as it numbers cards (1493-B)
+* A finished card is parked as "its work is not on main" when a rebase put the same changes there (1492-B)
+* Docs: requests are numbered by the scheduler (the requests README, the guide, the spec) (1494-D)
+
 ## 3.4.55 (2026-11-26)
 
 ### New

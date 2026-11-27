@@ -109,7 +109,7 @@ public class CardRequestStepSettleTests
             CommitInSlot(fx);
             GitFixture.Git(fx.Seed, "push", "-q", "origin", "HEAD:wip/010-A");
             var reason = Reason(fx);
-            Assert.Equal("finished, but its work is not on main: wip/010-A", reason);
+            Assert.Matches(@"^finished, but its work is not on main: wip/010-A: [0-9a-f]{7,} the card's code$", reason);
 
             Finish(step, "done");
             Assert.Equal(1, step.NotSettled(Name, reason!));
@@ -117,9 +117,9 @@ public class CardRequestStepSettleTests
 
             Assert.Equal([$"{Jobs}/queue/{Name}.md"], Copies(fx));
             var card = Remote(fx, $"{Jobs}/queue/{Name}.md");
-            Assert.Contains("Status: waiting: planner (finished, but its work is not on main: wip/010-A)", card);
+            Assert.Matches(@"Status: waiting: planner \(finished, but its work is not on main: wip/010-A: [0-9a-f]{7,} the card's code\)", card);
             Assert.Contains("- 2026-11-24 09:00: all done", card);
-            Assert.Contains("- 2026-11-24 09:00 scheduler: the worker's finish asked for done/, but its work is not on main: wip/010-A; it waits on the planner (CM-23).", card);
+            Assert.Matches(@"- 2026-11-24 09:00 scheduler: the worker's finish asked for done/, but its work is not on main: wip/010-A: [0-9a-f]{7,} the card's code; it waits on the planner \(CM-23\)\.", card);
             Assert.Contains(log, l => l.Contains("asked for done/ but is not settled (CM-23)", StringComparison.Ordinal)
                 && l.EndsWith("it goes to queue/ to wait on the planner", StringComparison.Ordinal));
         }
@@ -135,7 +135,7 @@ public class CardRequestStepSettleTests
             CommitInSlot(fx);
             CommitInSlot2(fx);
             var reason = Reason(fx);
-            Assert.Equal($"finished, but its work is not on main: only in the worktree {Path.GetFileName(fx.Seed)}", reason);
+            Assert.Matches($@"^finished, but its work is not on main: only in the worktree {Path.GetFileName(fx.Seed)}: [0-9a-f]{{7,}} the card's code; [0-9a-f]{{7,}} more of the card's code$", reason);
 
             Finish(step, "review");
             Assert.Equal(1, step.NotSettled(Name, reason!));
@@ -204,7 +204,7 @@ public class CardRequestStepSettleTests
 
             Assert.Equal([$"{Jobs}/queue/{Name}.md"], Copies(fx));
             var card = Remote(fx, $"{Jobs}/queue/{Name}.md");
-            Assert.Contains("Status: waiting: planner (finished, but its work is not on main: wip/010-A)", card);
+            Assert.Matches(@"Status: waiting: planner \(finished, but its work is not on main: wip/010-A: [0-9a-f]{7,} the card's code\)", card);
             Assert.Contains("scheduler: a move request asked for done/, but its work is not on main: wip/010-A", card);
             Assert.Contains(log, l => l.Contains("010-A-x: a move request asked for done/", StringComparison.Ordinal));
         }

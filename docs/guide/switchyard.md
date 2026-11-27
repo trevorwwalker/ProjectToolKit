@@ -340,7 +340,8 @@ A question looks like this on the card and is shown as one line with its buttons
 ```
 
 **Requests to the planner.** Only there when a request is open or a card waits on the planner: one row per open request
-(project, title linking to it, its For line), then the cards waiting on the planner.
+(project, title linking to it, its For line), then the cards waiting on the planner. A request a worker filed but Switchyard
+has not numbered yet is listed too, under its `new-<slug>` name and with no number.
 
 **Worker windows.** One window per running worker, titled with the project chip, the worker type and model, and the
 card. The bar shows how much of the card's time box is used and how fast the model is writing. Inside: what the worker

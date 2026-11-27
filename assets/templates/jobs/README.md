@@ -186,10 +186,12 @@ push it there yourself). A parked card does
 not end the session when run by hand: take the next card.
 
 **Hand to the planner** for what only the planner can do: a decision a plan doesn't settle that the
-references can't settle either, or a new plan. Write a request file in `requests/` - that file is
-yours to commit and push - set the card to `Status: waiting: planner (request #N)`, and hand the card
-back with a move request `To: queue` (run by hand, move it back to `queue/` yourself). Then take the
-next card.
+references can't settle either, or a new plan. Write a request file `requests/new-<slug>.md` - that file is
+yours to commit and push; never give it a number of your own - set the card to
+`Status: waiting: planner (request new-<slug>)`, and hand the card back with a move request `To: queue` (run by
+hand, move it back to `queue/` yourself). The scheduler numbers the request when it reaches main and rewrites that
+line to `request #<n>`; run by hand, with no scheduler, number it yourself as the requests README says. Then take
+the next card.
 
 **Stop when asked.** Under the scheduler, a stop flag file named in your prompt means: stop at the
 next safe point, push only green work, note in the result where to resume, leave the card in

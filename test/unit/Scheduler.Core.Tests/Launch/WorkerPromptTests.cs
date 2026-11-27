@@ -117,6 +117,16 @@ public class WorkerPromptTests
         Assert.Contains("category D's file rules (design and notes)", Prompt(Load(CfgJson), Card("queue"), categoryName: "design and notes"));
     }
 
+    // 1493-B: the worker names a new request new-<slug>.md and never numbers it; the scheduler does.
+    [Fact]
+    public void Workers_Prompt_NamesNewRequestsNewSlug()
+    {
+        var prompt = Prompt(Load(CfgJson), Card("active"));
+
+        Assert.Contains("jobs/requests/new-<slug>.md and never choose a number", prompt, StringComparison.Ordinal);
+        Assert.Contains("waiting: planner (request new-<slug>)", prompt, StringComparison.Ordinal);
+    }
+
     // WRK-10, WRK-11: with worker.web true there is no no-web paragraph and no web exclusions.
     [Fact]
     public void Workers_Prompt_WebOn_NoNoWebText()

@@ -73,6 +73,9 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
     /// <summary>1111-B: numbers the new-* cards found on main, beside the planner step; null in an observe or dry run.</summary>
     public NewCardStep? NewCards { get; set; }
 
+    /// <summary>1493-B: numbers the requests/new-* files found on main, after the new cards; null in an observe or dry run.</summary>
+    public RequestNumberStep? NewRequests { get; set; }
+
     /// <summary>The generic files kept in step with ProjectToolkit's templates, or null when no toolkit was found (card 540-B).</summary>
     public TemplateRefresh? Templates { get; set; }
 
@@ -317,7 +320,8 @@ public sealed class TickHost : ITickHost, IClaimingHost, Scheduler.Core.Tick.ILo
         var moved = Moves?.Run() > 0; // 660-B: requests left over from claims and finishes
         Templates?.Step(_ask);
         var numbered = NewCards?.Run() ?? false;   // 1111-B (b): new-* cards on main get the pool's numbers
-        return (Planner is { } planner && planner.Run()) | moved | numbered;
+        var requests = NewRequests?.Run() ?? false;   // 1493-B: requests/new-* on main get the project's next numbers
+        return (Planner is { } planner && planner.Run()) | moved | numbered | requests;
     }
 
     /// <summary>

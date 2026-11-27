@@ -45,7 +45,19 @@ public class PushCheckTests
     [Fact]
     public void DL15_NewFileUnderRequests_IsAllowed()
     {
-        Assert.True(Check(P("jobs/requests/0042-question.md", isNew: true)).Ok);
+        Assert.True(Check(P("jobs/requests/new-question.md", isNew: true)).Ok);
+    }
+
+    // 1493-B: only the scheduler numbers requests; a new one that chose its own number is refused, saying what to name it.
+    [Fact]
+    public void DL15_NewRequestWithItsOwnNumber_IsRefused_TellingTheNewName()
+    {
+        var r = Check(P("jobs/requests/197-x.md", isNew: true), P("jobs/requests/new-y.md", isNew: true));
+
+        Assert.Equal(["jobs/requests/197-x.md"], r.Refused);
+        var line = Assert.Single(r.Lines);
+        Assert.Contains("jobs/requests/197-x.md", line, StringComparison.Ordinal);
+        Assert.Contains("new-<slug>.md", line, StringComparison.Ordinal);
     }
 
     [Fact]

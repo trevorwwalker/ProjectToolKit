@@ -276,7 +276,10 @@ technical:
 > it -> active" resumes the card.
 
 A worker that needs something only the planner can give (a decision the plan does not settle, a new plan) writes a
-**request** instead, a file in `jobs/requests/`, and sends its card back to `queue/` as `waiting: planner (request #N)`.
+**request** instead: a new file `jobs/requests/new-<slug>.md`, never with a number of its own, and sends its card back to
+`queue/` as `waiting: planner (request new-<slug>)`. Switchyard numbers the request when it reaches main, as it numbers your
+cards, and rewrites that line to `waiting: planner (request #N)`; until then the page lists the request by its `new-<slug>`
+name. A new request pushed with a number of its own is refused, and the refusal tells the worker to rename the file.
 The page lists those under **Requests to the planner**.
 
 > **You:** There is a request from 1206-B.

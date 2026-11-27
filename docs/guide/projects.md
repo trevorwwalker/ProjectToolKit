@@ -287,9 +287,14 @@ planner ([guide](planner.md)).
 ## Requests
 
 When a worker needs something only the planner can give (a decision the plan does not settle), it writes a request: a new
-file `jobs/requests/NNN-slug.md` saying which card is waiting and what is needed, sets that card to
-`waiting: planner (request #N)`, and moves on to another card. The planner answers in the same file and sets the card back to
-`ready`. Answered requests are kept as the record (`requests/answered/`).
+file `jobs/requests/new-<slug>.md` saying which card is waiting and what is needed - never with a number of its own - sets
+that card to `waiting: planner (request new-<slug>)`, and moves on to another card. Switchyard numbers the request once it is
+on main, exactly as it numbers cards (the card-numbering rule above): in a commit of its own it renames the file
+`<n>-<slug>.md`, where `n` is one more than the highest number in `requests/` or `answered/`, fills the `#NNN` placeholder in
+the request's title, and rewrites `request new-<slug>` to `request #<n>` in every card that names it. A worker that pushes a
+new request with a number of its own is refused, and the refusal tells it to rename the file. Run by hand, with no scheduler,
+the worker numbers the request itself, after the highest in use, as `jobs/requests/README.md` says. The planner answers in the
+same file and sets the card back to `ready`. Answered requests are kept as the record (`requests/answered/`).
 
 ## Categories
 
@@ -328,7 +333,14 @@ Run before every push, all of them, from the repository root:
 ```
 
 "Green" means the gates passed on that commit. Code that does not pass is pushed to a `wip/<card>` branch instead, never to
-`main`. The same file lists where things live and any standing briefs (rules such as "never weaken a test"). Put the same
+`main`. A worker that finishes and asks for `done/` or `review/` while commits its run made are still not on main is held: the
+card goes back to `queue/` as `waiting: planner (finished, but its work is not on main: <where>)`, naming the commits left to
+apply (at most three, then `and <n> more`), and no worker takes it until the planner says. A branch counts as **landed** when
+its work is on main, which is not only when main contains the branch: a branch whose changes reached main under other commit
+ids - a rebase, or a cherry-pick - counts as landed too, because the same patches are there. The same test decides for the
+worker's finish, for the page's Done button, and for the cleanup that deletes a finished card's `wip/` branch; when a card
+reaches `done/` or `review/` and its branch is landed, Switchyard deletes the branch on the remote and logs
+`deleted wip/<card> on origin: its work is on main`. The same file lists where things live and any standing briefs (rules such as "never weaken a test"). Put the same
 gates, joined with `&&`, in `scheduler.json` as the health command so Switchyard can check that `main` stays green.
 
 ## How a planner session works with the queue

@@ -105,13 +105,14 @@ public class WipBranchCleanupTests
             Finish(step, "done");
             Assert.True(BranchExists(fx, Branch));
             var card = GitFixture.Git(fx.Bare, "show", $"main:{Jobs}/queue/{Name}.md");
-            Assert.Contains("Status: waiting: planner (finished, but its work is not on main: wip/010-A)", card);
+            Assert.Matches(@"Status: waiting: planner \(finished, but its work is not on main: wip/010-A: [0-9a-f]{7,} wip\)", card);
         }
     }
 
-    // 1049-B: a card that goes to review keeps its branch.
+    // 1049-B kept a review card's branch; 1492-B (the developer: "When a card reaches done/ or review/, the scheduler
+    // deletes its wip/<card> branch on the remote if nothing on it is unmerged, and logs it") deletes it when landed.
     [Fact]
-    public void BranchOfCardInReview_IsUntouched()
+    public void BranchOfCardInReview_IsDeletedWhenLanded()
     {
         var (fx, step, _) = Setup();
         using (fx)
@@ -119,7 +120,7 @@ public class WipBranchCleanupTests
             PushBranch(fx, Branch, new Dictionary<string, string> { ["f.txt"] = "2\n" });
             fx.Push("landed", new Dictionary<string, string?> { ["f.txt"] = "2\n" });
             Finish(step, "review");
-            Assert.True(BranchExists(fx, Branch));
+            Assert.False(BranchExists(fx, Branch));
         }
     }
 

@@ -20,6 +20,9 @@ internal enum PushPathKind
 
     /// <summary>A protected path under <c>jobs/</c> (<see cref="ProtectedJobs"/>): the scheduler's or the planner's, refused even when held.</summary>
     Jobs,
+
+    /// <summary>1493-B: a new request that chose its own number; only the scheduler numbers requests, so it is refused.</summary>
+    NumberedRequest,
 }
 
 /// <summary>
@@ -31,6 +34,13 @@ public static class PushCheck
 {
     /// <summary>The words a version not above main's is refused with (DL-17).</summary>
     public const string BumpAgain = "bump again from main's version";
+
+    /// <summary>
+    /// 1493-B: what a new request with a number of its own is refused with. Refused, not warned: the worker can follow
+    /// it in the same session (rename the file and push again), and a warning would let duplicate numbers through.
+    /// </summary>
+    public const string NumberedRequestRule =
+        "a request never chooses its own number; name it jobs/requests/new-<slug>.md (git mv), call it new-<slug> in the card, and push again: the scheduler numbers it on main";
 
     /// <summary>DL-15 to DL-18 on one pushed ref.</summary>
     public static PushCheckResult Check(PushCheckRequest request)
@@ -61,6 +71,10 @@ public static class PushCheck
 
                     break;
                 case PushPathKind.Exempt:
+                    break;
+                case PushPathKind.NumberedRequest:
+                    refused.Add(path);
+                    lines.Add($"{request.Card} may not add {path}: {NumberedRequestRule}");
                     break;
                 case PushPathKind.Jobs:
                     refused.Add(path);
@@ -112,7 +126,8 @@ public static class PushCheck
 
         if (isNew && parts.Length >= 3 && Same(parts[1], "requests"))
         {
-            return PushPathKind.Exempt;
+            // 1493-B: directly under requests/, a new file named with a number of its own is refused (new-<slug>.md is the name).
+            return parts.Length == 3 && parts[2].Length > 0 && char.IsAsciiDigit(parts[2][0]) ? PushPathKind.NumberedRequest : PushPathKind.Exempt;
         }
 
         // DL-15 (developer, 2026-11-21): every other path under jobs/ is an ordinary, lockable path.

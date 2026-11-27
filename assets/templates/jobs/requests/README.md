@@ -1,7 +1,13 @@
 # Requests to the planner, one file each
 
-A new request is a new file here, `NNN-slug.md`, numbered after the highest one used here or in `answered/`. One file per
-request means two workers never edit the same file.
+A new request is a new file here named `new-<slug>.md`, never with a number of its own. One file per request means two
+workers never edit the same file. The scheduler numbers it when it reaches main, as it numbers cards: in its own commit it
+renames it `<n>-<slug>.md`, n one more than the highest number used here or in `answered/` (three digits at least),
+sets the `#NNN` placeholder in its title line to `#<n>`, and rewrites `request new-<slug>` to `request #<n>` in every
+card in `queue/` and `active/`, logging `request numbered: <project>/new-<slug> -> <n>-<slug>`. A card waiting on
+it says `Status: waiting: planner (request new-<slug>)` until then. A push to main that adds a numbered request is
+refused. Run by hand, with no scheduler, name it `NNN-slug.md` yourself, numbered after the highest one used here or in
+`answered/`.
 
 ```markdown
 # #NNN: Short title

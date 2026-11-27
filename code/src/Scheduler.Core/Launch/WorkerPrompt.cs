@@ -70,6 +70,10 @@ public static class WorkerPrompt
             + "says to park and ask, set the card to needs-human with the question and hand it to the scheduler with a move "
             + "request To: active.",
             MovesText(config, request),
+            // 1493-B: the scheduler numbers requests, as it numbers cards.
+            $"Requests to the planner: name a new request file {jobsDir}/requests/new-<slug>.md and never choose a number "
+            + "for it; call it new-<slug>, so a card waiting on it says waiting: planner (request new-<slug>). The scheduler "
+            + "numbers it when it reaches main and rewrites that line to its number.",
             $"Git: start with git pull --rebase {remote} {branch}; push every green commit with git push {remote} "
             + $"HEAD:{branch}, and if that is rejected, git pull --rebase {remote} {branch} and push again. Green "
             + $"means the gates passed on that commit; a successful build is not green. Code that has not passed "
